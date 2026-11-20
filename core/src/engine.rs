@@ -158,7 +158,7 @@ impl PlayerCore {
             PlayerCommand::SetShuffle(enabled) => {
                 self.queue.set_shuffle(enabled);
                 self.state.shuffle_enabled = enabled;
-            },
+            }
         }
 
         output
