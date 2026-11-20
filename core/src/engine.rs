@@ -222,6 +222,9 @@ impl PlayerCore {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.status = PlaybackStatus::Error;
                     self.state.is_buffering = false;
+                    // A failed prepare/command does not mean the native backend has
+                    // a usable copy of this track. Force a fresh Prepare on retry.
+                    self.backend_loaded_track = None;
                     output
                         .events
                         .push(PlayerEvent::PlaybackError { code, message });
@@ -500,6 +503,27 @@ mod tests {
         assert!(output.events.iter().any(
             |event| matches!(event, PlayerEvent::PlaybackError { code, .. } if code == "decoder_error")
         ));
+    }
+
+    #[test]
+    fn retry_after_backend_failure_prepares_track_again() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+
+        core.handle_backend_event(BackendEvent::Failed {
+            track_id: TrackId::from("one"),
+            code: "temporary_failure".into(),
+            message: "temporary backend failure".into(),
+        });
+
+        let retry = core.handle(PlayerCommand::Play).unwrap();
+        assert!(retry.backend_actions.iter().any(
+            |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("one"))
+        ));
+        assert!(retry.backend_actions.contains(&BackendAction::Play));
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
     }
 
     #[test]
