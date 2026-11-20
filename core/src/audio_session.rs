@@ -148,7 +148,9 @@ mod tests {
         );
         assert_eq!(
             policy.handle(
-                AudioFocusChange::Gain { should_resume: true },
+                AudioFocusChange::Gain {
+                    should_resume: true
+                },
                 PlaybackStatus::Paused,
                 0.8
             ),
@@ -233,7 +235,9 @@ mod tests {
             .is_empty());
         assert_eq!(
             policy.handle(
-                AudioFocusChange::Gain { should_resume: false },
+                AudioFocusChange::Gain {
+                    should_resume: false
+                },
                 PlaybackStatus::Playing,
                 0.75
             ),
