@@ -97,7 +97,7 @@ impl PlaybackQueue {
             (Some(cursor), Some(removed), _) if cursor > removed => Some(cursor - 1),
             (Some(cursor), Some(removed), _) if cursor == removed => {
                 Some(cursor.min(self.order.len() - 1))
-            },
+            }
             (Some(cursor), _, _) => Some(cursor),
             _ => None,
         };
