@@ -4,7 +4,7 @@ NAVAQ is being developed as a cross-platform music playback core. This repositor
 
 ## Workspace
 
-- `core/` — playback state, command/event contracts, queue management, audio-session policy, snapshot recovery, equalizer/crossfade settings, library, playlists, lyrics (LRC), sleep timer, and play history.
+- `core/` — playback state, command/event contracts, queue management, audio-session policy, snapshot recovery, equalizer/crossfade settings, library, playlists, lyrics (LRC), sleep timer, play history, **and exclusive features** (Shared Listening Rooms, Music DNA matching, creative tools, advanced haptics, personalized spatial audio).
 - `android/` — native Android playback host using AndroidX Media3, MediaSessionService, and a JNI bridge to the Rust core.
 - The iOS AVFoundation adapter is not yet implemented.
 
@@ -63,12 +63,20 @@ cargo clippy --workspace --all-targets -- -D warnings
 - `BookmarkStore` — resume positions for long tracks (ignores the first 5 s and the last 10 s).
 - `UserRatings` — favorites and 1-5 ratings, resolvable to tracks for `SetQueue`.
 
+### Exclusive / differentiating modules
+
+- **`social`** — Shared Listening Rooms with simultaneous control. Multiple participants share a track; anyone can apply live effects (Echo, Reverb, PitchShift, VocalOverlay, Custom). `RoomStore` manages rooms, host promotion, per-participant effect stacks. Networking & actual audio mixing are host responsibilities.
+- **`music_dna`** — Taste profiles built from play history + ratings + optional genre/tempo tags. Cosine similarity matching to discover users with very close taste and build collaborative playlists (`rank_matches`, `DnaBuilder`, `TasteProfile`).
+- **`creative`** — Lyric-to-Melody generator requests, instrumental / stem-separation jobs (`CreativeStore`, `LyricToMelodyRequest`, `InstrumentalRequest`). The core tracks job lifecycle; the host (local model or cloud) produces the audio and returns an ordinary `AudioSource` that can be enqueued.
+- **`haptic`** — Advanced haptic patterns driven by musical events (BassHit, Snare, HiHat, VocalOnset, Beat). Intensity, duration, sharpness, custom patterns. Host maps patterns onto device vibrator / controller / wearable.
+- **`spatial`** — Personalized spatial audio. Virtual room dimensions, absorption, speaker layouts (Stereo / 5.1 / Custom), listener position, HRTF profile and reverb mix. Host renders the actual binaural / spatial stream.
+
 Player modes: `SetConsume` (drop tracks once played), `SetSingle` (stop after the current track; repeat-one still repeats), `SetLoopRegion` (A-B loop, cleared when the track changes), and `Reshuffle { seed }` (new random upcoming order; the current and played tracks stay put). The consume/single semantics follow MPD's playback options; the rest follows common practice in players such as MPD, Auxio and rodio-based apps. These projects were used as design references; no code was copied.
 
-These modules do no I/O. Scanning files, reading tags and storing data are host responsibilities.
+These modules do no I/O. Scanning files, reading tags, networking, AI inference, haptic hardware and spatial rendering are host responsibilities.
 
 ## Current implementation status
 
 Implemented: everything in the modules above plus typed track/source models, playback state, command/event contract, queue operations (move, clear, unique ids, next-track lookup for gapless preloading), repeat/shuffle, native backend contract, asynchronous event runtime, audio-focus handling with ducking, failure recovery, versioned snapshots with safe paused restoration, and unit tests.
 
-Not in the core (platform work): Media3/AVFoundation adapters, background services, Android Auto, CarPlay, the DSP that actually applies the equalizer, network streaming, downloads, file scanning and tag reading, and plugin loading.
+Not in the core (platform work): Media3/AVFoundation adapters, background services, Android Auto, CarPlay, the DSP that actually applies the equalizer, network streaming, downloads, file scanning and tag reading, real-time WebRTC for Shared Rooms, generative AI backends, and plugin loading.
