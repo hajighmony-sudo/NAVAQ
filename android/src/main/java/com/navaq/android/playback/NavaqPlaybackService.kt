@@ -93,9 +93,9 @@ class NavaqPlaybackService : MediaSessionService() {
         nativeHandle = NavaqNativeBridge.nativeCreate()
 
         val audioPlayer = ExoPlayer.Builder(this)
-            .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
+                setHandleAudioBecomingNoisy(true)
                 // Media3 requests/releases Android audio focus and handles ducking.
                 setAudioAttributes(AudioAttributes.DEFAULT, true)
                 addListener(playerListener)
