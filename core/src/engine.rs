@@ -164,12 +164,14 @@ impl PlayerCore {
         Ok(output)
     }
 
-
     /// Apply asynchronous callbacks from the native backend. Track IDs reject stale callbacks.
     pub fn handle_backend_event(&mut self, event: BackendEvent) -> CoreOutput {
         let mut output = CoreOutput::default();
         match event {
-            BackendEvent::Prepared { track_id, duration_ms } => {
+            BackendEvent::Prepared {
+                track_id,
+                duration_ms,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.duration_ms = duration_ms;
                     self.state.position_ms = 0;
@@ -179,13 +181,21 @@ impl PlayerCore {
                     }
                 }
             }
-            BackendEvent::Position { track_id, position_ms } => {
+            BackendEvent::Position {
+                track_id,
+                position_ms,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
-                    self.state.position_ms = self.state.duration_ms
+                    self.state.position_ms = self
+                        .state
+                        .duration_ms
                         .map_or(position_ms, |duration| position_ms.min(duration));
                 }
             }
-            BackendEvent::Buffering { track_id, is_buffering } => {
+            BackendEvent::Buffering {
+                track_id,
+                is_buffering,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.is_buffering = is_buffering;
                     if is_buffering && self.state.status == PlaybackStatus::Playing {
@@ -200,15 +210,23 @@ impl PlayerCore {
                     self.advance(true, &mut output);
                 }
             }
-            BackendEvent::Failed { track_id, code, message } => {
+            BackendEvent::Failed {
+                track_id,
+                code,
+                message,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.status = PlaybackStatus::Error;
                     self.state.is_buffering = false;
-                    output.events.push(PlayerEvent::PlaybackError { code, message });
+                    output
+                        .events
+                        .push(PlayerEvent::PlaybackError { code, message });
                 }
             }
         }
-        output.events.push(PlayerEvent::StateChanged(self.state.clone()));
+        output
+            .events
+            .push(PlayerEvent::StateChanged(self.state.clone()));
         output
     }
 
