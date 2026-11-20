@@ -32,9 +32,7 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeHandl
 
     let input: String = match env.get_string(&command_json) {
         Ok(value) => value.into(),
-        Err(_) => {
-            return json_string(&mut env, r#"{"error":"invalid_command_string"}"#.to_owned())
-        }
+        Err(_) => return json_string(&mut env, r#"{"error":"invalid_command_string"}"#.to_owned()),
     };
 
     let command = match serde_json::from_str::<PlayerCommand>(&input) {
@@ -70,9 +68,7 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeHandl
 
     let input: String = match env.get_string(&event_json) {
         Ok(value) => value.into(),
-        Err(_) => {
-            return json_string(&mut env, r#"{"error":"invalid_event_string"}"#.to_owned())
-        }
+        Err(_) => return json_string(&mut env, r#"{"error":"invalid_event_string"}"#.to_owned()),
     };
     let event = match serde_json::from_str::<BackendEvent>(&input) {
         Ok(event) => event,
