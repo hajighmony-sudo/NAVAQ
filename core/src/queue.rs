@@ -95,7 +95,9 @@ impl PlaybackQueue {
         self.cursor = match (old_cursor, removed_order_position, self.order.len()) {
             (_, _, 0) => None,
             (Some(cursor), Some(removed), _) if cursor > removed => Some(cursor - 1),
-            (Some(cursor), Some(removed), _) if cursor == removed => Some(cursor.min(self.order.len() - 1)),
+            (Some(cursor), Some(removed), _) if cursor == removed => {
+                Some(cursor.min(self.order.len() - 1))
+            },
             (Some(cursor), _, _) => Some(cursor),
             _ => None,
         };
@@ -139,7 +141,6 @@ impl PlaybackQueue {
         self.current()
     }
 
-
     /// Toggle deterministic shuffle while preserving the currently selected track.
     /// The current item stays in place; only the remaining queue is reordered.
     pub fn set_shuffle(&mut self, enabled: bool) {
@@ -155,11 +156,14 @@ impl PlaybackQueue {
 
         let current_track = self.order[cursor];
         if enabled {
-            let mut seed = self.tracks.iter().fold(0xcbf29ce484222325_u64, |hash, track| {
-                track.id.0.bytes().fold(hash, |value, byte| {
-                    (value ^ u64::from(byte)).wrapping_mul(0x100000001b3)
-                })
-            });
+            let mut seed = self
+                .tracks
+                .iter()
+                .fold(0xcbf29ce484222325_u64, |hash, track| {
+                    track.id.0.bytes().fold(hash, |value, byte| {
+                        (value ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+                    })
+                });
             for index in (cursor + 1..self.order.len()).rev() {
                 seed ^= seed << 13;
                 seed ^= seed >> 7;
@@ -235,7 +239,12 @@ mod tests {
     #[test]
     fn shuffle_preserves_current_track_and_disabling_restores_queue_order() {
         let mut queue = PlaybackQueue::new();
-        queue.replace(vec![track("a"), track("b"), track("c"), track("d"), track("e")], 2).unwrap();
+        queue
+            .replace(
+                vec![track("a"), track("b"), track("c"), track("d"), track("e")],
+                2,
+            )
+            .unwrap();
         queue.set_shuffle(true);
         assert_eq!(queue.current().unwrap().id, TrackId::from("c"));
         assert!(queue.shuffle_enabled());
@@ -249,10 +258,15 @@ mod tests {
     #[test]
     fn play_next_and_remove_keep_shuffle_order_indices_valid() {
         let mut queue = PlaybackQueue::new();
-        queue.replace(vec![track("a"), track("b"), track("c")], 0).unwrap();
+        queue
+            .replace(vec![track("a"), track("b"), track("c")], 0)
+            .unwrap();
         queue.set_shuffle(true);
         queue.enqueue_next(track("priority"));
-        assert_eq!(queue.next(RepeatMode::Off).unwrap().id, TrackId::from("priority"));
+        assert_eq!(
+            queue.next(RepeatMode::Off).unwrap().id,
+            TrackId::from("priority")
+        );
         assert!(queue.remove(&TrackId::from("b")));
         assert!(queue.current().is_some());
     }
