@@ -208,8 +208,7 @@ mod tests {
         core.handle(PlayerCommand::Play).unwrap();
         let snapshot = core.snapshot();
 
-        let (runtime, output) =
-            PlayerRuntime::restore(FakeBackend::default(), snapshot).unwrap();
+        let (runtime, output) = PlayerRuntime::restore(FakeBackend::default(), snapshot).unwrap();
 
         assert_eq!(
             runtime.core().state().status,
@@ -218,9 +217,11 @@ mod tests {
         assert!(runtime.backend().actions.iter().any(
             |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("runtime-track"))
         ));
-        assert!(runtime.backend().actions.contains(&BackendAction::SeekTo(0)));
+        assert!(runtime
+            .backend()
+            .actions
+            .contains(&BackendAction::SeekTo(0)));
         assert!(!runtime.backend().actions.contains(&BackendAction::Play));
         assert!(!output.backend_actions.contains(&BackendAction::Play));
     }
-
 }
