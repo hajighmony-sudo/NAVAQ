@@ -33,7 +33,11 @@ impl PlayerCore {
 
         match command {
             PlayerCommand::Play | PlayerCommand::Resume => {
-                let track = self.queue.current().cloned().ok_or(PlayerError::EmptyQueue)?;
+                let track = self
+                    .queue
+                    .current()
+                    .cloned()
+                    .ok_or(PlayerError::EmptyQueue)?;
                 self.sync_selected_track(&track, &mut output, true);
                 output.backend_actions.push(BackendAction::Play);
                 self.state.status = PlaybackStatus::Playing;
@@ -54,7 +58,9 @@ impl PlayerCore {
                 output.events.push(PlayerEvent::PlaybackStopped);
             }
             PlayerCommand::Seek { position_ms } => {
-                let position = self.state.duration_ms
+                let position = self
+                    .state
+                    .duration_ms
                     .map_or(position_ms, |duration| position_ms.min(duration));
                 self.state.position_ms = position;
                 output.backend_actions.push(BackendAction::SeekTo(position));
@@ -91,7 +97,10 @@ impl PlayerCore {
                 self.state.status = PlaybackStatus::Playing;
                 output.events.push(PlayerEvent::PlaybackStarted);
             }
-            PlayerCommand::SetQueue { tracks, start_index } => {
+            PlayerCommand::SetQueue {
+                tracks,
+                start_index,
+            } => {
                 self.queue.replace(tracks, start_index)?;
                 if let Some(selected) = self.queue.current().cloned() {
                     self.backend_loaded_track = None;
@@ -138,7 +147,9 @@ impl PlayerCore {
                         output.backend_actions.push(BackendAction::Stop);
                     }
                     output.events.push(PlayerEvent::QueueChanged);
-                    output.events.push(PlayerEvent::TrackChanged(self.state.current_track.clone()));
+                    output
+                        .events
+                        .push(PlayerEvent::TrackChanged(self.state.current_track.clone()));
                 }
             }
             PlayerCommand::SetVolume(volume) => {
@@ -146,7 +157,9 @@ impl PlayerCore {
                     return Err(PlayerError::InvalidVolume);
                 }
                 self.state.volume = volume;
-                output.backend_actions.push(BackendAction::SetVolume(volume));
+                output
+                    .backend_actions
+                    .push(BackendAction::SetVolume(volume));
             }
             PlayerCommand::SetSpeed(speed) => {
                 if !speed.is_finite() || !(0.25..=4.0).contains(&speed) {
@@ -159,7 +172,9 @@ impl PlayerCore {
             PlayerCommand::SetShuffle(enabled) => self.state.shuffle_enabled = enabled,
         }
 
-        output.events.push(PlayerEvent::StateChanged(self.state.clone()));
+        output
+            .events
+            .push(PlayerEvent::StateChanged(self.state.clone()));
         Ok(output)
     }
 
@@ -176,7 +191,9 @@ impl PlayerCore {
 
     /// Native backend callback for periodic playback position updates.
     pub fn on_position(&mut self, position_ms: u64) -> PlayerEvent {
-        self.state.position_ms = self.state.duration_ms
+        self.state.position_ms = self
+            .state
+            .duration_ms
             .map_or(position_ms, |duration| position_ms.min(duration));
         PlayerEvent::StateChanged(self.state.clone())
     }
