@@ -34,7 +34,7 @@ impl PlayerCore {
         match command {
             PlayerCommand::Play | PlayerCommand::Resume => {
                 let track = self.queue.current().cloned().ok_or(PlayerError::EmptyQueue)?;
-                self.sync_selected_track(&track, &mut output);
+                self.sync_selected_track(&track, &mut output, true);
                 output.backend_actions.push(BackendAction::Play);
                 self.state.status = PlaybackStatus::Playing;
                 output.events.push(PlayerEvent::PlaybackStarted);
@@ -96,7 +96,7 @@ impl PlayerCore {
                 self.queue.enqueue(track);
                 if !had_current {
                     if let Some(selected) = self.queue.current().cloned() {
-                        self.sync_selected_track(&selected, &mut output);
+                        self.sync_selected_track(&selected, &mut output, false);
                     }
                 }
                 output.events.push(PlayerEvent::QueueChanged);
@@ -182,15 +182,18 @@ impl PlayerCore {
         PlayerEvent::StateChanged(self.state.clone())
     }
 
-    fn sync_selected_track(&mut self, track: &Track, output: &mut CoreOutput) {
+    fn sync_selected_track(&mut self, track: &Track, output: &mut CoreOutput, prepare: bool) {
         let changed = self.state.current_track.as_ref() != Some(&track.id);
+        let needs_prepare = prepare && self.backend_loaded_track.as_ref() != Some(&track.id);
         self.state.current_track = Some(track.id.clone());
         self.state.duration_ms = track.duration_ms;
         self.state.position_ms = 0;
 
-        if changed || self.backend_loaded_track.as_ref() != Some(&track.id) {
+        if needs_prepare {
             output.backend_actions.push(BackendAction::Prepare(track.clone()));
             self.backend_loaded_track = Some(track.id.clone());
+        }
+        if changed {
             output.events.push(PlayerEvent::TrackChanged(Some(track.id.clone())));
         }
     }
