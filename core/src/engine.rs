@@ -529,4 +529,61 @@ mod tests {
         assert!(!core.queue().shuffle_enabled());
         assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
     }
+    #[test]
+    fn snapshot_round_trip_preserves_queue_and_restores_playback_paused() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::SetQueue {
+            tracks: vec![
+                track("one", 10_000),
+                track("two", 20_000),
+                track("three", 30_000),
+            ],
+            start_index: 0,
+        })
+        .unwrap();
+        core.handle(PlayerCommand::SetShuffle(true)).unwrap();
+        core.handle(PlayerCommand::SetVolume(0.65)).unwrap();
+        core.handle(PlayerCommand::SetSpeed(1.25)).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from("one"),
+            position_ms: 4_500,
+        });
+
+        let encoded = serde_json::to_string(&core.snapshot()).unwrap();
+        let snapshot = serde_json::from_str(&encoded).unwrap();
+        let (restored, output) = PlayerCore::restore(snapshot).unwrap();
+
+        assert_eq!(restored.state().status, PlaybackStatus::Paused);
+        assert_eq!(restored.state().position_ms, 4_500);
+        assert_eq!(restored.state().volume, 0.65);
+        assert_eq!(restored.state().speed, 1.25);
+        assert!(restored.state().shuffle_enabled);
+        assert_eq!(restored.current_track_id(), Some(&TrackId::from("one")));
+        assert!(output.backend_actions.iter().any(
+            |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("one"))
+        ));
+        assert!(output.backend_actions.contains(&BackendAction::SeekTo(4_500)));
+
+        let next_after_restore = restored.queue().clone();
+        let mut next_after_restore = next_after_restore;
+        let expected_next = next_after_restore.next(RepeatMode::Off).unwrap().id.clone();
+        let mut original_queue = core.queue().clone();
+        assert_eq!(
+            original_queue.next(RepeatMode::Off).unwrap().id,
+            expected_next
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_unsupported_versions() {
+        let mut core = PlayerCore::new();
+        let mut snapshot = core.snapshot();
+        snapshot.version += 1;
+        assert!(matches!(
+            PlayerCore::restore(snapshot),
+            Err(SnapshotError::UnsupportedVersion(_))
+        ));
+    }
+
 }
