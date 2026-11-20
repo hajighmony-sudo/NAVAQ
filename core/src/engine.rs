@@ -91,6 +91,14 @@ impl PlayerCore {
                 self.state.status = PlaybackStatus::Playing;
                 output.events.push(PlayerEvent::PlaybackStarted);
             }
+            PlayerCommand::SetQueue { tracks, start_index } => {
+                self.queue.replace(tracks, start_index)?;
+                if let Some(selected) = self.queue.current().cloned() {
+                    self.backend_loaded_track = None;
+                    self.sync_selected_track(&selected, &mut output, false);
+                }
+                output.events.push(PlayerEvent::QueueChanged);
+            }
             PlayerCommand::AddToQueue(track) => {
                 let had_current = self.queue.current().is_some();
                 self.queue.enqueue(track);
@@ -159,7 +167,9 @@ impl PlayerCore {
     pub fn on_prepared(&mut self, duration_ms: Option<u64>) -> PlayerEvent {
         self.state.duration_ms = duration_ms;
         self.state.position_ms = 0;
-        self.state.status = PlaybackStatus::Ready;
+        if self.state.status != PlaybackStatus::Playing {
+            self.state.status = PlaybackStatus::Ready;
+        }
         self.state.is_buffering = false;
         PlayerEvent::StateChanged(self.state.clone())
     }
