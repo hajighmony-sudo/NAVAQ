@@ -220,6 +220,28 @@ impl PlayerCore {
                     .push(BackendAction::SetCrossfade(crossfade_ms));
             }
             PlayerCommand::SetRepeatMode(mode) => self.state.repeat_mode = mode,
+            PlayerCommand::SetConsume(enabled) => self.state.consume = enabled,
+            PlayerCommand::SetSingle(enabled) => self.state.single = enabled,
+            PlayerCommand::SetLoopRegion(region) => {
+                if let Some(region) = region {
+                    if self.state.current_track.is_none() {
+                        return Err(PlayerError::EmptyQueue);
+                    }
+                    let fits = self
+                        .state
+                        .duration_ms
+                        .map_or(true, |duration| region.end_ms <= duration);
+                    if region.start_ms >= region.end_ms || !fits {
+                        return Err(PlayerError::InvalidLoopRegion);
+                    }
+                }
+                self.state.loop_region = region;
+            }
+            PlayerCommand::Reshuffle { seed } => {
+                if self.queue.reshuffle(seed) {
+                    output.events.push(PlayerEvent::QueueChanged);
+                }
+            }
             PlayerCommand::SetShuffle(enabled) => {
                 let changed = self.queue.shuffle_enabled() != enabled;
                 self.queue.set_shuffle(enabled);
@@ -270,6 +292,17 @@ impl PlayerCore {
                         .state
                         .duration_ms
                         .map_or(position_ms, |duration| position_ms.min(duration));
+                    // A-B loop: jump back as soon as the end marker is reached.
+                    if let Some(region) = self.state.loop_region {
+                        if self.state.status == PlaybackStatus::Playing
+                            && self.state.position_ms >= region.end_ms
+                        {
+                            self.state.position_ms = region.start_ms;
+                            output
+                                .backend_actions
+                                .push(BackendAction::SeekTo(region.start_ms));
+                        }
+                    }
                 }
             }
             BackendEvent::Buffering {
@@ -323,15 +356,32 @@ impl PlayerCore {
             self.state.status = PlaybackStatus::Playing;
             return;
         }
+        if from_completion && self.state.single {
+            self.finish(output);
+            return;
+        }
+        let previous = self.state.current_track.clone();
         if let Some(track) = self.queue.next(self.state.repeat_mode).cloned() {
             self.begin_track(&track, output);
+            if self.state.consume && previous.as_ref() != Some(&track.id) {
+                if let Some(previous) = previous {
+                    if self.queue.remove(&previous) {
+                        output.events.push(PlayerEvent::QueueChanged);
+                    }
+                }
+            }
         } else {
-            self.state.status = PlaybackStatus::Completed;
-            self.state.is_buffering = false;
-            self.backend_loaded_track = None;
-            output.backend_actions.push(BackendAction::Stop);
-            output.events.push(PlayerEvent::PlaybackCompleted);
+            self.finish(output);
         }
+    }
+
+    /// Playback ran out of tracks (or single mode ended the track).
+    fn finish(&mut self, output: &mut CoreOutput) {
+        self.state.status = PlaybackStatus::Completed;
+        self.state.is_buffering = false;
+        self.backend_loaded_track = None;
+        output.backend_actions.push(BackendAction::Stop);
+        output.events.push(PlayerEvent::PlaybackCompleted);
     }
 
     /// Select `track` and play it from the beginning, even if it is already loaded
@@ -424,6 +474,9 @@ impl PlayerCore {
     fn sync_selected_track(&mut self, track: &Track, output: &mut CoreOutput, prepare: bool) {
         let changed = self.state.current_track.as_ref() != Some(&track.id);
         let loaded = self.backend_loaded_track.as_ref() == Some(&track.id);
+        if changed {
+            self.state.loop_region = None;
+        }
         if changed || !loaded {
             self.state.duration_ms = track.duration_ms;
             self.state.position_ms = 0;
@@ -474,6 +527,10 @@ impl PlayerCore {
             || !(0.25..=4.0).contains(&snapshot.state.speed)
             || !snapshot.state.equalizer.is_valid()
             || snapshot.state.crossfade_ms > MAX_CROSSFADE_MS
+            || snapshot
+                .state
+                .loop_region
+                .is_some_and(|region| region.start_ms >= region.end_ms)
         {
             return Err(SnapshotError::InvalidPlaybackSettings);
         }
@@ -1231,6 +1288,149 @@ mod tests {
     fn snapshot_with_invalid_equalizer_is_rejected() {
         let mut snapshot = core_with(&["one"]).snapshot();
         snapshot.state.equalizer.bands.clear();
+        assert!(matches!(
+            PlayerCore::restore(snapshot),
+            Err(SnapshotError::InvalidPlaybackSettings)
+        ));
+    }
+
+    use crate::model::LoopRegion;
+
+    #[test]
+    fn single_mode_stops_after_the_track_but_manual_next_still_works() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::SetSingle(true)).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        let output = core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert_eq!(core.state().status, PlaybackStatus::Completed);
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+        assert!(output.events.contains(&PlayerEvent::PlaybackCompleted));
+
+        core.handle(PlayerCommand::Next).unwrap();
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+    }
+
+    #[test]
+    fn single_with_repeat_one_keeps_repeating() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::SetSingle(true)).unwrap();
+        core.handle(PlayerCommand::SetRepeatMode(RepeatMode::One))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+    }
+
+    #[test]
+    fn consume_removes_played_tracks_and_keeps_the_current_one() {
+        let mut core = core_with(&["one", "two", "three"]);
+        core.handle(PlayerCommand::SetConsume(true)).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        let output = core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+        assert_eq!(core.queue().len(), 2);
+        assert!(output.events.contains(&PlayerEvent::QueueChanged));
+        core.handle(PlayerCommand::Next).unwrap();
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("three")));
+        assert_eq!(core.queue().len(), 1);
+        assert_eq!(core.upcoming_track(), None);
+    }
+
+    #[test]
+    fn consume_works_with_shuffle() {
+        let mut core = core_with(&["a", "b", "c", "d", "e"]);
+        core.handle(PlayerCommand::SetShuffle(true)).unwrap();
+        core.handle(PlayerCommand::SetConsume(true)).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        let mut seen = vec![core.current_track_id().unwrap().0.clone()];
+        for _ in 0..4 {
+            core.handle(PlayerCommand::Next).unwrap();
+            seen.push(core.current_track_id().unwrap().0.clone());
+        }
+        seen.sort();
+        assert_eq!(seen, ["a", "b", "c", "d", "e"]);
+        assert_eq!(core.queue().len(), 1);
+    }
+
+    #[test]
+    fn loop_region_seeks_back_when_the_end_is_reached() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle(PlayerCommand::SetLoopRegion(Some(LoopRegion {
+            start_ms: 10_000,
+            end_ms: 20_000,
+        })))
+        .unwrap();
+        let early = core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from("one"),
+            position_ms: 19_000,
+        });
+        assert!(early.backend_actions.is_empty());
+        let wrap = core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from("one"),
+            position_ms: 20_100,
+        });
+        assert_eq!(wrap.backend_actions, vec![BackendAction::SeekTo(10_000)]);
+        assert_eq!(core.state().position_ms, 10_000);
+
+        core.handle(PlayerCommand::SetLoopRegion(None)).unwrap();
+        let free = core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from("one"),
+            position_ms: 30_000,
+        });
+        assert!(free.backend_actions.is_empty());
+    }
+
+    #[test]
+    fn loop_region_is_validated_and_cleared_on_track_change() {
+        let mut core = core_with(&["one", "two"]);
+        let bad =
+            |start_ms, end_ms| PlayerCommand::SetLoopRegion(Some(LoopRegion { start_ms, end_ms }));
+        assert_eq!(core.handle(bad(5, 5)), Err(PlayerError::InvalidLoopRegion));
+        assert_eq!(
+            core.handle(bad(0, 999_999)),
+            Err(PlayerError::InvalidLoopRegion)
+        );
+        core.handle(bad(1_000, 2_000)).unwrap();
+        assert!(core.state().loop_region.is_some());
+        core.handle(PlayerCommand::Next).unwrap();
+        assert!(core.state().loop_region.is_none());
+
+        let mut empty = PlayerCore::new();
+        assert_eq!(empty.handle(bad(0, 10)), Err(PlayerError::EmptyQueue));
+    }
+
+    #[test]
+    fn reshuffle_command_only_acts_with_shuffle_enabled() {
+        let mut core = core_with(&["a", "b", "c", "d", "e", "f", "g"]);
+        let off = core.handle(PlayerCommand::Reshuffle { seed: 7 }).unwrap();
+        assert!(!off.events.contains(&PlayerEvent::QueueChanged));
+        core.handle(PlayerCommand::SetShuffle(true)).unwrap();
+        let on = core.handle(PlayerCommand::Reshuffle { seed: 7 }).unwrap();
+        assert!(on.events.contains(&PlayerEvent::QueueChanged));
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("a")));
+    }
+
+    #[test]
+    fn snapshot_keeps_modes_and_rejects_a_bad_loop_region() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::SetConsume(true)).unwrap();
+        core.handle(PlayerCommand::SetSingle(true)).unwrap();
+        let (restored, _) = PlayerCore::restore(core.snapshot()).unwrap();
+        assert!(restored.state().consume && restored.state().single);
+
+        let mut snapshot = core.snapshot();
+        snapshot.state.loop_region = Some(LoopRegion {
+            start_ms: 9,
+            end_ms: 3,
+        });
         assert!(matches!(
             PlayerCore::restore(snapshot),
             Err(SnapshotError::InvalidPlaybackSettings)

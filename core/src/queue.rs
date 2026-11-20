@@ -323,7 +323,7 @@ impl PlaybackQueue {
 
         let current_track = self.order[cursor];
         if enabled {
-            let mut seed = self
+            let seed = self
                 .tracks
                 .iter()
                 .fold(0xcbf29ce484222325_u64, |hash, track| {
@@ -331,13 +331,7 @@ impl PlaybackQueue {
                         (value ^ u64::from(byte)).wrapping_mul(0x100000001b3)
                     })
                 });
-            for index in (cursor + 1..self.order.len()).rev() {
-                seed ^= seed << 13;
-                seed ^= seed >> 7;
-                seed ^= seed << 17;
-                let swap_index = cursor + 1 + (seed as usize % (index - cursor));
-                self.order.swap(index, swap_index);
-            }
+            self.shuffle_after(cursor, seed);
         } else {
             self.order.sort_unstable();
         }
@@ -345,6 +339,31 @@ impl PlaybackQueue {
         self.cursor = self.order.iter().position(|item| *item == current_track);
         self.current_index = Some(current_track);
         self.shuffle_enabled = enabled;
+    }
+
+    /// Shuffle the tracks after the cursor with an xorshift generator seeded by `seed`.
+    fn shuffle_after(&mut self, cursor: usize, seed: u64) {
+        // xorshift gets stuck at zero, so map it to a fixed non-zero seed.
+        let mut seed = if seed == 0 { 0x9e3779b97f4a7c15 } else { seed };
+        for index in (cursor + 1..self.order.len()).rev() {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let swap_index = cursor + 1 + (seed as usize % (index - cursor));
+            self.order.swap(index, swap_index);
+        }
+    }
+
+    /// Re-randomize the upcoming part of a shuffled queue. The current track and everything
+    /// already played stay in place. Returns false when shuffle is off.
+    pub fn reshuffle(&mut self, seed: u64) -> bool {
+        match (self.shuffle_enabled, self.cursor) {
+            (true, Some(cursor)) => {
+                self.shuffle_after(cursor, seed);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn shuffle_enabled(&self) -> bool {
@@ -552,5 +571,23 @@ mod tests {
             PlaybackQueue::from_snapshot(snapshot).unwrap_err(),
             QueueSnapshotError::DuplicateTrackId
         );
+    }
+
+    #[test]
+    fn reshuffle_changes_upcoming_order_but_keeps_played_and_current() {
+        let mut queue = PlaybackQueue::new();
+        let tracks: Vec<_> = (0..12).map(|i| track(&format!("t{i}"))).collect();
+        queue.replace(tracks, 3).unwrap();
+        assert!(!queue.reshuffle(1));
+        queue.set_shuffle(true);
+        let before = queue.snapshot();
+        assert!(queue.reshuffle(0xdead_beef));
+        let after = queue.snapshot();
+        assert_eq!(before.order[..=3], after.order[..=3]);
+        assert_ne!(before.order[4..], after.order[4..]);
+        let mut sorted = after.order.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..12).collect::<Vec<_>>());
+        assert!(queue.reshuffle(0));
     }
 }

@@ -42,6 +42,13 @@ cargo clippy --workspace --all-targets -- -D warnings
 - `EqualizerSettings` + presets — validated, applied through `SetEqualizer`; `SetCrossfade` (0–12000 ms).
 - `SleepTimer` — duration or end-of-track, driven by `PlayerRuntime::tick` / `poll_backend`.
 - `PlayHistory` — bounded recent plays and play counts; the host calls `record_play`.
+- `replaygain` — `linear_gain` / `effective_volume` from ReplayGain tags (track/album mode, preamp, clipping guard).
+- `m3u` — parse and write M3U/M3U8 with `#EXTINF`.
+- `guess_from_filename` — track number, artist and title from file names when tags are missing.
+- `BookmarkStore` — resume positions for long tracks (ignores the first 5 s and the last 10 s).
+- `UserRatings` — favorites and 1-5 ratings, resolvable to tracks for `SetQueue`.
+
+Player modes: `SetConsume` (drop tracks once played), `SetSingle` (stop after the current track; repeat-one still repeats), `SetLoopRegion` (A-B loop, cleared when the track changes), and `Reshuffle { seed }` (new random upcoming order; the current and played tracks stay put). The consume/single semantics follow MPD's playback options; the rest follows common practice in players such as MPD, Auxio and rodio-based apps. These projects were used as design references; no code was copied.
 
 These modules do no I/O. Scanning files, reading tags and storing data are host responsibilities.
 

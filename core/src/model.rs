@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TrackId(pub String);
 
@@ -54,6 +54,13 @@ pub enum RepeatMode {
     All,
 }
 
+/// A-B repeat region inside the current track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopRegion {
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaybackState {
     pub status: PlaybackStatus,
@@ -70,6 +77,15 @@ pub struct PlaybackState {
     /// Crossfade between tracks in milliseconds (0 = off).
     #[serde(default)]
     pub crossfade_ms: u32,
+    /// Remove a track from the queue once playback has moved past it.
+    #[serde(default)]
+    pub consume: bool,
+    /// Stop after the current track instead of advancing (repeat-one still repeats it).
+    #[serde(default)]
+    pub single: bool,
+    /// Active A-B loop; cleared whenever the current track changes.
+    #[serde(default)]
+    pub loop_region: Option<LoopRegion>,
 }
 
 impl Default for PlaybackState {
@@ -86,6 +102,9 @@ impl Default for PlaybackState {
             is_buffering: false,
             equalizer: EqualizerSettings::default(),
             crossfade_ms: 0,
+            consume: false,
+            single: false,
+            loop_region: None,
         }
     }
 }
@@ -123,6 +142,14 @@ pub enum PlayerCommand {
     SetEqualizer(EqualizerSettings),
     /// Crossfade length in milliseconds, 0 to 12000.
     SetCrossfade(u32),
+    SetConsume(bool),
+    SetSingle(bool),
+    /// Set or clear (`None`) the A-B loop of the current track.
+    SetLoopRegion(Option<LoopRegion>),
+    /// Re-randomize the remaining shuffled order with the given seed (no-op without shuffle).
+    Reshuffle {
+        seed: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,4 +228,6 @@ pub enum PlayerError {
     InvalidEqualizer,
     #[error("crossfade must be between 0 and 12000 ms")]
     InvalidCrossfade,
+    #[error("loop region must start before it ends and fit inside the current track")]
+    InvalidLoopRegion,
 }
