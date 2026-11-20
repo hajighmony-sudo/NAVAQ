@@ -30,10 +30,7 @@ impl<B: AudioBackend> PlayerRuntime<B> {
     }
 
     /// Apply a command to the core and immediately forward its backend actions.
-    pub fn handle_command(
-        &mut self,
-        command: PlayerCommand,
-    ) -> Result<CoreOutput, RuntimeError> {
+    pub fn handle_command(&mut self, command: PlayerCommand) -> Result<CoreOutput, RuntimeError> {
         let output = self.core.handle(command)?;
         self.dispatch_or_mark_failed(&output)?;
         Ok(output)
@@ -63,9 +60,10 @@ impl<B: AudioBackend> PlayerRuntime<B> {
                     message: error.source.message.clone(),
                 };
                 let failure_output = self.core.handle_backend_event(failure);
-                debug_assert!(failure_output.events.iter().any(
-                    |event| matches!(event, PlayerEvent::PlaybackError { .. })
-                ));
+                debug_assert!(failure_output
+                    .events
+                    .iter()
+                    .any(|event| matches!(event, PlayerEvent::PlaybackError { .. })));
             }
             return Err(RuntimeError::BackendDispatch(error));
         }
@@ -171,7 +169,7 @@ mod tests {
 
     #[test]
     fn backend_dispatch_failure_marks_current_track_as_error() {
-        let mut backend = FakeBackend {
+        let backend = FakeBackend {
             fail_next: false,
             ..FakeBackend::default()
         };
