@@ -28,8 +28,8 @@ pub enum AudioSessionAction {
 
 /// Stateful policy shared by Android and iOS adapters.
 ///
-/// The user's configured volume is never overwritten by ducking. The adapter should
-/// apply SetEffectiveVolume to the native player while retaining the core volume.
+/// Ducking never overwrites the user's configured volume. The adapter applies
+/// SetEffectiveVolume to the native player while retaining the core volume.
 #[derive(Debug, Clone)]
 pub struct AudioSessionPolicy {
     duck_factor: f32,
@@ -45,8 +45,7 @@ impl Default for AudioSessionPolicy {
 
 impl AudioSessionPolicy {
     /// Creates a policy with a duck multiplier between 0.0 and 1.0.
-    ///
-    /// Invalid values fall back to 0.2 to keep the policy safe and predictable.
+    /// Invalid values fall back to 0.2.
     pub fn new(duck_factor: f32) -> Self {
         let duck_factor = if duck_factor.is_finite() && (0.0..=1.0).contains(&duck_factor) {
             duck_factor
@@ -70,22 +69,20 @@ impl AudioSessionPolicy {
     ) -> Vec<AudioSessionAction> {
         match change {
             AudioFocusChange::TransientLoss => {
-                self.was_playing_before_loss = playback_status == PlaybackStatus::Playing;
-                self.is_ducked = false;
-                if self.was_playing_before_loss {
-                    vec![AudioSessionAction::PausePlayback]
-                } else {
-                    Vec::new()
+                self.was_playing_before_loss |= playback_status == PlaybackStatus::Playing;
+                let mut actions = self.restore_volume_if_ducked(user_volume);
+                if playback_status == PlaybackStatus::Playing {
+                    actions.push(AudioSessionAction::PausePlayback);
                 }
+                actions
             }
             AudioFocusChange::PermanentLoss => {
                 self.was_playing_before_loss = false;
-                self.is_ducked = false;
+                let mut actions = self.restore_volume_if_ducked(user_volume);
                 if playback_status == PlaybackStatus::Playing {
-                    vec![AudioSessionAction::PausePlayback]
-                } else {
-                    Vec::new()
+                    actions.push(AudioSessionAction::PausePlayback);
                 }
+                actions
             }
             AudioFocusChange::Duck => {
                 if self.is_ducked {
@@ -98,13 +95,7 @@ impl AudioSessionPolicy {
                 }
             }
             AudioFocusChange::Gain { should_resume } => {
-                let mut actions = Vec::new();
-                if self.is_ducked {
-                    self.is_ducked = false;
-                    actions.push(AudioSessionAction::SetEffectiveVolume(normalized_volume(
-                        user_volume,
-                    )));
-                }
+                let mut actions = self.restore_volume_if_ducked(user_volume);
                 if self.was_playing_before_loss {
                     self.was_playing_before_loss = false;
                     if should_resume {
@@ -113,6 +104,17 @@ impl AudioSessionPolicy {
                 }
                 actions
             }
+        }
+    }
+
+    fn restore_volume_if_ducked(&mut self, user_volume: f32) -> Vec<AudioSessionAction> {
+        if self.is_ducked {
+            self.is_ducked = false;
+            vec![AudioSessionAction::SetEffectiveVolume(
+                normalized_volume(user_volume),
+            )]
+        } else {
+            Vec::new()
         }
     }
 
@@ -149,6 +151,32 @@ mod tests {
                 AudioFocusChange::Gain { should_resume: true },
                 PlaybackStatus::Paused,
                 0.8
+            ),
+            vec![AudioSessionAction::ResumePlayback]
+        );
+    }
+
+    #[test]
+    fn repeated_transient_loss_keeps_original_resume_intent() {
+        let mut policy = AudioSessionPolicy::default();
+        policy.handle(
+            AudioFocusChange::TransientLoss,
+            PlaybackStatus::Playing,
+            0.5,
+        );
+        assert_eq!(
+            policy.handle(
+                AudioFocusChange::TransientLoss,
+                PlaybackStatus::Paused,
+                0.5
+            ),
+            Vec::<AudioSessionAction>::new()
+        );
+        assert_eq!(
+            policy.handle(
+                AudioFocusChange::Gain { should_resume: true },
+                PlaybackStatus::Paused,
+                0.5
             ),
             vec![AudioSessionAction::ResumePlayback]
         );
@@ -210,6 +238,24 @@ mod tests {
                 0.75
             ),
             vec![AudioSessionAction::SetEffectiveVolume(0.75)]
+        );
+        assert!(!policy.is_ducked());
+    }
+
+    #[test]
+    fn interruption_while_ducked_restores_volume_before_pausing() {
+        let mut policy = AudioSessionPolicy::default();
+        policy.handle(AudioFocusChange::Duck, PlaybackStatus::Playing, 0.6);
+        assert_eq!(
+            policy.handle(
+                AudioFocusChange::TransientLoss,
+                PlaybackStatus::Playing,
+                0.6
+            ),
+            vec![
+                AudioSessionAction::SetEffectiveVolume(0.6),
+                AudioSessionAction::PausePlayback
+            ]
         );
         assert!(!policy.is_ducked());
     }
