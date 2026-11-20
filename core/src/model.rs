@@ -138,7 +138,9 @@ pub enum BackendEvent {
         track_id: TrackId,
         is_buffering: bool,
     },
-    Ended { track_id: TrackId },
+    Ended {
+        track_id: TrackId,
+    },
     Failed {
         track_id: TrackId,
         code: String,
@@ -155,10 +157,7 @@ pub enum PlayerEvent {
     PlaybackPaused,
     PlaybackStopped,
     PlaybackCompleted,
-    PlaybackError {
-        code: String,
-        message: String,
-    },
+    PlaybackError { code: String, message: String },
 }
 
 #[derive(Debug, Error, PartialEq)]
