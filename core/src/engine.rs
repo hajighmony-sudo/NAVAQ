@@ -1,6 +1,6 @@
 use crate::model::{
-    BackendAction, CoreOutput, PlaybackState, PlaybackStatus, PlayerCommand, PlayerError,
-    PlayerEvent, RepeatMode, Track, TrackId,
+    BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus, PlayerCommand,
+    PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
 use crate::queue::PlaybackQueue;
 
@@ -65,21 +65,7 @@ impl PlayerCore {
                 self.state.position_ms = position;
                 output.backend_actions.push(BackendAction::SeekTo(position));
             }
-            PlayerCommand::Next => {
-                if self.state.repeat_mode == RepeatMode::One {
-                    self.state.position_ms = 0;
-                    output.backend_actions.push(BackendAction::SeekTo(0));
-                    output.backend_actions.push(BackendAction::Play);
-                } else if let Some(track) = self.queue.next(self.state.repeat_mode).cloned() {
-                    self.sync_selected_track(&track, &mut output, true);
-                    output.backend_actions.push(BackendAction::Play);
-                    self.state.status = PlaybackStatus::Playing;
-                } else {
-                    self.state.status = PlaybackStatus::Completed;
-                    output.backend_actions.push(BackendAction::Stop);
-                    output.events.push(PlayerEvent::PlaybackCompleted);
-                }
-            }
+            PlayerCommand::Next => self.advance(false, &mut output),
             PlayerCommand::Previous => {
                 if self.state.position_ms > 3_000 {
                     self.state.position_ms = 0;
@@ -178,6 +164,76 @@ impl PlayerCore {
         Ok(output)
     }
 
+
+    /// Apply asynchronous callbacks from the native backend. Track IDs reject stale callbacks.
+    pub fn handle_backend_event(&mut self, event: BackendEvent) -> CoreOutput {
+        let mut output = CoreOutput::default();
+        match event {
+            BackendEvent::Prepared { track_id, duration_ms } => {
+                if self.state.current_track.as_ref() == Some(&track_id) {
+                    self.state.duration_ms = duration_ms;
+                    self.state.position_ms = 0;
+                    self.state.is_buffering = false;
+                    if self.state.status == PlaybackStatus::Loading {
+                        self.state.status = PlaybackStatus::Ready;
+                    }
+                }
+            }
+            BackendEvent::Position { track_id, position_ms } => {
+                if self.state.current_track.as_ref() == Some(&track_id) {
+                    self.state.position_ms = self.state.duration_ms
+                        .map_or(position_ms, |duration| position_ms.min(duration));
+                }
+            }
+            BackendEvent::Buffering { track_id, is_buffering } => {
+                if self.state.current_track.as_ref() == Some(&track_id) {
+                    self.state.is_buffering = is_buffering;
+                    if is_buffering && self.state.status == PlaybackStatus::Playing {
+                        self.state.status = PlaybackStatus::Loading;
+                    } else if !is_buffering && self.state.status == PlaybackStatus::Loading {
+                        self.state.status = PlaybackStatus::Playing;
+                    }
+                }
+            }
+            BackendEvent::Ended { track_id } => {
+                if self.state.current_track.as_ref() == Some(&track_id) {
+                    self.advance(true, &mut output);
+                }
+            }
+            BackendEvent::Failed { track_id, code, message } => {
+                if self.state.current_track.as_ref() == Some(&track_id) {
+                    self.state.status = PlaybackStatus::Error;
+                    self.state.is_buffering = false;
+                    output.events.push(PlayerEvent::PlaybackError { code, message });
+                }
+            }
+        }
+        output.events.push(PlayerEvent::StateChanged(self.state.clone()));
+        output
+    }
+
+    fn advance(&mut self, from_completion: bool, output: &mut CoreOutput) {
+        if self.state.repeat_mode == RepeatMode::One && from_completion {
+            self.state.position_ms = 0;
+            output.backend_actions.push(BackendAction::SeekTo(0));
+            output.backend_actions.push(BackendAction::Play);
+            self.state.status = PlaybackStatus::Playing;
+            return;
+        }
+        if let Some(track) = self.queue.next(self.state.repeat_mode).cloned() {
+            self.sync_selected_track(&track, output, true);
+            output.backend_actions.push(BackendAction::Play);
+            self.state.status = PlaybackStatus::Playing;
+            output.events.push(PlayerEvent::PlaybackStarted);
+        } else {
+            self.state.status = PlaybackStatus::Completed;
+            self.state.is_buffering = false;
+            output.backend_actions.push(BackendAction::Stop);
+            output.events.push(PlayerEvent::PlaybackCompleted);
+        }
+    }
+
+    /// Legacy callback; prefer handle_backend_event to reject stale callbacks.
     /// Native backend callback after a media item has been prepared.
     pub fn on_prepared(&mut self, duration_ms: Option<u64>) -> PlayerEvent {
         self.state.duration_ms = duration_ms;
