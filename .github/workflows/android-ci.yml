@@ -36,9 +36,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
-      - uses: android-actions/setup-android@v3
       - name: Install Android SDK and NDK
         run: |
+          sdkmanager --licenses </dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - name: Install cargo-ndk
