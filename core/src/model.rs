@@ -91,6 +91,7 @@ pub enum PlayerCommand {
     Next,
     Previous,
     PlayTrack(TrackId),
+    SetQueue { tracks: Vec<Track>, start_index: usize },
     AddToQueue(Track),
     PlayNext(Track),
     RemoveFromQueue(TrackId),
