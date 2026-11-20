@@ -155,4 +155,6 @@ pub enum PlayerError {
     TrackNotFound,
     #[error("playback queue is empty")]
     EmptyQueue,
+    #[error("queue start index is outside the queue")]
+    InvalidQueueStartIndex,
 }
