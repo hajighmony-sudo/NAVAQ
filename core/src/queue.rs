@@ -1,4 +1,6 @@
 use crate::model::{PlayerError, RepeatMode, Track, TrackId};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Debug, Clone, Default)]
 pub struct PlaybackQueue {
@@ -9,7 +11,69 @@ pub struct PlaybackQueue {
     shuffle_enabled: bool,
 }
 
+/// Serializable queue state, including the effective shuffled playback order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaybackQueueSnapshot {
+    pub tracks: Vec<Track>,
+    pub order: Vec<usize>,
+    pub cursor: Option<usize>,
+    pub shuffle_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum QueueSnapshotError {
+    #[error("queue snapshot order must contain each track index exactly once")]
+    InvalidOrder,
+    #[error("queue snapshot cursor is outside the playback order")]
+    InvalidCursor,
+}
+
 impl PlaybackQueue {
+    /// Capture all queue ordering state needed for deterministic restoration.
+    pub fn snapshot(&self) -> PlaybackQueueSnapshot {
+        PlaybackQueueSnapshot {
+            tracks: self.tracks.clone(),
+            order: self.order.clone(),
+            cursor: self.cursor,
+            shuffle_enabled: self.shuffle_enabled,
+        }
+    }
+
+    /// Restore a queue after validating its internal index invariants.
+    pub fn from_snapshot(snapshot: PlaybackQueueSnapshot) -> Result<Self, QueueSnapshotError> {
+        let mut seen = vec![false; snapshot.tracks.len()];
+        if snapshot.order.len() != snapshot.tracks.len() {
+            return Err(QueueSnapshotError::InvalidOrder);
+        }
+        for index in &snapshot.order {
+            let Some(slot) = seen.get_mut(*index) else {
+                return Err(QueueSnapshotError::InvalidOrder);
+            };
+            if *slot {
+                return Err(QueueSnapshotError::InvalidOrder);
+            }
+            *slot = true;
+        }
+
+        let current_index = match snapshot.cursor {
+            Some(cursor) => Some(
+                *snapshot
+                    .order
+                    .get(cursor)
+                    .ok_or(QueueSnapshotError::InvalidCursor)?,
+            ),
+            None if snapshot.order.is_empty() => None,
+            None => return Err(QueueSnapshotError::InvalidCursor),
+        };
+
+        Ok(Self {
+            tracks: snapshot.tracks,
+            current_index,
+            order: snapshot.order,
+            cursor: snapshot.cursor,
+            shuffle_enabled: snapshot.shuffle_enabled,
+        })
+    }
     pub fn new() -> Self {
         Self::default()
     }
