@@ -92,6 +92,15 @@ impl PlayerCore {
                 if let Some(selected) = self.queue.current().cloned() {
                     self.backend_loaded_track = None;
                     self.sync_selected_track(&selected, &mut output, false);
+                } else {
+                    self.backend_loaded_track = None;
+                    self.state.current_track = None;
+                    self.state.duration_ms = None;
+                    self.state.position_ms = 0;
+                    self.state.status = PlaybackStatus::Idle;
+                    self.state.is_buffering = false;
+                    output.backend_actions.push(BackendAction::Stop);
+                    output.events.push(PlayerEvent::TrackChanged(None));
                 }
                 output.events.push(PlayerEvent::QueueChanged);
             }
@@ -418,6 +427,28 @@ mod tests {
             .events
             .iter()
             .any(|event| matches!(event, PlayerEvent::PlaybackStarted)));
+    }
+
+    #[test]
+    fn setting_an_empty_queue_stops_and_resets_the_player() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+
+        let output = core
+            .handle(PlayerCommand::SetQueue {
+                tracks: Vec::new(),
+                start_index: 0,
+            })
+            .unwrap();
+
+        assert!(core.queue().is_empty());
+        assert_eq!(core.state().status, PlaybackStatus::Idle);
+        assert_eq!(core.current_track_id(), None);
+        assert_eq!(core.state().position_ms, 0);
+        assert!(output.backend_actions.contains(&BackendAction::Stop));
+        assert!(output.events.contains(&PlayerEvent::TrackChanged(None)));
     }
 
     #[test]
