@@ -202,6 +202,32 @@ mod tests {
         );
     }
     #[test]
+    fn retry_after_dispatch_failure_reprepares_current_track() {
+        let mut runtime = PlayerRuntime::new(FakeBackend::default());
+        runtime
+            .handle_command(PlayerCommand::AddToQueue(track()))
+            .unwrap();
+        runtime.backend_mut().fail_next = true;
+
+        assert!(matches!(
+            runtime.handle_command(PlayerCommand::Play),
+            Err(RuntimeError::BackendDispatch(_))
+        ));
+        assert_eq!(
+            runtime.core().state().status,
+            crate::model::PlaybackStatus::Error
+        );
+
+        let retry = runtime.handle_command(PlayerCommand::Play).unwrap();
+        assert!(retry.backend_actions.iter().any(
+            |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("runtime-track"))
+        ));
+        assert!(runtime.backend().actions.iter().any(
+            |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("runtime-track"))
+        ));
+    }
+
+    #[test]
     fn runtime_restore_rehydrates_backend_without_autoplay() {
         let mut core = PlayerCore::new();
         core.handle(PlayerCommand::AddToQueue(track())).unwrap();
