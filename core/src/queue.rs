@@ -74,7 +74,10 @@ impl PlaybackQueue {
     }
 
     pub fn select(&mut self, id: &TrackId) -> Result<&Track, PlayerError> {
-        let index = self.tracks.iter().position(|track| &track.id == id)
+        let index = self
+            .tracks
+            .iter()
+            .position(|track| &track.id == id)
             .ok_or(PlayerError::TrackNotFound)?;
         self.current_index = Some(index);
         Ok(&self.tracks[index])
@@ -145,7 +148,9 @@ mod tests {
     #[test]
     fn removing_before_current_keeps_current_track_selected() {
         let mut queue = PlaybackQueue::new();
-        queue.replace(vec![track("a"), track("b"), track("c")], 2).unwrap();
+        queue
+            .replace(vec![track("a"), track("b"), track("c")], 2)
+            .unwrap();
         assert!(queue.remove(&TrackId::from("a")));
         assert_eq!(queue.current().unwrap().id, TrackId::from("c"));
     }
