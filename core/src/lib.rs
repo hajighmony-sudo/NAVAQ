@@ -7,6 +7,7 @@ pub mod backend;
 pub mod engine;
 pub mod model;
 pub mod queue;
+pub mod runtime;
 
 pub use engine::PlayerCore;
 pub use model::{
@@ -14,3 +15,4 @@ pub use model::{
     PlayerCommand, PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
 pub use queue::PlaybackQueue;
+pub use runtime::{PlayerRuntime, RuntimeError};
