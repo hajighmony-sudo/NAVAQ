@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn snapshot_rejects_unsupported_versions() {
-        let mut core = PlayerCore::new();
+        let core = PlayerCore::new();
         let mut snapshot = core.snapshot();
         snapshot.version += 1;
         assert!(matches!(
