@@ -110,9 +110,9 @@ impl AudioSessionPolicy {
     fn restore_volume_if_ducked(&mut self, user_volume: f32) -> Vec<AudioSessionAction> {
         if self.is_ducked {
             self.is_ducked = false;
-            vec![AudioSessionAction::SetEffectiveVolume(
-                normalized_volume(user_volume),
-            )]
+            vec![AudioSessionAction::SetEffectiveVolume(normalized_volume(
+                user_volume,
+            ))]
         } else {
             Vec::new()
         }
@@ -167,16 +167,14 @@ mod tests {
             0.5,
         );
         assert_eq!(
-            policy.handle(
-                AudioFocusChange::TransientLoss,
-                PlaybackStatus::Paused,
-                0.5
-            ),
+            policy.handle(AudioFocusChange::TransientLoss, PlaybackStatus::Paused, 0.5),
             Vec::<AudioSessionAction>::new()
         );
         assert_eq!(
             policy.handle(
-                AudioFocusChange::Gain { should_resume: true },
+                AudioFocusChange::Gain {
+                    should_resume: true
+                },
                 PlaybackStatus::Paused,
                 0.5
             ),
@@ -216,7 +214,9 @@ mod tests {
         );
         assert!(policy
             .handle(
-                AudioFocusChange::Gain { should_resume: true },
+                AudioFocusChange::Gain {
+                    should_resume: true
+                },
                 PlaybackStatus::Paused,
                 0.5
             )
