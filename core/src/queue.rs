@@ -4,6 +4,9 @@ use crate::model::{PlayerError, RepeatMode, Track, TrackId};
 pub struct PlaybackQueue {
     tracks: Vec<Track>,
     current_index: Option<usize>,
+    order: Vec<usize>,
+    cursor: Option<usize>,
+    shuffle_enabled: bool,
 }
 
 impl PlaybackQueue {
@@ -37,22 +40,40 @@ impl PlaybackQueue {
         }
         self.tracks = tracks;
         self.current_index = Some(start_index);
+        self.order = (0..self.tracks.len()).collect();
+        self.cursor = Some(start_index);
+        self.shuffle_enabled = false;
         Ok(())
     }
 
     pub fn enqueue(&mut self, track: Track) {
+        let index = self.tracks.len();
         self.tracks.push(track);
+        self.order.push(index);
         if self.current_index.is_none() {
-            self.current_index = Some(0);
+            self.current_index = Some(index);
+            self.cursor = Some(self.order.len() - 1);
         }
     }
 
     pub fn enqueue_next(&mut self, track: Track) {
         match self.current_index {
-            Some(index) => self.tracks.insert(index + 1, track),
+            Some(index) => {
+                let insert_at = index + 1;
+                self.tracks.insert(insert_at, track);
+                for ordered_index in &mut self.order {
+                    if *ordered_index >= insert_at {
+                        *ordered_index += 1;
+                    }
+                }
+                let cursor = self.cursor.expect("current queue item has a cursor");
+                self.order.insert(cursor + 1, insert_at);
+            }
             None => {
                 self.tracks.push(track);
+                self.order = vec![0];
                 self.current_index = Some(0);
+                self.cursor = Some(0);
             }
         }
     }
@@ -63,13 +84,22 @@ impl PlaybackQueue {
         };
 
         self.tracks.remove(index);
-        self.current_index = match self.current_index {
-            None => None,
-            Some(_) if self.tracks.is_empty() => None,
-            Some(current) if index < current => Some(current - 1),
-            Some(current) if index == current => Some(current.min(self.tracks.len() - 1)),
-            Some(current) => Some(current),
+        let old_cursor = self.cursor;
+        let removed_order_position = self.order.iter().position(|item| *item == index);
+        self.order.retain(|item| *item != index);
+        for ordered_index in &mut self.order {
+            if *ordered_index > index {
+                *ordered_index -= 1;
+            }
+        }
+        self.cursor = match (old_cursor, removed_order_position, self.order.len()) {
+            (_, _, 0) => None,
+            (Some(cursor), Some(removed), _) if cursor > removed => Some(cursor - 1),
+            (Some(cursor), Some(removed), _) if cursor == removed => Some(cursor.min(self.order.len() - 1)),
+            (Some(cursor), _, _) => Some(cursor),
+            _ => None,
         };
+        self.current_index = self.cursor.map(|cursor| self.order[cursor]);
         true
     }
 
@@ -80,35 +110,82 @@ impl PlaybackQueue {
             .position(|track| &track.id == id)
             .ok_or(PlayerError::TrackNotFound)?;
         self.current_index = Some(index);
+        self.cursor = self.order.iter().position(|item| *item == index);
         Ok(&self.tracks[index])
     }
 
     pub fn next(&mut self, repeat: RepeatMode) -> Option<&Track> {
-        let current = self.current_index?;
-        let next = current + 1;
+        let cursor = self.cursor?;
+        let next = cursor + 1;
 
-        if next < self.tracks.len() {
-            self.current_index = Some(next);
-        } else if repeat == RepeatMode::All && !self.tracks.is_empty() {
-            self.current_index = Some(0);
+        if next < self.order.len() {
+            self.cursor = Some(next);
+        } else if repeat == RepeatMode::All && !self.order.is_empty() {
+            self.cursor = Some(0);
         } else {
             return None;
         }
+        self.current_index = self.cursor.map(|position| self.order[position]);
         self.current()
     }
 
     pub fn previous(&mut self) -> Option<&Track> {
-        let current = self.current_index?;
-        if current == 0 {
+        let cursor = self.cursor?;
+        if cursor == 0 {
             return self.current();
         }
-        self.current_index = Some(current - 1);
+        self.cursor = Some(cursor - 1);
+        self.current_index = self.cursor.map(|position| self.order[position]);
         self.current()
+    }
+
+
+    /// Toggle deterministic shuffle while preserving the currently selected track.
+    /// The current item stays in place; only the remaining queue is reordered.
+    pub fn set_shuffle(&mut self, enabled: bool) {
+        if self.shuffle_enabled == enabled || self.order.len() < 2 {
+            self.shuffle_enabled = enabled;
+            return;
+        }
+
+        let Some(cursor) = self.cursor else {
+            self.shuffle_enabled = enabled;
+            return;
+        };
+
+        let current_track = self.order[cursor];
+        if enabled {
+            let mut seed = self.tracks.iter().fold(0xcbf29ce484222325_u64, |hash, track| {
+                track.id.0.bytes().fold(hash, |value, byte| {
+                    (value ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+                })
+            });
+            for index in (cursor + 1..self.order.len()).rev() {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                let swap_index = cursor + 1 + (seed as usize % (index - cursor));
+                self.order.swap(index, swap_index);
+            }
+        } else {
+            self.order.sort_unstable();
+        }
+
+        self.cursor = self.order.iter().position(|item| *item == current_track);
+        self.current_index = Some(current_track);
+        self.shuffle_enabled = enabled;
+    }
+
+    pub fn shuffle_enabled(&self) -> bool {
+        self.shuffle_enabled
     }
 
     pub fn reset(&mut self) {
         self.tracks.clear();
         self.current_index = None;
+        self.order.clear();
+        self.cursor = None;
+        self.shuffle_enabled = false;
     }
 }
 
@@ -153,5 +230,30 @@ mod tests {
             .unwrap();
         assert!(queue.remove(&TrackId::from("a")));
         assert_eq!(queue.current().unwrap().id, TrackId::from("c"));
+    }
+
+    #[test]
+    fn shuffle_preserves_current_track_and_disabling_restores_queue_order() {
+        let mut queue = PlaybackQueue::new();
+        queue.replace(vec![track("a"), track("b"), track("c"), track("d"), track("e")], 2).unwrap();
+        queue.set_shuffle(true);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("c"));
+        assert!(queue.shuffle_enabled());
+        queue.set_shuffle(false);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("c"));
+        assert_eq!(queue.next(RepeatMode::Off).unwrap().id, TrackId::from("d"));
+        assert_eq!(queue.next(RepeatMode::Off).unwrap().id, TrackId::from("e"));
+        assert!(!queue.shuffle_enabled());
+    }
+
+    #[test]
+    fn play_next_and_remove_keep_shuffle_order_indices_valid() {
+        let mut queue = PlaybackQueue::new();
+        queue.replace(vec![track("a"), track("b"), track("c")], 0).unwrap();
+        queue.set_shuffle(true);
+        queue.enqueue_next(track("priority"));
+        assert_eq!(queue.next(RepeatMode::Off).unwrap().id, TrackId::from("priority"));
+        assert!(queue.remove(&TrackId::from("b")));
+        assert!(queue.current().is_some());
     }
 }
