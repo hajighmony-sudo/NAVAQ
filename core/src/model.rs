@@ -123,6 +123,16 @@ pub struct CoreOutput {
     pub events: Vec<PlayerEvent>,
 }
 
+/// Events reported asynchronously by a platform audio backend.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BackendEvent {
+    Prepared { track_id: TrackId, duration_ms: Option<u64> },
+    Position { track_id: TrackId, position_ms: u64 },
+    Buffering { track_id: TrackId, is_buffering: bool },
+    Ended { track_id: TrackId },
+    Failed { track_id: TrackId, code: String, message: String },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlayerEvent {
     StateChanged(PlaybackState),
@@ -132,6 +142,7 @@ pub enum PlayerEvent {
     PlaybackPaused,
     PlaybackStopped,
     PlaybackCompleted,
+    PlaybackError { code: String, message: String },
 }
 
 #[derive(Debug, Error, PartialEq)]
