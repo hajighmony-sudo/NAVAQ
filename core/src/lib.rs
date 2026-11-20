@@ -1,3 +1,4 @@
+pub mod backend;
 //! NAVAQ's platform-independent audio domain and playback state core.
 //!
 //! This crate deliberately contains no UI and no platform audio implementation.
