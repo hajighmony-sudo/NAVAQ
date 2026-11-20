@@ -7,6 +7,7 @@ pub mod audio_session;
 pub mod backend;
 pub mod engine;
 pub mod model;
+pub mod persistence;
 pub mod queue;
 pub mod runtime;
 
@@ -16,5 +17,6 @@ pub use model::{
     AudioSource, BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus,
     PlayerCommand, PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
-pub use queue::PlaybackQueue;
+pub use persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
+pub use queue::{PlaybackQueue, PlaybackQueueSnapshot, QueueSnapshotError};
 pub use runtime::{PlayerRuntime, RuntimeError};
