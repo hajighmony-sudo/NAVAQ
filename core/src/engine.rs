@@ -34,6 +34,10 @@ impl PlayerCore {
                 if self.queue.current().is_none() {
                     return Err(PlayerError::EmptyQueue);
                 }
+                if self.state.current_track.is_none() {
+                    self.sync_track_from_queue();
+                    events.push(PlayerEvent::TrackChanged(self.state.current_track.clone()));
+                }
                 self.state.status = PlaybackStatus::Playing;
                 events.push(PlayerEvent::PlaybackStarted);
             }
@@ -82,11 +86,21 @@ impl PlayerCore {
                 events.push(PlayerEvent::PlaybackStarted);
             }
             PlayerCommand::AddToQueue(track) => {
+                let had_current = self.queue.current().is_some();
                 self.queue.enqueue(track);
+                if !had_current {
+                    self.sync_track_from_queue();
+                    events.push(PlayerEvent::TrackChanged(self.state.current_track.clone()));
+                }
                 events.push(PlayerEvent::QueueChanged);
             }
             PlayerCommand::PlayNext(track) => {
+                let had_current = self.queue.current().is_some();
                 self.queue.enqueue_next(track);
+                if !had_current {
+                    self.sync_track_from_queue();
+                    events.push(PlayerEvent::TrackChanged(self.state.current_track.clone()));
+                }
                 events.push(PlayerEvent::QueueChanged);
             }
             PlayerCommand::RemoveFromQueue(id) => {
