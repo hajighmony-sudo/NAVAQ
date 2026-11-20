@@ -65,7 +65,7 @@ impl PlayerCore {
                     output.backend_actions.push(BackendAction::SeekTo(0));
                     output.backend_actions.push(BackendAction::Play);
                 } else if let Some(track) = self.queue.next(self.state.repeat_mode).cloned() {
-                    self.sync_selected_track(&track, &mut output);
+                    self.sync_selected_track(&track, &mut output, true);
                     output.backend_actions.push(BackendAction::Play);
                     self.state.status = PlaybackStatus::Playing;
                 } else {
@@ -106,7 +106,7 @@ impl PlayerCore {
                 self.queue.enqueue_next(track);
                 if !had_current {
                     if let Some(selected) = self.queue.current().cloned() {
-                        self.sync_selected_track(&selected, &mut output);
+                        self.sync_selected_track(&selected, &mut output, false);
                     }
                 }
                 output.events.push(PlayerEvent::QueueChanged);
