@@ -33,7 +33,7 @@ impl PlaybackQueue {
 
     pub fn replace(&mut self, tracks: Vec<Track>, start_index: usize) -> Result<(), PlayerError> {
         if tracks.is_empty() || start_index >= tracks.len() {
-            return Err(PlayerError::EmptyQueue);
+            return Err(PlayerError::InvalidQueueStartIndex);
         }
         self.tracks = tracks;
         self.current_index = Some(start_index);
