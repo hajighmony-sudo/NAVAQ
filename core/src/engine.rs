@@ -3,6 +3,7 @@ use crate::model::{
     PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
 use crate::queue::PlaybackQueue;
+use crate::persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 
 /// Platform-independent playback coordinator.
 ///
@@ -304,6 +305,67 @@ impl PlayerCore {
                 .events
                 .push(PlayerEvent::TrackChanged(Some(track.id.clone())));
         }
+    }
+
+    /// Capture the complete logical player state for durable storage.
+    pub fn snapshot(&self) -> PlayerSnapshot {
+        PlayerSnapshot {
+            version: PLAYER_SNAPSHOT_VERSION,
+            state: self.state.clone(),
+            queue: self.queue.snapshot(),
+        }
+    }
+
+    /// Rebuild the logical player and emit the backend actions needed to re-prepare it.
+    ///
+    /// Playback is restored paused after process death. A native host must explicitly
+    /// request Resume after it has re-established its audio session and user intent.
+    pub fn restore(snapshot: PlayerSnapshot) -> Result<(Self, CoreOutput), SnapshotError> {
+        if snapshot.version != PLAYER_SNAPSHOT_VERSION {
+            return Err(SnapshotError::UnsupportedVersion(snapshot.version));
+        }
+
+        let queue = PlaybackQueue::from_snapshot(snapshot.queue)?;
+        if snapshot.state.current_track.as_ref()
+            != queue.current().map(|track| &track.id)
+            || snapshot.state.shuffle_enabled != queue.shuffle_enabled()
+        {
+            return Err(SnapshotError::CurrentTrackMismatch);
+        }
+        if !snapshot.state.volume.is_finite()
+            || !(0.0..=1.0).contains(&snapshot.state.volume)
+            || !snapshot.state.speed.is_finite()
+            || !(0.25..=4.0).contains(&snapshot.state.speed)
+        {
+            return Err(SnapshotError::InvalidPlaybackSettings);
+        }
+
+        let mut state = snapshot.state;
+        if matches!(state.status, PlaybackStatus::Playing | PlaybackStatus::Loading) {
+            state.status = PlaybackStatus::Paused;
+        }
+        state.is_buffering = false;
+        if let Some(duration) = state.duration_ms {
+            state.position_ms = state.position_ms.min(duration);
+        }
+
+        let mut output = CoreOutput::default();
+        if let Some(track) = queue.current() {
+            output.backend_actions.push(BackendAction::Prepare(track.clone()));
+            output.backend_actions.push(BackendAction::SetVolume(state.volume));
+            output.backend_actions.push(BackendAction::SetSpeed(state.speed));
+            output.backend_actions.push(BackendAction::SeekTo(state.position_ms));
+        }
+
+        output.events.push(PlayerEvent::StateChanged(state.clone()));
+        Ok((
+            Self {
+                state,
+                queue,
+                backend_loaded_track: None,
+            },
+            output,
+        ))
     }
 
     pub fn current_track_id(&self) -> Option<&TrackId> {
