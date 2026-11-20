@@ -355,6 +355,56 @@ mod tests {
     }
 
     #[test]
+    fn stale_backend_callbacks_are_ignored() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("two", 2_000))).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle(PlayerCommand::Next).unwrap();
+
+        core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from("one"),
+            position_ms: 700,
+        });
+        assert_eq!(core.state().position_ms, 0);
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+    }
+
+    #[test]
+    fn ended_event_advances_and_prepares_next_track() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("two", 2_000))).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+
+        let output = core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+        assert!(output.backend_actions.iter().any(
+            |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("two"))
+        ));
+        assert!(output.backend_actions.contains(&BackendAction::Play));
+    }
+
+    #[test]
+    fn backend_failure_updates_state_and_emits_error() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+
+        let output = core.handle_backend_event(BackendEvent::Failed {
+            track_id: TrackId::from("one"),
+            code: "decoder_error".into(),
+            message: "unsupported stream".into(),
+        });
+        assert_eq!(core.state().status, PlaybackStatus::Error);
+        assert!(output.events.iter().any(
+            |event| matches!(event, PlayerEvent::PlaybackError { code, .. } if code == "decoder_error")
+        ));
+    }
+
+    #[test]
     fn next_prepares_the_next_track() {
         let mut core = PlayerCore::new();
         core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
