@@ -101,6 +101,23 @@ pub enum PlayerCommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum BackendAction {
+    Prepare(Track),
+    Play,
+    Pause,
+    Stop,
+    SeekTo(u64),
+    SetVolume(f32),
+    SetSpeed(f32),
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CoreOutput {
+    pub backend_actions: Vec<BackendAction>,
+    pub events: Vec<PlayerEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum PlayerEvent {
     StateChanged(PlaybackState),
     TrackChanged(Option<TrackId>),
