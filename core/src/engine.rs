@@ -155,7 +155,10 @@ impl PlayerCore {
                 output.backend_actions.push(BackendAction::SetSpeed(speed));
             }
             PlayerCommand::SetRepeatMode(mode) => self.state.repeat_mode = mode,
-            PlayerCommand::SetShuffle(enabled) => self.state.shuffle_enabled = enabled,
+            PlayerCommand::SetShuffle(enabled) => {
+                self.queue.set_shuffle(enabled);
+                self.state.shuffle_enabled = enabled;
+            },
         }
 
         output
