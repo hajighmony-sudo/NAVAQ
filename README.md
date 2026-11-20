@@ -5,7 +5,8 @@ NAVAQ is being developed as a cross-platform music playback core. This repositor
 ## Workspace
 
 - `core/` — playback state, command/event contracts, queue management, audio-session policy, snapshot recovery, equalizer/crossfade settings, library, playlists, lyrics (LRC), sleep timer, and play history.
-- Native Android and iOS playback adapters are separate integration targets and are not yet implemented.
+- `android/` — native Android playback host using AndroidX Media3, MediaSessionService, and a JNI bridge to the Rust core.
+- The iOS AVFoundation adapter is not yet implemented.
 
 ## Core boundary
 
@@ -25,6 +26,19 @@ NAVAQ is being developed as a cross-platform music playback core. This repositor
 `PlayerCore::snapshot()` captures the versioned logical playback state and the complete queue order, including shuffle state. `PlayerCore::restore()` validates the snapshot and returns the restored core plus the actions needed to re-prepare the current track.
 
 `PlayerRuntime::restore()` additionally dispatches those actions to a supplied native backend. Restored playback is deliberately paused rather than automatically resumed; the host must re-establish its audio session and decide when to resume. Snapshot data can be serialized with Serde (for example, JSON) and stored by the host application.
+
+## Android platform layer
+
+The Android application module lives in `android/`. It uses Media3 ExoPlayer for native audio decoding/output and MediaSessionService for background playback and system media controls. Android audio focus and noisy-audio handling are delegated to Media3. The Rust core is compiled as a JNI shared library; `android/scripts/build-rust-android.sh` builds the `arm64-v8a` and `x86_64` libraries when the Android NDK is installed.
+
+Build the Android APK after compiling the Rust JNI libraries:
+
+```sh
+android/scripts/build-rust-android.sh
+gradle :android:assembleDebug
+```
+
+The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and the supported Media3 actions. Equalizer DSP, crossfade rendering, MediaStore library scanning, and a user-facing Android interface remain separate implementation tasks; settings are not presented as applied DSP until a native processor exists.
 
 ## Development
 
