@@ -1458,8 +1458,7 @@ mod tests {
         });
         assert!(matches!(
             PlayerCore::restore(orphaned),
-            Err(SnapshotError::CurrentTrackMismatch)
-                | Err(SnapshotError::InvalidPlaybackSettings)
+            Err(SnapshotError::CurrentTrackMismatch) | Err(SnapshotError::InvalidPlaybackSettings)
         ));
     }
 }
