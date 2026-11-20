@@ -79,14 +79,14 @@ impl PlayerCore {
                     self.state.position_ms = 0;
                     output.backend_actions.push(BackendAction::SeekTo(0));
                 } else if let Some(track) = self.queue.previous().cloned() {
-                    self.sync_selected_track(&track, &mut output);
+                    self.sync_selected_track(&track, &mut output, true);
                     output.backend_actions.push(BackendAction::Play);
                     self.state.status = PlaybackStatus::Playing;
                 }
             }
             PlayerCommand::PlayTrack(id) => {
                 let track = self.queue.select(&id)?.clone();
-                self.sync_selected_track(&track, &mut output);
+                self.sync_selected_track(&track, &mut output, true);
                 output.backend_actions.push(BackendAction::Play);
                 self.state.status = PlaybackStatus::Playing;
                 output.events.push(PlayerEvent::PlaybackStarted);
@@ -116,7 +116,7 @@ impl PlayerCore {
                 if self.queue.remove(&id) {
                     if let Some(selected) = self.queue.current().cloned() {
                         if previous_track.as_ref() != Some(&selected.id) {
-                            self.sync_selected_track(&selected, &mut output);
+                            self.sync_selected_track(&selected, &mut output, true);
                             if self.state.status == PlaybackStatus::Playing {
                                 output.backend_actions.push(BackendAction::Play);
                             }
