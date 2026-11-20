@@ -38,7 +38,7 @@ android/scripts/build-rust-android.sh
 gradle :android:assembleDebug
 ```
 
-The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and the supported Media3 actions. Equalizer DSP, crossfade rendering, MediaStore library scanning, and a user-facing Android interface remain separate implementation tasks; settings are not presented as applied DSP until a native processor exists.
+The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. These algorithms are ready for a native PCM pipeline, but the Android Media3 service does not yet insert them into its decoding/output path. MediaStore library scanning, durable Android storage wiring, and a user-facing Android interface also remain host-integration tasks.
 
 ## Development
 
@@ -57,6 +57,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 - `SleepTimer` — duration or end-of-track, driven by `PlayerRuntime::tick` / `poll_backend`.
 - `PlayHistory` — bounded recent plays and play counts; the host calls `record_play`.
 - `replaygain` — `linear_gain` / `effective_volume` from ReplayGain tags (track/album mode, preamp, clipping guard).
+- `dsp` — stateful multi-band peaking-EQ and gain processing for interleaved f32 PCM, plus equal-power crossfade mixing; native backends own PCM pipeline integration.
 - `m3u` — parse and write M3U/M3U8 with `#EXTINF`.
 - `guess_from_filename` — track number, artist and title from file names when tags are missing.
 - `BookmarkStore` — resume positions for long tracks (ignores the first 5 s and the last 10 s).
