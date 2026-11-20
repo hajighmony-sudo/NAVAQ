@@ -527,10 +527,14 @@ impl PlayerCore {
             || !(0.25..=4.0).contains(&snapshot.state.speed)
             || !snapshot.state.equalizer.is_valid()
             || snapshot.state.crossfade_ms > MAX_CROSSFADE_MS
-            || snapshot
-                .state
-                .loop_region
-                .is_some_and(|region| region.start_ms >= region.end_ms)
+            || snapshot.state.loop_region.is_some_and(|region| {
+                region.start_ms >= region.end_ms
+                    || snapshot.state.current_track.is_none()
+                    || snapshot
+                        .state
+                        .duration_ms
+                        .is_some_and(|duration| region.end_ms > duration)
+            })
         {
             return Err(SnapshotError::InvalidPlaybackSettings);
         }
@@ -1434,6 +1438,28 @@ mod tests {
         assert!(matches!(
             PlayerCore::restore(snapshot),
             Err(SnapshotError::InvalidPlaybackSettings)
+        ));
+
+        let mut out_of_bounds = core.snapshot();
+        out_of_bounds.state.loop_region = Some(LoopRegion {
+            start_ms: 50_000,
+            end_ms: 60_001,
+        });
+        assert!(matches!(
+            PlayerCore::restore(out_of_bounds),
+            Err(SnapshotError::InvalidPlaybackSettings)
+        ));
+
+        let mut orphaned = core.snapshot();
+        orphaned.state.current_track = None;
+        orphaned.state.loop_region = Some(LoopRegion {
+            start_ms: 1_000,
+            end_ms: 2_000,
+        });
+        assert!(matches!(
+            PlayerCore::restore(orphaned),
+            Err(SnapshotError::CurrentTrackMismatch)
+                | Err(SnapshotError::InvalidPlaybackSettings)
         ));
     }
 }
