@@ -375,8 +375,10 @@ mod tests {
     #[test]
     fn stale_backend_callbacks_are_ignored() {
         let mut core = PlayerCore::new();
-        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
-        core.handle(PlayerCommand::AddToQueue(track("two", 2_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
+            .unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("two", 2_000)))
+            .unwrap();
         core.handle(PlayerCommand::Play).unwrap();
         core.handle(PlayerCommand::Next).unwrap();
 
@@ -391,8 +393,10 @@ mod tests {
     #[test]
     fn ended_event_advances_and_prepares_next_track() {
         let mut core = PlayerCore::new();
-        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
-        core.handle(PlayerCommand::AddToQueue(track("two", 2_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
+            .unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("two", 2_000)))
+            .unwrap();
         core.handle(PlayerCommand::Play).unwrap();
 
         let output = core.handle_backend_event(BackendEvent::Ended {
@@ -408,7 +412,8 @@ mod tests {
     #[test]
     fn backend_failure_updates_state_and_emits_error() {
         let mut core = PlayerCore::new();
-        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
+            .unwrap();
         core.handle(PlayerCommand::Play).unwrap();
 
         let output = core.handle_backend_event(BackendEvent::Failed {
