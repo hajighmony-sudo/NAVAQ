@@ -99,8 +99,14 @@ impl PlaybackQueue {
     }
 
     pub fn replace(&mut self, tracks: Vec<Track>, start_index: usize) -> Result<(), PlayerError> {
-        if tracks.is_empty() || start_index >= tracks.len() {
+        if (tracks.is_empty() && start_index != 0)
+            || (!tracks.is_empty() && start_index >= tracks.len())
+        {
             return Err(PlayerError::InvalidQueueStartIndex);
+        }
+        if tracks.is_empty() {
+            self.reset();
+            return Ok(());
         }
         self.tracks = tracks;
         self.current_index = Some(start_index);
@@ -271,6 +277,19 @@ mod tests {
             duration_ms: Some(1000),
             source: AudioSource::LocalFile(format!("/{id}.mp3")),
         }
+    }
+
+    #[test]
+    fn replacing_with_empty_tracks_clears_queue() {
+        let mut queue = PlaybackQueue::new();
+        queue.replace(vec![track("a"), track("b")], 1).unwrap();
+        queue.replace(Vec::new(), 0).unwrap();
+
+        assert!(queue.is_empty());
+        assert!(queue.current().is_none());
+        assert_eq!(queue.snapshot().cursor, None);
+        assert!(queue.snapshot().order.is_empty());
+        assert!(!queue.shuffle_enabled());
     }
 
     #[test]
