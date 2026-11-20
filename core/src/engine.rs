@@ -5,6 +5,9 @@ use crate::model::{
 use crate::persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 use crate::queue::PlaybackQueue;
 
+/// Previous restarts the current track instead of going back once it has played this long.
+const PREVIOUS_RESTART_THRESHOLD_MS: u64 = 3_000;
+
 /// Platform-independent playback coordinator.
 ///
 /// The core owns queue and playback state. It emits explicit backend actions; native
@@ -13,6 +16,7 @@ use crate::queue::PlaybackQueue;
 pub struct PlayerCore {
     state: PlaybackState,
     queue: PlaybackQueue,
+    /// The track the native backend currently has prepared (and therefore positioned).
     backend_loaded_track: Option<TrackId>,
 }
 
@@ -29,6 +33,11 @@ impl PlayerCore {
         &self.queue
     }
 
+    /// The track that follows the current one on natural completion, for gapless preloading.
+    pub fn upcoming_track(&self) -> Option<&Track> {
+        self.queue.peek_next(self.state.repeat_mode)
+    }
+
     pub fn handle(&mut self, command: PlayerCommand) -> Result<CoreOutput, PlayerError> {
         let mut output = CoreOutput::default();
 
@@ -39,10 +48,7 @@ impl PlayerCore {
                     .current()
                     .cloned()
                     .ok_or(PlayerError::EmptyQueue)?;
-                self.sync_selected_track(&track, &mut output, true);
-                output.backend_actions.push(BackendAction::Play);
-                self.state.status = PlaybackStatus::Playing;
-                output.events.push(PlayerEvent::PlaybackStarted);
+                self.play_selected(&track, &mut output);
             }
             PlayerCommand::Pause => {
                 if self.state.status == PlaybackStatus::Playing {
@@ -52,13 +58,20 @@ impl PlayerCore {
                 }
             }
             PlayerCommand::Stop => {
-                output.backend_actions.push(BackendAction::Stop);
-                self.state.status = PlaybackStatus::Stopped;
-                self.state.position_ms = 0;
-                self.state.is_buffering = false;
-                output.events.push(PlayerEvent::PlaybackStopped);
+                if self.state.current_track.is_some() {
+                    output.backend_actions.push(BackendAction::Stop);
+                    // Stop releases the native item; the next Play must prepare it again.
+                    self.backend_loaded_track = None;
+                    self.state.status = PlaybackStatus::Stopped;
+                    self.state.position_ms = 0;
+                    self.state.is_buffering = false;
+                    output.events.push(PlayerEvent::PlaybackStopped);
+                }
             }
             PlayerCommand::Seek { position_ms } => {
+                if self.state.current_track.is_none() {
+                    return Err(PlayerError::EmptyQueue);
+                }
                 let position = self
                     .state
                     .duration_ms
@@ -66,23 +79,27 @@ impl PlayerCore {
                 self.state.position_ms = position;
                 output.backend_actions.push(BackendAction::SeekTo(position));
             }
-            PlayerCommand::Next => self.advance(false, &mut output),
+            PlayerCommand::Next => {
+                if self.queue.is_empty() {
+                    return Err(PlayerError::EmptyQueue);
+                }
+                self.advance(false, &mut output);
+            }
             PlayerCommand::Previous => {
-                if self.state.position_ms > 3_000 {
+                if self.state.position_ms > PREVIOUS_RESTART_THRESHOLD_MS {
                     self.state.position_ms = 0;
                     output.backend_actions.push(BackendAction::SeekTo(0));
-                } else if let Some(track) = self.queue.previous().cloned() {
-                    self.sync_selected_track(&track, &mut output, true);
-                    output.backend_actions.push(BackendAction::Play);
-                    self.state.status = PlaybackStatus::Playing;
+                } else if let Some(track) = self
+                    .queue
+                    .previous_with_repeat(self.state.repeat_mode)
+                    .cloned()
+                {
+                    self.begin_track(&track, &mut output);
                 }
             }
             PlayerCommand::PlayTrack(id) => {
                 let track = self.queue.select(&id)?.clone();
-                self.sync_selected_track(&track, &mut output, true);
-                output.backend_actions.push(BackendAction::Play);
-                self.state.status = PlaybackStatus::Playing;
-                output.events.push(PlayerEvent::PlaybackStarted);
+                self.play_selected(&track, &mut output);
             }
             PlayerCommand::SetQueue {
                 tracks,
@@ -100,24 +117,22 @@ impl PlayerCore {
                         // item audible while the logical current track has changed.
                         output.backend_actions.push(BackendAction::Stop);
                         self.state.status = PlaybackStatus::Paused;
-                        self.state.is_buffering = false;
+                    } else if matches!(
+                        self.state.status,
+                        PlaybackStatus::Completed | PlaybackStatus::Stopped | PlaybackStatus::Error
+                    ) {
+                        self.state.status = PlaybackStatus::Idle;
                     }
+                    self.state.is_buffering = false;
                     self.sync_selected_track(&selected, &mut output, false);
                 } else {
-                    self.backend_loaded_track = None;
-                    self.state.current_track = None;
-                    self.state.duration_ms = None;
-                    self.state.position_ms = 0;
-                    self.state.status = PlaybackStatus::Idle;
-                    self.state.is_buffering = false;
-                    output.backend_actions.push(BackendAction::Stop);
-                    output.events.push(PlayerEvent::TrackChanged(None));
+                    self.reset_to_empty(&mut output);
                 }
                 output.events.push(PlayerEvent::QueueChanged);
             }
             PlayerCommand::AddToQueue(track) => {
                 let had_current = self.queue.current().is_some();
-                self.queue.enqueue(track);
+                self.queue.enqueue(track)?;
                 if !had_current {
                     if let Some(selected) = self.queue.current().cloned() {
                         self.sync_selected_track(&selected, &mut output, false);
@@ -127,7 +142,7 @@ impl PlayerCore {
             }
             PlayerCommand::PlayNext(track) => {
                 let had_current = self.queue.current().is_some();
-                self.queue.enqueue_next(track);
+                self.queue.enqueue_next(track)?;
                 if !had_current {
                     if let Some(selected) = self.queue.current().cloned() {
                         self.sync_selected_track(&selected, &mut output, false);
@@ -138,25 +153,33 @@ impl PlayerCore {
             PlayerCommand::RemoveFromQueue(id) => {
                 let previous_track = self.state.current_track.clone();
                 if self.queue.remove(&id) {
-                    if let Some(selected) = self.queue.current().cloned() {
-                        if previous_track.as_ref() != Some(&selected.id) {
-                            self.sync_selected_track(&selected, &mut output, true);
-                            if self.state.status == PlaybackStatus::Playing {
-                                output.backend_actions.push(BackendAction::Play);
+                    match self.queue.current().cloned() {
+                        Some(selected) => {
+                            if previous_track.as_ref() != Some(&selected.id) {
+                                let playing = self.state.status == PlaybackStatus::Playing;
+                                self.sync_selected_track(&selected, &mut output, true);
+                                if playing {
+                                    output.backend_actions.push(BackendAction::Play);
+                                }
                             }
                         }
-                    } else {
-                        self.backend_loaded_track = None;
-                        self.state.current_track = None;
-                        self.state.duration_ms = None;
-                        self.state.position_ms = 0;
-                        self.state.status = PlaybackStatus::Idle;
-                        output.backend_actions.push(BackendAction::Stop);
+                        None => self.reset_to_empty(&mut output),
                     }
                     output.events.push(PlayerEvent::QueueChanged);
-                    output
-                        .events
-                        .push(PlayerEvent::TrackChanged(self.state.current_track.clone()));
+                }
+            }
+            PlayerCommand::MoveInQueue {
+                track_id,
+                new_index,
+            } => {
+                self.queue.move_track(&track_id, new_index)?;
+                output.events.push(PlayerEvent::QueueChanged);
+            }
+            PlayerCommand::ClearQueue => {
+                if !self.queue.is_empty() {
+                    self.queue.reset();
+                    self.reset_to_empty(&mut output);
+                    output.events.push(PlayerEvent::QueueChanged);
                 }
             }
             PlayerCommand::SetVolume(volume) => {
@@ -177,8 +200,12 @@ impl PlayerCore {
             }
             PlayerCommand::SetRepeatMode(mode) => self.state.repeat_mode = mode,
             PlayerCommand::SetShuffle(enabled) => {
+                let changed = self.queue.shuffle_enabled() != enabled;
                 self.queue.set_shuffle(enabled);
                 self.state.shuffle_enabled = enabled;
+                if changed {
+                    output.events.push(PlayerEvent::QueueChanged);
+                }
             }
         }
 
@@ -197,8 +224,8 @@ impl PlayerCore {
                 duration_ms,
             } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
-                    self.state.duration_ms = duration_ms;
-                    self.state.position_ms = 0;
+                    // Keep the position: a restored track is seeked right after Prepare.
+                    self.state.duration_ms = duration_ms.or(self.state.duration_ms);
                     self.state.is_buffering = false;
                     if self.state.status == PlaybackStatus::Loading {
                         self.state.status = PlaybackStatus::Ready;
@@ -209,7 +236,15 @@ impl PlayerCore {
                 track_id,
                 position_ms,
             } => {
-                if self.state.current_track.as_ref() == Some(&track_id) {
+                // A late tick after Stop/completion/error must not move a finished track.
+                let accepts_position = matches!(
+                    self.state.status,
+                    PlaybackStatus::Loading
+                        | PlaybackStatus::Ready
+                        | PlaybackStatus::Playing
+                        | PlaybackStatus::Paused
+                );
+                if accepts_position && self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.position_ms = self
                         .state
                         .duration_ms
@@ -227,7 +262,10 @@ impl PlayerCore {
                 }
             }
             BackendEvent::Ended { track_id } => {
-                if self.state.current_track.as_ref() == Some(&track_id) {
+                // An end callback that races with Pause/Stop must not restart playback.
+                if self.state.current_track.as_ref() == Some(&track_id)
+                    && self.state.status == PlaybackStatus::Playing
+                {
                     self.advance(true, &mut output);
                 }
             }
@@ -254,6 +292,8 @@ impl PlayerCore {
         output
     }
 
+    /// Move to the next track (or finish). `from_completion` is true when the current
+    /// track ended naturally, which is the only case where repeat-one applies.
     fn advance(&mut self, from_completion: bool, output: &mut CoreOutput) {
         if self.state.repeat_mode == RepeatMode::One && from_completion {
             self.state.position_ms = 0;
@@ -263,20 +303,65 @@ impl PlayerCore {
             return;
         }
         if let Some(track) = self.queue.next(self.state.repeat_mode).cloned() {
-            self.sync_selected_track(&track, output, true);
-            output.backend_actions.push(BackendAction::Play);
-            self.state.status = PlaybackStatus::Playing;
-            output.events.push(PlayerEvent::PlaybackStarted);
+            self.begin_track(&track, output);
         } else {
             self.state.status = PlaybackStatus::Completed;
             self.state.is_buffering = false;
+            self.backend_loaded_track = None;
             output.backend_actions.push(BackendAction::Stop);
             output.events.push(PlayerEvent::PlaybackCompleted);
         }
     }
 
-    /// Legacy callback; prefer handle_backend_event to reject stale callbacks.
-    /// Native backend callback after a media item has been prepared.
+    /// Select `track` and play it from the beginning, even if it is already loaded
+    /// (for example Previous at the first track, or repeat-all over a single track).
+    fn begin_track(&mut self, track: &Track, output: &mut CoreOutput) {
+        let already_loaded = self.state.current_track.as_ref() == Some(&track.id)
+            && self.backend_loaded_track.as_ref() == Some(&track.id);
+        self.sync_selected_track(track, output, true);
+        if already_loaded {
+            self.state.position_ms = 0;
+            output.backend_actions.push(BackendAction::SeekTo(0));
+        }
+        output.backend_actions.push(BackendAction::Play);
+        self.state.status = PlaybackStatus::Playing;
+        output.events.push(PlayerEvent::PlaybackStarted);
+    }
+
+    /// Start or continue playing an already-selected track without losing its position.
+    fn play_selected(&mut self, track: &Track, output: &mut CoreOutput) {
+        if matches!(
+            self.state.status,
+            PlaybackStatus::Completed | PlaybackStatus::Stopped
+        ) {
+            // The native item was released; start over from a fresh Prepare.
+            self.backend_loaded_track = None;
+        }
+        let already_playing = self.state.status == PlaybackStatus::Playing
+            && self.state.current_track.as_ref() == Some(&track.id)
+            && self.backend_loaded_track.as_ref() == Some(&track.id);
+        if already_playing {
+            return;
+        }
+        self.sync_selected_track(track, output, true);
+        output.backend_actions.push(BackendAction::Play);
+        self.state.status = PlaybackStatus::Playing;
+        output.events.push(PlayerEvent::PlaybackStarted);
+    }
+
+    fn reset_to_empty(&mut self, output: &mut CoreOutput) {
+        self.backend_loaded_track = None;
+        self.state.current_track = None;
+        self.state.duration_ms = None;
+        self.state.position_ms = 0;
+        self.state.status = PlaybackStatus::Idle;
+        self.state.is_buffering = false;
+        output.backend_actions.push(BackendAction::Stop);
+        output.events.push(PlayerEvent::TrackChanged(None));
+    }
+
+    /// Legacy callback; prefer `handle_backend_event`, which rejects stale callbacks.
+    #[deprecated(note = "use handle_backend_event(BackendEvent::Prepared { .. })")]
     pub fn on_prepared(&mut self, duration_ms: Option<u64>) -> PlayerEvent {
         self.state.duration_ms = duration_ms;
         self.state.position_ms = 0;
@@ -287,7 +372,8 @@ impl PlayerCore {
         PlayerEvent::StateChanged(self.state.clone())
     }
 
-    /// Native backend callback for periodic playback position updates.
+    /// Legacy callback; prefer `handle_backend_event`, which rejects stale callbacks.
+    #[deprecated(note = "use handle_backend_event(BackendEvent::Position { .. })")]
     pub fn on_position(&mut self, position_ms: u64) -> PlayerEvent {
         self.state.position_ms = self
             .state
@@ -296,25 +382,35 @@ impl PlayerCore {
         PlayerEvent::StateChanged(self.state.clone())
     }
 
+    /// Legacy callback; prefer `handle_backend_event`, which rejects stale callbacks.
+    #[deprecated(note = "use handle_backend_event(BackendEvent::Buffering { .. })")]
     pub fn on_buffering(&mut self, buffering: bool) -> PlayerEvent {
         self.state.is_buffering = buffering;
         PlayerEvent::StateChanged(self.state.clone())
     }
 
+    /// Legacy callback; prefer `handle_backend_event`, which rejects stale callbacks.
+    #[deprecated(note = "use handle_backend_event(BackendEvent::Failed { .. })")]
     pub fn on_error(&mut self) -> PlayerEvent {
         self.state.status = PlaybackStatus::Error;
         self.state.is_buffering = false;
         PlayerEvent::StateChanged(self.state.clone())
     }
 
+    /// Make `track` the logical current track. Position and duration restart only when
+    /// the selection changes or the backend does not hold this track yet, so Resume and
+    /// restored sessions keep their position.
     fn sync_selected_track(&mut self, track: &Track, output: &mut CoreOutput, prepare: bool) {
         let changed = self.state.current_track.as_ref() != Some(&track.id);
-        let needs_prepare = prepare && self.backend_loaded_track.as_ref() != Some(&track.id);
+        let loaded = self.backend_loaded_track.as_ref() == Some(&track.id);
+        if changed || !loaded {
+            self.state.duration_ms = track.duration_ms;
+            self.state.position_ms = 0;
+            self.state.is_buffering = false;
+        }
         self.state.current_track = Some(track.id.clone());
-        self.state.duration_ms = track.duration_ms;
-        self.state.position_ms = 0;
 
-        if needs_prepare {
+        if prepare && !loaded {
             output
                 .backend_actions
                 .push(BackendAction::Prepare(track.clone()));
@@ -362,7 +458,7 @@ impl PlayerCore {
         let mut state = snapshot.state;
         if matches!(
             state.status,
-            PlaybackStatus::Playing | PlaybackStatus::Loading
+            PlaybackStatus::Playing | PlaybackStatus::Loading | PlaybackStatus::Error
         ) {
             state.status = PlaybackStatus::Paused;
         }
@@ -372,6 +468,7 @@ impl PlayerCore {
         }
 
         let mut output = CoreOutput::default();
+        let mut backend_loaded_track = None;
         if let Some(track) = queue.current() {
             output
                 .backend_actions
@@ -385,6 +482,9 @@ impl PlayerCore {
             output
                 .backend_actions
                 .push(BackendAction::SeekTo(state.position_ms));
+            // The restore actions already prepared and positioned this track; a later
+            // Resume must continue from here instead of preparing it again.
+            backend_loaded_track = Some(track.id.clone());
         }
 
         output.events.push(PlayerEvent::StateChanged(state.clone()));
@@ -392,7 +492,7 @@ impl PlayerCore {
             Self {
                 state,
                 queue,
-                backend_loaded_track: None,
+                backend_loaded_track,
             },
             output,
         ))
@@ -498,7 +598,10 @@ mod tests {
             .unwrap();
         core.handle(PlayerCommand::PlayTrack(TrackId::from("one")))
             .unwrap();
-        core.on_prepared(Some(5_000));
+        core.handle_backend_event(BackendEvent::Prepared {
+            track_id: TrackId::from("one"),
+            duration_ms: Some(5_000),
+        });
         let output = core
             .handle(PlayerCommand::Seek { position_ms: 9_000 })
             .unwrap();
@@ -697,5 +800,365 @@ mod tests {
             PlayerCore::restore(snapshot),
             Err(SnapshotError::UnsupportedVersion(_))
         ));
+    }
+
+    fn position(core: &mut PlayerCore, id: &str, position_ms: u64) {
+        core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from(id),
+            position_ms,
+        });
+    }
+
+    fn core_with(ids: &[&str]) -> PlayerCore {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::SetQueue {
+            tracks: ids.iter().map(|id| track(id, 60_000)).collect(),
+            start_index: 0,
+        })
+        .unwrap();
+        core
+    }
+
+    #[test]
+    fn resume_keeps_position_and_does_not_prepare_again() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 30_000);
+        core.handle(PlayerCommand::Pause).unwrap();
+
+        let output = core.handle(PlayerCommand::Resume).unwrap();
+
+        assert_eq!(core.state().position_ms, 30_000);
+        assert_eq!(output.backend_actions, vec![BackendAction::Play]);
+    }
+
+    #[test]
+    fn play_while_already_playing_is_a_no_op() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        let output = core.handle(PlayerCommand::Play).unwrap();
+        assert!(output.backend_actions.is_empty());
+        assert!(!output.events.contains(&PlayerEvent::PlaybackStarted));
+    }
+
+    #[test]
+    fn resume_after_restore_continues_without_reprepare() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 12_000);
+        let (mut restored, _) = PlayerCore::restore(core.snapshot()).unwrap();
+
+        let output = restored.handle(PlayerCommand::Resume).unwrap();
+
+        assert_eq!(restored.state().position_ms, 12_000);
+        assert_eq!(output.backend_actions, vec![BackendAction::Play]);
+    }
+
+    #[test]
+    fn prepared_callback_does_not_reset_restored_position() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 9_000);
+        let (mut restored, _) = PlayerCore::restore(core.snapshot()).unwrap();
+        restored.handle_backend_event(BackendEvent::Prepared {
+            track_id: TrackId::from("one"),
+            duration_ms: Some(60_000),
+        });
+        assert_eq!(restored.state().position_ms, 9_000);
+    }
+
+    #[test]
+    fn previous_at_the_first_track_restarts_it_on_the_backend() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 1_000);
+
+        let output = core.handle(PlayerCommand::Previous).unwrap();
+
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+        assert_eq!(core.state().position_ms, 0);
+        assert_eq!(
+            output.backend_actions,
+            vec![BackendAction::SeekTo(0), BackendAction::Play]
+        );
+    }
+
+    #[test]
+    fn previous_after_three_seconds_only_seeks_to_start() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Next).unwrap();
+        position(&mut core, "two", 10_000);
+        let output = core.handle(PlayerCommand::Previous).unwrap();
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+        assert_eq!(output.backend_actions, vec![BackendAction::SeekTo(0)]);
+    }
+
+    #[test]
+    fn previous_wraps_to_last_track_with_repeat_all() {
+        let mut core = core_with(&["one", "two", "three"]);
+        core.handle(PlayerCommand::SetRepeatMode(RepeatMode::All))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle(PlayerCommand::Previous).unwrap();
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("three")));
+    }
+
+    #[test]
+    fn repeat_all_over_a_single_track_restarts_it() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::SetRepeatMode(RepeatMode::All))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 59_000);
+
+        let output = core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
+        assert_eq!(core.state().position_ms, 0);
+        assert!(output.backend_actions.contains(&BackendAction::SeekTo(0)));
+        assert!(output.backend_actions.contains(&BackendAction::Play));
+    }
+
+    #[test]
+    fn repeat_one_restarts_on_completion_but_next_still_advances() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::SetRepeatMode(RepeatMode::One))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+        core.handle(PlayerCommand::Next).unwrap();
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+    }
+
+    #[test]
+    fn stop_then_play_prepares_again_from_the_start() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 5_000);
+        core.handle(PlayerCommand::Stop).unwrap();
+        assert_eq!(core.state().position_ms, 0);
+
+        let output = core.handle(PlayerCommand::Play).unwrap();
+
+        assert!(matches!(
+            output.backend_actions.first(),
+            Some(BackendAction::Prepare(item)) if item.id == TrackId::from("one")
+        ));
+        assert_eq!(core.state().position_ms, 0);
+    }
+
+    #[test]
+    fn play_after_the_queue_completed_restarts_the_last_track() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert_eq!(core.state().status, PlaybackStatus::Completed);
+
+        let output = core.handle(PlayerCommand::Play).unwrap();
+
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
+        assert!(output
+            .backend_actions
+            .iter()
+            .any(|action| matches!(action, BackendAction::Prepare(_))));
+    }
+
+    #[test]
+    fn late_position_after_stop_and_early_ended_after_pause_are_ignored() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle(PlayerCommand::Pause).unwrap();
+        let output = core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        assert!(output.backend_actions.is_empty());
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+
+        core.handle(PlayerCommand::Stop).unwrap();
+        position(&mut core, "one", 4_000);
+        assert_eq!(core.state().position_ms, 0);
+    }
+
+    #[test]
+    fn next_after_an_error_skips_to_the_next_track() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Failed {
+            track_id: TrackId::from("one"),
+            code: "decode".into(),
+            message: "bad file".into(),
+        });
+        core.handle(PlayerCommand::Next).unwrap();
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
+    }
+
+    #[test]
+    fn seek_and_next_without_tracks_report_empty_queue() {
+        let mut core = PlayerCore::new();
+        assert_eq!(
+            core.handle(PlayerCommand::Seek { position_ms: 5 }),
+            Err(PlayerError::EmptyQueue)
+        );
+        assert_eq!(
+            core.handle(PlayerCommand::Next),
+            Err(PlayerError::EmptyQueue)
+        );
+    }
+
+    #[test]
+    fn duplicate_tracks_are_rejected_and_leave_state_untouched() {
+        let mut core = core_with(&["one"]);
+        assert_eq!(
+            core.handle(PlayerCommand::AddToQueue(track("one", 1))),
+            Err(PlayerError::DuplicateTrack)
+        );
+        assert_eq!(
+            core.handle(PlayerCommand::PlayNext(track("one", 1))),
+            Err(PlayerError::DuplicateTrack)
+        );
+        assert_eq!(
+            core.handle(PlayerCommand::SetQueue {
+                tracks: vec![track("a", 1), track("a", 1)],
+                start_index: 0
+            }),
+            Err(PlayerError::DuplicateTrack)
+        );
+        assert_eq!(core.queue().len(), 1);
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+    }
+
+    #[test]
+    fn removing_the_playing_track_plays_the_replacement_once() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+
+        let output = core
+            .handle(PlayerCommand::RemoveFromQueue(TrackId::from("one")))
+            .unwrap();
+
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
+        assert!(output.backend_actions.contains(&BackendAction::Play));
+        let changes = output
+            .events
+            .iter()
+            .filter(|event| matches!(event, PlayerEvent::TrackChanged(_)))
+            .count();
+        assert_eq!(changes, 1);
+    }
+
+    #[test]
+    fn removing_a_non_current_track_keeps_playback_untouched() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        position(&mut core, "one", 7_000);
+        let output = core
+            .handle(PlayerCommand::RemoveFromQueue(TrackId::from("two")))
+            .unwrap();
+        assert!(output.backend_actions.is_empty());
+        assert_eq!(core.state().position_ms, 7_000);
+        assert!(!output
+            .events
+            .iter()
+            .any(|event| matches!(event, PlayerEvent::TrackChanged(_))));
+    }
+
+    #[test]
+    fn removing_the_last_track_resets_to_idle() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        let output = core
+            .handle(PlayerCommand::RemoveFromQueue(TrackId::from("one")))
+            .unwrap();
+        assert_eq!(core.state().status, PlaybackStatus::Idle);
+        assert!(output.backend_actions.contains(&BackendAction::Stop));
+        assert!(output.events.contains(&PlayerEvent::TrackChanged(None)));
+    }
+
+    #[test]
+    fn clear_queue_stops_and_resets_the_player() {
+        let mut core = core_with(&["one", "two"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        let output = core.handle(PlayerCommand::ClearQueue).unwrap();
+        assert!(core.queue().is_empty());
+        assert_eq!(core.state().status, PlaybackStatus::Idle);
+        assert_eq!(core.current_track_id(), None);
+        assert!(output.backend_actions.contains(&BackendAction::Stop));
+        assert!(output.events.contains(&PlayerEvent::QueueChanged));
+        // Clearing an empty queue is a harmless no-op.
+        let again = core.handle(PlayerCommand::ClearQueue).unwrap();
+        assert!(again.backend_actions.is_empty());
+    }
+
+    #[test]
+    fn move_in_queue_changes_what_plays_next() {
+        let mut core = core_with(&["one", "two", "three"]);
+        core.handle(PlayerCommand::MoveInQueue {
+            track_id: TrackId::from("three"),
+            new_index: 1,
+        })
+        .unwrap();
+        assert_eq!(core.upcoming_track().unwrap().id, TrackId::from("three"));
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+        assert_eq!(
+            core.handle(PlayerCommand::MoveInQueue {
+                track_id: TrackId::from("three"),
+                new_index: 7
+            }),
+            Err(PlayerError::InvalidQueueIndex)
+        );
+    }
+
+    #[test]
+    fn upcoming_track_follows_repeat_mode() {
+        let mut core = core_with(&["one", "two"]);
+        assert_eq!(core.upcoming_track().unwrap().id, TrackId::from("two"));
+        core.handle(PlayerCommand::Next).unwrap();
+        assert!(core.upcoming_track().is_none());
+        core.handle(PlayerCommand::SetRepeatMode(RepeatMode::All))
+            .unwrap();
+        assert_eq!(core.upcoming_track().unwrap().id, TrackId::from("one"));
+    }
+
+    #[test]
+    fn replacing_the_queue_after_completion_returns_to_idle() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Ended {
+            track_id: TrackId::from("one"),
+        });
+        core.handle(PlayerCommand::SetQueue {
+            tracks: vec![track("one", 60_000)],
+            start_index: 0,
+        })
+        .unwrap();
+        assert_eq!(core.state().status, PlaybackStatus::Idle);
+        assert_eq!(core.state().position_ms, 0);
+        let play = core.handle(PlayerCommand::Play).unwrap();
+        assert!(matches!(
+            play.backend_actions.first(),
+            Some(BackendAction::Prepare(_))
+        ));
+    }
+
+    #[test]
+    fn restoring_an_errored_session_comes_back_paused() {
+        let mut core = core_with(&["one"]);
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle_backend_event(BackendEvent::Failed {
+            track_id: TrackId::from("one"),
+            code: "x".into(),
+            message: "y".into(),
+        });
+        let (restored, _) = PlayerCore::restore(core.snapshot()).unwrap();
+        assert_eq!(restored.state().status, PlaybackStatus::Paused);
     }
 }

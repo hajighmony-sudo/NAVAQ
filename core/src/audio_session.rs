@@ -121,6 +121,11 @@ impl AudioSessionPolicy {
     pub fn is_ducked(&self) -> bool {
         self.is_ducked
     }
+
+    /// Multiplier applied to the user's volume while another app is ducking us.
+    pub fn duck_factor(&self) -> f32 {
+        self.duck_factor
+    }
 }
 
 fn normalized_volume(volume: f32) -> f32 {

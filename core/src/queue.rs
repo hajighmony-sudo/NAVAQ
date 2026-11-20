@@ -1,5 +1,6 @@
 use crate::model::{PlayerError, RepeatMode, Track, TrackId};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Default)]
@@ -26,6 +27,8 @@ pub enum QueueSnapshotError {
     InvalidOrder,
     #[error("queue snapshot cursor is outside the playback order")]
     InvalidCursor,
+    #[error("queue snapshot contains duplicate track ids")]
+    DuplicateTrackId,
 }
 
 impl PlaybackQueue {
@@ -41,6 +44,10 @@ impl PlaybackQueue {
 
     /// Restore a queue after validating its internal index invariants.
     pub fn from_snapshot(snapshot: PlaybackQueueSnapshot) -> Result<Self, QueueSnapshotError> {
+        let mut ids = HashSet::new();
+        if !snapshot.tracks.iter().all(|track| ids.insert(&track.id)) {
+            return Err(QueueSnapshotError::DuplicateTrackId);
+        }
         let mut seen = vec![false; snapshot.tracks.len()];
         if snapshot.order.len() != snapshot.tracks.len() {
             return Err(QueueSnapshotError::InvalidOrder);
@@ -98,11 +105,20 @@ impl PlaybackQueue {
         self.tracks.len()
     }
 
+    pub fn contains(&self, id: &TrackId) -> bool {
+        self.tracks.iter().any(|track| &track.id == id)
+    }
+
+    /// Replace the whole queue. Track ids must be unique; on error nothing changes.
     pub fn replace(&mut self, tracks: Vec<Track>, start_index: usize) -> Result<(), PlayerError> {
         if (tracks.is_empty() && start_index != 0)
             || (!tracks.is_empty() && start_index >= tracks.len())
         {
             return Err(PlayerError::InvalidQueueStartIndex);
+        }
+        let mut ids = HashSet::new();
+        if !tracks.iter().all(|track| ids.insert(&track.id)) {
+            return Err(PlayerError::DuplicateTrack);
         }
         if tracks.is_empty() {
             self.reset();
@@ -116,7 +132,11 @@ impl PlaybackQueue {
         Ok(())
     }
 
-    pub fn enqueue(&mut self, track: Track) {
+    /// Append a track at the end of the queue and of the playback order.
+    pub fn enqueue(&mut self, track: Track) -> Result<(), PlayerError> {
+        if self.contains(&track.id) {
+            return Err(PlayerError::DuplicateTrack);
+        }
         let index = self.tracks.len();
         self.tracks.push(track);
         self.order.push(index);
@@ -124,9 +144,14 @@ impl PlaybackQueue {
             self.current_index = Some(index);
             self.cursor = Some(self.order.len() - 1);
         }
+        Ok(())
     }
 
-    pub fn enqueue_next(&mut self, track: Track) {
+    /// Insert a track directly after the current one in both queue and playback order.
+    pub fn enqueue_next(&mut self, track: Track) -> Result<(), PlayerError> {
+        if self.contains(&track.id) {
+            return Err(PlayerError::DuplicateTrack);
+        }
         match self.current_index {
             Some(index) => {
                 let insert_at = index + 1;
@@ -146,6 +171,51 @@ impl PlaybackQueue {
                 self.cursor = Some(0);
             }
         }
+        Ok(())
+    }
+
+    /// Move a track to `new_index` in queue order. The current track stays selected.
+    ///
+    /// Without shuffle the playback order follows the new queue order. With shuffle the
+    /// shuffled playback order is preserved; only the underlying queue order changes.
+    pub fn move_track(&mut self, id: &TrackId, new_index: usize) -> Result<(), PlayerError> {
+        let from = self
+            .tracks
+            .iter()
+            .position(|track| &track.id == id)
+            .ok_or(PlayerError::TrackNotFound)?;
+        if new_index >= self.tracks.len() {
+            return Err(PlayerError::InvalidQueueIndex);
+        }
+        if from == new_index {
+            return Ok(());
+        }
+
+        let track = self.tracks.remove(from);
+        self.tracks.insert(new_index, track);
+
+        let remap = |index: usize| -> usize {
+            if index == from {
+                new_index
+            } else if from < new_index && index > from && index <= new_index {
+                index - 1
+            } else if from > new_index && index >= new_index && index < from {
+                index + 1
+            } else {
+                index
+            }
+        };
+
+        self.current_index = self.current_index.map(remap);
+        if self.shuffle_enabled {
+            for ordered_index in &mut self.order {
+                *ordered_index = remap(*ordered_index);
+            }
+        } else {
+            self.order = (0..self.tracks.len()).collect();
+            self.cursor = self.current_index;
+        }
+        Ok(())
     }
 
     pub fn remove(&mut self, id: &TrackId) -> bool {
@@ -201,14 +271,41 @@ impl PlaybackQueue {
         self.current()
     }
 
+    /// Step back one position. At the start the current track is returned unchanged.
     pub fn previous(&mut self) -> Option<&Track> {
+        self.previous_with_repeat(RepeatMode::Off)
+    }
+
+    /// Like `previous`, but wraps to the last track when repeat-all is active.
+    pub fn previous_with_repeat(&mut self, repeat: RepeatMode) -> Option<&Track> {
         let cursor = self.cursor?;
         if cursor == 0 {
-            return self.current();
+            if repeat != RepeatMode::All {
+                return self.current();
+            }
+            self.cursor = Some(self.order.len() - 1);
+        } else {
+            self.cursor = Some(cursor - 1);
         }
-        self.cursor = Some(cursor - 1);
         self.current_index = self.cursor.map(|position| self.order[position]);
         self.current()
+    }
+
+    /// The track that follows the current one on natural completion, without moving.
+    /// Hosts can use this to preload the next item for gapless playback.
+    pub fn peek_next(&self, repeat: RepeatMode) -> Option<&Track> {
+        let cursor = self.cursor?;
+        if repeat == RepeatMode::One {
+            return self.current();
+        }
+        let position = if cursor + 1 < self.order.len() {
+            cursor + 1
+        } else if repeat == RepeatMode::All && !self.order.is_empty() {
+            0
+        } else {
+            return None;
+        };
+        self.tracks.get(self.order[position])
     }
 
     /// Toggle deterministic shuffle while preserving the currently selected track.
@@ -295,8 +392,8 @@ mod tests {
     #[test]
     fn enqueue_and_advance() {
         let mut queue = PlaybackQueue::new();
-        queue.enqueue(track("a"));
-        queue.enqueue(track("b"));
+        queue.enqueue(track("a")).unwrap();
+        queue.enqueue(track("b")).unwrap();
         assert_eq!(queue.current().unwrap().id, TrackId::from("a"));
         assert_eq!(queue.next(RepeatMode::Off).unwrap().id, TrackId::from("b"));
         assert!(queue.next(RepeatMode::Off).is_none());
@@ -345,12 +442,115 @@ mod tests {
             .replace(vec![track("a"), track("b"), track("c")], 0)
             .unwrap();
         queue.set_shuffle(true);
-        queue.enqueue_next(track("priority"));
+        queue.enqueue_next(track("priority")).unwrap();
         assert_eq!(
             queue.next(RepeatMode::Off).unwrap().id,
             TrackId::from("priority")
         );
         assert!(queue.remove(&TrackId::from("b")));
         assert!(queue.current().is_some());
+    }
+
+    #[test]
+    fn duplicate_ids_are_rejected_without_changing_the_queue() {
+        let mut queue = PlaybackQueue::new();
+        queue.replace(vec![track("a"), track("b")], 0).unwrap();
+        assert_eq!(queue.enqueue(track("a")), Err(PlayerError::DuplicateTrack));
+        assert_eq!(
+            queue.enqueue_next(track("b")),
+            Err(PlayerError::DuplicateTrack)
+        );
+        assert_eq!(
+            queue.replace(vec![track("x"), track("x")], 0),
+            Err(PlayerError::DuplicateTrack)
+        );
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("a"));
+    }
+
+    #[test]
+    fn move_track_keeps_current_selected_and_updates_playback_order() {
+        let mut queue = PlaybackQueue::new();
+        queue
+            .replace(vec![track("a"), track("b"), track("c"), track("d")], 1)
+            .unwrap();
+        queue.move_track(&TrackId::from("d"), 0).unwrap();
+        let ids: Vec<_> = queue.tracks().iter().map(|t| t.id.0.clone()).collect();
+        assert_eq!(ids, ["d", "a", "b", "c"]);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("b"));
+        assert_eq!(queue.next(RepeatMode::Off).unwrap().id, TrackId::from("c"));
+
+        queue.move_track(&TrackId::from("b"), 3).unwrap();
+        assert_eq!(queue.current().unwrap().id, TrackId::from("c"));
+        assert_eq!(queue.snapshot().order, vec![0, 1, 2, 3]);
+        assert_eq!(
+            queue.move_track(&TrackId::from("zzz"), 0),
+            Err(PlayerError::TrackNotFound)
+        );
+        assert_eq!(
+            queue.move_track(&TrackId::from("a"), 9),
+            Err(PlayerError::InvalidQueueIndex)
+        );
+    }
+
+    #[test]
+    fn move_track_under_shuffle_preserves_playback_order() {
+        let mut queue = PlaybackQueue::new();
+        let tracks: Vec<_> = ["a", "b", "c", "d", "e", "f"].map(track).into();
+        queue.replace(tracks, 0).unwrap();
+        queue.set_shuffle(true);
+
+        let playback_ids = |queue: &PlaybackQueue| -> Vec<String> {
+            let snap = queue.snapshot();
+            snap.order
+                .iter()
+                .map(|&i| snap.tracks[i].id.0.clone())
+                .collect()
+        };
+        let before = playback_ids(&queue);
+        queue.move_track(&TrackId::from("f"), 0).unwrap();
+        queue.move_track(&TrackId::from("a"), 5).unwrap();
+        assert_eq!(playback_ids(&queue), before);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("a"));
+
+        queue.set_shuffle(false);
+        let ids: Vec<_> = queue.tracks().iter().map(|t| t.id.0.clone()).collect();
+        assert_eq!(ids, ["f", "b", "c", "d", "e", "a"]);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("a"));
+    }
+
+    #[test]
+    fn previous_wraps_only_with_repeat_all_and_peek_does_not_move() {
+        let mut queue = PlaybackQueue::new();
+        queue.replace(vec![track("a"), track("b")], 0).unwrap();
+        assert_eq!(queue.previous().unwrap().id, TrackId::from("a"));
+        assert_eq!(
+            queue.previous_with_repeat(RepeatMode::All).unwrap().id,
+            TrackId::from("b")
+        );
+        assert!(queue.peek_next(RepeatMode::Off).is_none());
+        assert_eq!(
+            queue.peek_next(RepeatMode::All).unwrap().id,
+            TrackId::from("a")
+        );
+        assert_eq!(
+            queue.peek_next(RepeatMode::One).unwrap().id,
+            TrackId::from("b")
+        );
+        assert_eq!(queue.current().unwrap().id, TrackId::from("b"));
+    }
+
+    #[test]
+    fn snapshot_with_duplicate_ids_is_rejected() {
+        let snapshot = PlaybackQueueSnapshot {
+            tracks: vec![track("a"), track("a")],
+            order: vec![0, 1],
+            cursor: Some(0),
+            shuffle_enabled: false,
+        };
+        assert_eq!(
+            PlaybackQueue::from_snapshot(snapshot).unwrap_err(),
+            QueueSnapshotError::DuplicateTrackId
+        );
     }
 }

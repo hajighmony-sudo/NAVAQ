@@ -12,6 +12,7 @@ pub mod queue;
 pub mod runtime;
 
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
+pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use engine::PlayerCore;
 pub use model::{
     AudioSource, BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus,

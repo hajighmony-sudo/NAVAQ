@@ -100,6 +100,13 @@ pub enum PlayerCommand {
     AddToQueue(Track),
     PlayNext(Track),
     RemoveFromQueue(TrackId),
+    /// Move a queued track to `new_index` in queue (not shuffled playback) order.
+    MoveInQueue {
+        track_id: TrackId,
+        new_index: usize,
+    },
+    /// Remove every track and reset the player to idle.
+    ClearQueue,
     SetVolume(f32),
     SetSpeed(f32),
     SetRepeatMode(RepeatMode),
@@ -172,4 +179,8 @@ pub enum PlayerError {
     EmptyQueue,
     #[error("queue start index is outside the queue")]
     InvalidQueueStartIndex,
+    #[error("queue index is outside the queue")]
+    InvalidQueueIndex,
+    #[error("a track with the same id is already in the playback queue")]
+    DuplicateTrack,
 }
