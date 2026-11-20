@@ -201,4 +201,26 @@ mod tests {
             crate::model::PlaybackStatus::Error
         );
     }
+    #[test]
+    fn runtime_restore_rehydrates_backend_without_autoplay() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track())).unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        let snapshot = core.snapshot();
+
+        let (runtime, output) =
+            PlayerRuntime::restore(FakeBackend::default(), snapshot).unwrap();
+
+        assert_eq!(
+            runtime.core().state().status,
+            crate::model::PlaybackStatus::Paused
+        );
+        assert!(runtime.backend().actions.iter().any(
+            |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("runtime-track"))
+        ));
+        assert!(runtime.backend().actions.contains(&BackendAction::SeekTo(0)));
+        assert!(!runtime.backend().actions.contains(&BackendAction::Play));
+        assert!(!output.backend_actions.contains(&BackendAction::Play));
+    }
+
 }
