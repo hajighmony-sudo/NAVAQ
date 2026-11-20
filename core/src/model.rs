@@ -87,11 +87,16 @@ pub enum PlayerCommand {
     Pause,
     Resume,
     Stop,
-    Seek { position_ms: u64 },
+    Seek {
+        position_ms: u64,
+    },
     Next,
     Previous,
     PlayTrack(TrackId),
-    SetQueue { tracks: Vec<Track>, start_index: usize },
+    SetQueue {
+        tracks: Vec<Track>,
+        start_index: usize,
+    },
     AddToQueue(Track),
     PlayNext(Track),
     RemoveFromQueue(TrackId),
