@@ -5,6 +5,9 @@ use crate::model::{
 use crate::persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 use crate::queue::PlaybackQueue;
 
+/// Longest supported crossfade.
+pub const MAX_CROSSFADE_MS: u32 = 12_000;
+
 /// Previous restarts the current track instead of going back once it has played this long.
 const PREVIOUS_RESTART_THRESHOLD_MS: u64 = 3_000;
 
@@ -197,6 +200,24 @@ impl PlayerCore {
                 }
                 self.state.speed = speed;
                 output.backend_actions.push(BackendAction::SetSpeed(speed));
+            }
+            PlayerCommand::SetEqualizer(equalizer) => {
+                if !equalizer.is_valid() {
+                    return Err(PlayerError::InvalidEqualizer);
+                }
+                self.state.equalizer = equalizer.clone();
+                output
+                    .backend_actions
+                    .push(BackendAction::SetEqualizer(equalizer));
+            }
+            PlayerCommand::SetCrossfade(crossfade_ms) => {
+                if crossfade_ms > MAX_CROSSFADE_MS {
+                    return Err(PlayerError::InvalidCrossfade);
+                }
+                self.state.crossfade_ms = crossfade_ms;
+                output
+                    .backend_actions
+                    .push(BackendAction::SetCrossfade(crossfade_ms));
             }
             PlayerCommand::SetRepeatMode(mode) => self.state.repeat_mode = mode,
             PlayerCommand::SetShuffle(enabled) => {
@@ -451,6 +472,8 @@ impl PlayerCore {
             || !(0.0..=1.0).contains(&snapshot.state.volume)
             || !snapshot.state.speed.is_finite()
             || !(0.25..=4.0).contains(&snapshot.state.speed)
+            || !snapshot.state.equalizer.is_valid()
+            || snapshot.state.crossfade_ms > MAX_CROSSFADE_MS
         {
             return Err(SnapshotError::InvalidPlaybackSettings);
         }
@@ -479,6 +502,12 @@ impl PlayerCore {
             output
                 .backend_actions
                 .push(BackendAction::SetSpeed(state.speed));
+            output
+                .backend_actions
+                .push(BackendAction::SetEqualizer(state.equalizer.clone()));
+            output
+                .backend_actions
+                .push(BackendAction::SetCrossfade(state.crossfade_ms));
             output
                 .backend_actions
                 .push(BackendAction::SeekTo(state.position_ms));
@@ -1160,5 +1189,51 @@ mod tests {
         });
         let (restored, _) = PlayerCore::restore(core.snapshot()).unwrap();
         assert_eq!(restored.state().status, PlaybackStatus::Paused);
+    }
+
+    #[test]
+    fn equalizer_and_crossfade_are_validated_stored_and_restored() {
+        use crate::equalizer::{EqualizerPreset, EqualizerSettings};
+        let mut core = core_with(&["one"]);
+        let rock = EqualizerSettings::preset(EqualizerPreset::Rock);
+        let output = core
+            .handle(PlayerCommand::SetEqualizer(rock.clone()))
+            .unwrap();
+        assert_eq!(
+            output.backend_actions,
+            vec![BackendAction::SetEqualizer(rock.clone())]
+        );
+        core.handle(PlayerCommand::SetCrossfade(3_000)).unwrap();
+
+        let mut bad = rock.clone();
+        bad.bands[0].gain_db = 40.0;
+        assert_eq!(
+            core.handle(PlayerCommand::SetEqualizer(bad)),
+            Err(PlayerError::InvalidEqualizer)
+        );
+        assert_eq!(
+            core.handle(PlayerCommand::SetCrossfade(99_999)),
+            Err(PlayerError::InvalidCrossfade)
+        );
+
+        let (restored, output) = PlayerCore::restore(core.snapshot()).unwrap();
+        assert_eq!(restored.state().equalizer, rock);
+        assert_eq!(restored.state().crossfade_ms, 3_000);
+        assert!(output
+            .backend_actions
+            .contains(&BackendAction::SetEqualizer(rock)));
+        assert!(output
+            .backend_actions
+            .contains(&BackendAction::SetCrossfade(3_000)));
+    }
+
+    #[test]
+    fn snapshot_with_invalid_equalizer_is_rejected() {
+        let mut snapshot = core_with(&["one"]).snapshot();
+        snapshot.state.equalizer.bands.clear();
+        assert!(matches!(
+            PlayerCore::restore(snapshot),
+            Err(SnapshotError::InvalidPlaybackSettings)
+        ));
     }
 }

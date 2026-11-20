@@ -4,7 +4,7 @@ NAVAQ is being developed as a cross-platform music playback core. This repositor
 
 ## Workspace
 
-- `core/` — playback state, command/event contracts, queue management, audio-session policy, and playback snapshot recovery.
+- `core/` — playback state, command/event contracts, queue management, audio-session policy, snapshot recovery, equalizer/crossfade settings, library, playlists, lyrics (LRC), sleep timer, and play history.
 - Native Android and iOS playback adapters are separate integration targets and are not yet implemented.
 
 ## Core boundary
@@ -34,8 +34,19 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+## Pure-logic modules
+
+- `Library` — unique tracks, upsert/remove, multi-word Unicode search, sorting, albums/artists.
+- `PlaylistStore` — create/rename/delete, add/remove/move tracks, resolve to `Track`s for `SetQueue`.
+- `Lyrics::parse_lrc` — synchronized lyrics with multi-timestamp lines and `[offset:]`; `line_at(position_ms)`.
+- `EqualizerSettings` + presets — validated, applied through `SetEqualizer`; `SetCrossfade` (0–12000 ms).
+- `SleepTimer` — duration or end-of-track, driven by `PlayerRuntime::tick` / `poll_backend`.
+- `PlayHistory` — bounded recent plays and play counts; the host calls `record_play`.
+
+These modules do no I/O. Scanning files, reading tags and storing data are host responsibilities.
+
 ## Current implementation status
 
-Implemented: typed track/source models, unique track ids (duplicates are rejected), queue move/clear/remove with a stable current track, next-track lookup for gapless preloading, repeat-all wrap-around for Previous, playback state, command/event contract, queue operations (including explicit empty-queue clearing), repeat-one/repeat-all, shuffle order preservation, validated state settings, native backend contract, asynchronous event runtime, backend-failure recovery with safe re-prepare on retry, audio-focus/interruption policy wired into the runtime (pause/resume and ducking that never overwrites the user's volume), runtime events preserved across backend failures (`take_pending_events`), versioned queue/player snapshots, safe paused restoration, and unit tests.
+Implemented: everything in the modules above plus typed track/source models, playback state, command/event contract, queue operations (move, clear, unique ids, next-track lookup for gapless preloading), repeat/shuffle, native backend contract, asynchronous event runtime, audio-focus handling with ducking, failure recovery, versioned snapshots with safe paused restoration, and unit tests.
 
-Not yet implemented: actual native Android Media3 and iOS AVFoundation adapters, background services, Android Auto, CarPlay, DSP/equalizer, streaming, downloads, lyrics, library scanning, and plugin loading. These require platform-specific projects and integration tests; they are not represented as completed features in this Rust-only core.
+Not in the core (platform work): Media3/AVFoundation adapters, background services, Android Auto, CarPlay, the DSP that actually applies the equalizer, network streaming, downloads, file scanning and tag reading, and plugin loading.

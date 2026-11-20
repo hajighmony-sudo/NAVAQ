@@ -2,9 +2,11 @@ use crate::audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPol
 use crate::backend::{dispatch_output, AudioBackend, BackendDispatchError};
 use crate::engine::PlayerCore;
 use crate::model::{
-    BackendAction, BackendEvent, CoreOutput, PlayerCommand, PlayerError, PlayerEvent,
+    BackendAction, BackendEvent, CoreOutput, PlaybackStatus, PlayerCommand, PlayerError,
+    PlayerEvent,
 };
 use crate::persistence::{PlayerSnapshot, SnapshotError};
+use crate::sleep_timer::SleepTimer;
 use thiserror::Error;
 
 /// Drives the platform-independent player core against a native audio backend.
@@ -17,6 +19,7 @@ pub struct PlayerRuntime<B> {
     backend: B,
     audio_session: AudioSessionPolicy,
     pending_events: Vec<PlayerEvent>,
+    sleep_timer: Option<SleepTimer>,
 }
 
 impl<B: AudioBackend> PlayerRuntime<B> {
@@ -48,6 +51,7 @@ impl<B: AudioBackend> PlayerRuntime<B> {
             backend,
             audio_session: AudioSessionPolicy::default(),
             pending_events: Vec::new(),
+            sleep_timer: None,
         }
     }
 
@@ -94,6 +98,26 @@ impl<B: AudioBackend> PlayerRuntime<B> {
         let mut first_error = None;
 
         for event in events {
+            if self.sleep_timer == Some(SleepTimer::EndOfTrack) {
+                if let BackendEvent::Ended { track_id } = &event {
+                    if self.core.current_track_id() == Some(track_id)
+                        && self.core.state().status == PlaybackStatus::Playing
+                    {
+                        // End-of-track sleep: stop here instead of advancing.
+                        self.sleep_timer = None;
+                        match self.handle_command(PlayerCommand::Stop) {
+                            Ok(output) => {
+                                combined.backend_actions.extend(output.backend_actions);
+                                combined.events.extend(output.events);
+                            }
+                            Err(error) => {
+                                first_error.get_or_insert(error);
+                            }
+                        }
+                        continue;
+                    }
+                }
+            }
             let output = self.core.handle_backend_event(event);
             if let Err(error) = self.dispatch_or_mark_failed(&output) {
                 first_error.get_or_insert(error);
@@ -112,6 +136,36 @@ impl<B: AudioBackend> PlayerRuntime<B> {
                 Err(error)
             }
         }
+    }
+
+    /// Arm a sleep timer, replacing any previous one.
+    pub fn set_sleep_timer(&mut self, timer: SleepTimer) {
+        self.sleep_timer = Some(timer);
+    }
+
+    pub fn cancel_sleep_timer(&mut self) {
+        self.sleep_timer = None;
+    }
+
+    pub fn sleep_timer(&self) -> Option<SleepTimer> {
+        self.sleep_timer
+    }
+
+    /// Report elapsed wall-clock time to the sleep timer. The timer only counts while the
+    /// player is playing; when it expires, playback is paused and the timer cleared.
+    pub fn tick(&mut self, elapsed_ms: u64) -> Result<CoreOutput, RuntimeError> {
+        if self.core.state().status != PlaybackStatus::Playing {
+            return Ok(CoreOutput::default());
+        }
+        let expired = self
+            .sleep_timer
+            .as_mut()
+            .is_some_and(|timer| timer.tick(elapsed_ms));
+        if expired {
+            self.sleep_timer = None;
+            return self.handle_command(PlayerCommand::Pause);
+        }
+        Ok(CoreOutput::default())
     }
 
     /// Translate an OS audio-focus change into pause/resume/duck operations on the player.
@@ -454,6 +508,78 @@ mod tests {
         assert_eq!(
             restored.core().current_track_id(),
             Some(&TrackId::from("runtime-track"))
+        );
+    }
+
+    #[test]
+    fn duration_sleep_timer_pauses_only_while_playing() {
+        let mut runtime = PlayerRuntime::new(FakeBackend::default());
+        runtime
+            .handle_command(PlayerCommand::AddToQueue(track()))
+            .unwrap();
+        runtime.set_sleep_timer(SleepTimer::after_ms(1_000));
+        // Not playing: time does not count.
+        runtime.tick(5_000).unwrap();
+        assert_eq!(runtime.sleep_timer(), Some(SleepTimer::after_ms(1_000)));
+
+        runtime.handle_command(PlayerCommand::Play).unwrap();
+        runtime.tick(400).unwrap();
+        assert_eq!(
+            runtime.core().state().status,
+            crate::model::PlaybackStatus::Playing
+        );
+        runtime.tick(600).unwrap();
+        assert_eq!(
+            runtime.core().state().status,
+            crate::model::PlaybackStatus::Paused
+        );
+        assert_eq!(runtime.sleep_timer(), None);
+    }
+
+    #[test]
+    fn end_of_track_sleep_timer_stops_instead_of_advancing() {
+        let mut runtime = PlayerRuntime::new(FakeBackend::default());
+        let mut next = track();
+        next.id = TrackId::from("next-track");
+        runtime
+            .handle_command(PlayerCommand::AddToQueue(track()))
+            .unwrap();
+        runtime
+            .handle_command(PlayerCommand::AddToQueue(next))
+            .unwrap();
+        runtime.handle_command(PlayerCommand::Play).unwrap();
+        runtime.set_sleep_timer(SleepTimer::EndOfTrack);
+        runtime.backend_mut().events.push(BackendEvent::Ended {
+            track_id: TrackId::from("runtime-track"),
+        });
+
+        runtime.poll_backend().unwrap();
+
+        assert_eq!(
+            runtime.core().state().status,
+            crate::model::PlaybackStatus::Stopped
+        );
+        assert_eq!(
+            runtime.core().current_track_id(),
+            Some(&TrackId::from("runtime-track"))
+        );
+        assert_eq!(runtime.sleep_timer(), None);
+        assert_eq!(runtime.backend().actions.last(), Some(&BackendAction::Stop));
+    }
+
+    #[test]
+    fn cancelled_sleep_timer_does_nothing() {
+        let mut runtime = PlayerRuntime::new(FakeBackend::default());
+        runtime
+            .handle_command(PlayerCommand::AddToQueue(track()))
+            .unwrap();
+        runtime.handle_command(PlayerCommand::Play).unwrap();
+        runtime.set_sleep_timer(SleepTimer::after_ms(10));
+        runtime.cancel_sleep_timer();
+        runtime.tick(1_000).unwrap();
+        assert_eq!(
+            runtime.core().state().status,
+            crate::model::PlaybackStatus::Playing
         );
     }
 }

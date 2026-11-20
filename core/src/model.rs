@@ -1,4 +1,6 @@
+use crate::equalizer::EqualizerSettings;
 use serde::{Deserialize, Serialize};
+
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -63,6 +65,11 @@ pub struct PlaybackState {
     pub repeat_mode: RepeatMode,
     pub shuffle_enabled: bool,
     pub is_buffering: bool,
+    #[serde(default)]
+    pub equalizer: EqualizerSettings,
+    /// Crossfade between tracks in milliseconds (0 = off).
+    #[serde(default)]
+    pub crossfade_ms: u32,
 }
 
 impl Default for PlaybackState {
@@ -77,6 +84,8 @@ impl Default for PlaybackState {
             repeat_mode: RepeatMode::Off,
             shuffle_enabled: false,
             is_buffering: false,
+            equalizer: EqualizerSettings::default(),
+            crossfade_ms: 0,
         }
     }
 }
@@ -111,6 +120,9 @@ pub enum PlayerCommand {
     SetSpeed(f32),
     SetRepeatMode(RepeatMode),
     SetShuffle(bool),
+    SetEqualizer(EqualizerSettings),
+    /// Crossfade length in milliseconds, 0 to 12000.
+    SetCrossfade(u32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,6 +134,8 @@ pub enum BackendAction {
     SeekTo(u64),
     SetVolume(f32),
     SetSpeed(f32),
+    SetEqualizer(EqualizerSettings),
+    SetCrossfade(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -183,4 +197,8 @@ pub enum PlayerError {
     InvalidQueueIndex,
     #[error("a track with the same id is already in the playback queue")]
     DuplicateTrack,
+    #[error("equalizer needs 1-32 bands with positive frequencies and gains within -12..12 dB")]
+    InvalidEqualizer,
+    #[error("crossfade must be between 0 and 12000 ms")]
+    InvalidCrossfade,
 }
