@@ -210,12 +210,9 @@ impl PlayerCore {
                 is_buffering,
             } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
+                    // Buffering is orthogonal to the user's playback intent. Keep
+                    // Playing so Pause remains available during network stalls.
                     self.state.is_buffering = is_buffering;
-                    if is_buffering && self.state.status == PlaybackStatus::Playing {
-                        self.state.status = PlaybackStatus::Loading;
-                    } else if !is_buffering && self.state.status == PlaybackStatus::Loading {
-                        self.state.status = PlaybackStatus::Playing;
-                    }
                 }
             }
             BackendEvent::Ended { track_id } => {
@@ -479,6 +476,25 @@ mod tests {
         assert!(output
             .backend_actions
             .contains(&BackendAction::SeekTo(5_000)));
+    }
+
+    #[test]
+    fn buffering_does_not_hide_playing_intent_or_block_pause() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("one", 5_000)))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+
+        core.handle_backend_event(BackendEvent::Buffering {
+            track_id: TrackId::from("one"),
+            is_buffering: true,
+        });
+        assert_eq!(core.state().status, PlaybackStatus::Playing);
+        assert!(core.state().is_buffering);
+
+        let pause = core.handle(PlayerCommand::Pause).unwrap();
+        assert_eq!(core.state().status, PlaybackStatus::Paused);
+        assert!(pause.backend_actions.contains(&BackendAction::Pause));
     }
 
     #[test]
