@@ -9,7 +9,7 @@ pub mod queue;
 
 pub use engine::PlayerCore;
 pub use model::{
-    AudioSource, BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus, PlayerCommand,
-    PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
+    AudioSource, BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus,
+    PlayerCommand, PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
 pub use queue::PlaybackQueue;
