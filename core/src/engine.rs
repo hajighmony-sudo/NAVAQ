@@ -442,4 +442,29 @@ mod tests {
         assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
         assert!(output.backend_actions.iter().any(|action| matches!(action, BackendAction::Prepare(track) if track.id == TrackId::from("two"))));
     }
+
+    #[test]
+    fn shuffle_command_updates_queue_and_playback_state() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::SetQueue {
+            tracks: vec![
+                track("one", 1_000),
+                track("two", 2_000),
+                track("three", 3_000),
+                track("four", 4_000),
+            ],
+            start_index: 0,
+        })
+        .unwrap();
+
+        core.handle(PlayerCommand::SetShuffle(true)).unwrap();
+        assert!(core.state().shuffle_enabled);
+        assert!(core.queue().shuffle_enabled());
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+
+        core.handle(PlayerCommand::SetShuffle(false)).unwrap();
+        assert!(!core.state().shuffle_enabled);
+        assert!(!core.queue().shuffle_enabled());
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("one")));
+    }
 }
