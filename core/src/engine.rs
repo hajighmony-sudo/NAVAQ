@@ -88,9 +88,20 @@ impl PlayerCore {
                 tracks,
                 start_index,
             } => {
+                let was_playing = matches!(
+                    self.state.status,
+                    PlaybackStatus::Playing | PlaybackStatus::Loading
+                );
                 self.queue.replace(tracks, start_index)?;
                 if let Some(selected) = self.queue.current().cloned() {
                     self.backend_loaded_track = None;
+                    if was_playing {
+                        // Replacing an active queue must not leave the old native
+                        // item audible while the logical current track has changed.
+                        output.backend_actions.push(BackendAction::Stop);
+                        self.state.status = PlaybackStatus::Paused;
+                        self.state.is_buffering = false;
+                    }
                     self.sync_selected_track(&selected, &mut output, false);
                 } else {
                     self.backend_loaded_track = None;
@@ -424,6 +435,25 @@ mod tests {
             .events
             .iter()
             .any(|event| matches!(event, PlayerEvent::PlaybackStarted)));
+    }
+
+    #[test]
+    fn replacing_queue_during_playback_stops_old_track_and_pauses() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::AddToQueue(track("old", 1_000)))
+            .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+
+        let output = core
+            .handle(PlayerCommand::SetQueue {
+                tracks: vec![track("new", 2_000)],
+                start_index: 0,
+            })
+            .unwrap();
+
+        assert_eq!(core.current_track_id(), Some(&TrackId::from("new")));
+        assert_eq!(core.state().status, PlaybackStatus::Paused);
+        assert!(output.backend_actions.contains(&BackendAction::Stop));
     }
 
     #[test]
