@@ -1,11 +1,8 @@
 package com.navaq.android.playback
 
-import android.app.Service
 import android.content.Intent
 import android.net.Uri
-import android.os.Binder
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
@@ -26,11 +23,6 @@ import java.io.File
  */
 @UnstableApi
 class NavaqPlaybackService : MediaSessionService() {
-    inner class LocalBinder : Binder() {
-        fun service(): NavaqPlaybackService = this@NavaqPlaybackService
-    }
-
-    private val binder = LocalBinder()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
@@ -114,11 +106,6 @@ class NavaqPlaybackService : MediaSessionService() {
         mainHandler.post(positionReporter)
     }
 
-    override fun onBind(intent: Intent?): IBinder {
-        // Keep the standard MediaSessionService binding path for media controllers.
-        return super.onBind(intent) ?: binder
-    }
-
     fun dispatchCoreCommand(commandJson: String): String {
         check(nativeHandle != 0L) { "Rust core is not initialized" }
         val output = NavaqNativeBridge.nativeHandleCommand(nativeHandle, commandJson)
@@ -177,7 +164,7 @@ class NavaqPlaybackService : MediaSessionService() {
             .setAlbumTitle(track.optString("album").takeIf { it.isNotBlank() && it != "null" })
             .build()
         val item = MediaItem.Builder()
-            .setMediaId(track.getJSONObject("id").optString("0", track.optString("id")))
+            .setMediaId(track.optString("id"))
             .setUri(uri)
             .setMediaMetadata(metadata)
             .build()
