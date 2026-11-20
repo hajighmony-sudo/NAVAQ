@@ -1,0 +1,27 @@
+name: NAVAQ Core CI
+
+on:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "core/**"
+      - ".github/workflows/core-ci.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "core/**"
+      - ".github/workflows/core-ci.yml"
+
+jobs:
+  rust:
+    name: Rust core checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo test --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets -- -D warnings
