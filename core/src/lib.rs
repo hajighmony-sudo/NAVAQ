@@ -1,7 +1,7 @@
 //! NAVAQ's platform-independent audio domain and playback state core.
 //!
-//! This crate deliberately contains no UI and no platform audio implementation.
-//! Android Media3 and iOS AVFoundation adapters will consume this stable command/event API.
+//! This crate deliberately contains no UI or platform audio implementation.
+//! Native Android and iOS adapters consume its command/event API.
 
 pub mod audio_session;
 pub mod backend;
@@ -21,6 +21,9 @@ pub mod ratings;
 pub mod replaygain;
 pub mod runtime;
 pub mod sleep_timer;
+
+#[cfg(target_os = "android")]
+mod android_jni;
 
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
