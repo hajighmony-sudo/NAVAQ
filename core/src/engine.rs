@@ -200,11 +200,15 @@ impl PlayerCore {
         self.state.position_ms = 0;
 
         if needs_prepare {
-            output.backend_actions.push(BackendAction::Prepare(track.clone()));
+            output
+                .backend_actions
+                .push(BackendAction::Prepare(track.clone()));
             self.backend_loaded_track = Some(track.id.clone());
         }
         if changed {
-            output.events.push(PlayerEvent::TrackChanged(Some(track.id.clone())));
+            output
+                .events
+                .push(PlayerEvent::TrackChanged(Some(track.id.clone())));
         }
     }
 
@@ -232,37 +236,58 @@ mod tests {
     #[test]
     fn play_emits_prepare_and_play_for_first_track() {
         let mut core = PlayerCore::new();
-        core.handle(PlayerCommand::AddToQueue(track("one", 12_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("one", 12_000)))
+            .unwrap();
         let output = core.handle(PlayerCommand::Play).unwrap();
         assert_eq!(core.state().status, PlaybackStatus::Playing);
-        assert!(output.backend_actions.iter().any(|action| matches!(action, BackendAction::Prepare(_))));
+        assert!(output
+            .backend_actions
+            .iter()
+            .any(|action| matches!(action, BackendAction::Prepare(_))));
         assert!(output.backend_actions.contains(&BackendAction::Play));
-        assert!(output.events.iter().any(|event| matches!(event, PlayerEvent::PlaybackStarted)));
+        assert!(output
+            .events
+            .iter()
+            .any(|event| matches!(event, PlayerEvent::PlaybackStarted)));
     }
 
     #[test]
     fn volume_and_speed_are_validated() {
         let mut core = PlayerCore::new();
-        assert_eq!(core.handle(PlayerCommand::SetVolume(1.5)), Err(PlayerError::InvalidVolume));
-        assert_eq!(core.handle(PlayerCommand::SetSpeed(0.0)), Err(PlayerError::InvalidSpeed));
+        assert_eq!(
+            core.handle(PlayerCommand::SetVolume(1.5)),
+            Err(PlayerError::InvalidVolume)
+        );
+        assert_eq!(
+            core.handle(PlayerCommand::SetSpeed(0.0)),
+            Err(PlayerError::InvalidSpeed)
+        );
     }
 
     #[test]
     fn seek_is_clamped_and_forwarded_to_backend() {
         let mut core = PlayerCore::new();
-        core.handle(PlayerCommand::AddToQueue(track("one", 5_000))).unwrap();
-        core.handle(PlayerCommand::PlayTrack(TrackId::from("one"))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("one", 5_000)))
+            .unwrap();
+        core.handle(PlayerCommand::PlayTrack(TrackId::from("one")))
+            .unwrap();
         core.on_prepared(Some(5_000));
-        let output = core.handle(PlayerCommand::Seek { position_ms: 9_000 }).unwrap();
+        let output = core
+            .handle(PlayerCommand::Seek { position_ms: 9_000 })
+            .unwrap();
         assert_eq!(core.state().position_ms, 5_000);
-        assert!(output.backend_actions.contains(&BackendAction::SeekTo(5_000)));
+        assert!(output
+            .backend_actions
+            .contains(&BackendAction::SeekTo(5_000)));
     }
 
     #[test]
     fn next_prepares_the_next_track() {
         let mut core = PlayerCore::new();
-        core.handle(PlayerCommand::AddToQueue(track("one", 1_000))).unwrap();
-        core.handle(PlayerCommand::AddToQueue(track("two", 2_000))).unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("one", 1_000)))
+            .unwrap();
+        core.handle(PlayerCommand::AddToQueue(track("two", 2_000)))
+            .unwrap();
         core.handle(PlayerCommand::Play).unwrap();
         let output = core.handle(PlayerCommand::Next).unwrap();
         assert_eq!(core.current_track_id(), Some(&TrackId::from("two")));
