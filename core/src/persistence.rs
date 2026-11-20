@@ -25,4 +25,3 @@ pub enum SnapshotError {
     #[error("snapshot contains invalid playback settings")]
     InvalidPlaybackSettings,
 }
-
