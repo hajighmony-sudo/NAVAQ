@@ -109,7 +109,7 @@ impl Default for PlaybackState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlayerCommand {
     Play,
     Pause,
@@ -152,7 +152,7 @@ pub enum PlayerCommand {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BackendAction {
     Prepare(Track),
     Play,
@@ -165,14 +165,14 @@ pub enum BackendAction {
     SetCrossfade(u32),
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct CoreOutput {
     pub backend_actions: Vec<BackendAction>,
     pub events: Vec<PlayerEvent>,
 }
 
 /// Events reported asynchronously by a platform audio backend.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BackendEvent {
     Prepared {
         track_id: TrackId,
@@ -196,7 +196,7 @@ pub enum BackendEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlayerEvent {
     StateChanged(PlaybackState),
     TrackChanged(Option<TrackId>),
