@@ -130,6 +130,9 @@ mod tests {
 
         assert_eq!(error.action_index, 1);
         assert_eq!(error.source.code, "platform_failure");
-        assert_eq!(backend.actions, vec![BackendAction::Prepare(sample_track())]);
+        assert_eq!(
+            backend.actions,
+            vec![BackendAction::Prepare(sample_track())]
+        );
     }
 }
