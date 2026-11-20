@@ -2,8 +2,8 @@ use crate::model::{
     BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus, PlayerCommand,
     PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
-use crate::queue::PlaybackQueue;
 use crate::persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
+use crate::queue::PlaybackQueue;
 
 /// Platform-independent playback coordinator.
 ///
@@ -326,8 +326,7 @@ impl PlayerCore {
         }
 
         let queue = PlaybackQueue::from_snapshot(snapshot.queue)?;
-        if snapshot.state.current_track.as_ref()
-            != queue.current().map(|track| &track.id)
+        if snapshot.state.current_track.as_ref() != queue.current().map(|track| &track.id)
             || snapshot.state.shuffle_enabled != queue.shuffle_enabled()
         {
             return Err(SnapshotError::CurrentTrackMismatch);
@@ -341,7 +340,10 @@ impl PlayerCore {
         }
 
         let mut state = snapshot.state;
-        if matches!(state.status, PlaybackStatus::Playing | PlaybackStatus::Loading) {
+        if matches!(
+            state.status,
+            PlaybackStatus::Playing | PlaybackStatus::Loading
+        ) {
             state.status = PlaybackStatus::Paused;
         }
         state.is_buffering = false;
@@ -351,10 +353,18 @@ impl PlayerCore {
 
         let mut output = CoreOutput::default();
         if let Some(track) = queue.current() {
-            output.backend_actions.push(BackendAction::Prepare(track.clone()));
-            output.backend_actions.push(BackendAction::SetVolume(state.volume));
-            output.backend_actions.push(BackendAction::SetSpeed(state.speed));
-            output.backend_actions.push(BackendAction::SeekTo(state.position_ms));
+            output
+                .backend_actions
+                .push(BackendAction::Prepare(track.clone()));
+            output
+                .backend_actions
+                .push(BackendAction::SetVolume(state.volume));
+            output
+                .backend_actions
+                .push(BackendAction::SetSpeed(state.speed));
+            output
+                .backend_actions
+                .push(BackendAction::SeekTo(state.position_ms));
         }
 
         output.events.push(PlayerEvent::StateChanged(state.clone()));
@@ -563,7 +573,9 @@ mod tests {
         assert!(output.backend_actions.iter().any(
             |action| matches!(action, BackendAction::Prepare(item) if item.id == TrackId::from("one"))
         ));
-        assert!(output.backend_actions.contains(&BackendAction::SeekTo(4_500)));
+        assert!(output
+            .backend_actions
+            .contains(&BackendAction::SeekTo(4_500)));
 
         let next_after_restore = restored.queue().clone();
         let mut next_after_restore = next_after_restore;
@@ -585,5 +597,4 @@ mod tests {
             Err(SnapshotError::UnsupportedVersion(_))
         ));
     }
-
 }
