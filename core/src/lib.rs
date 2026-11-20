@@ -7,6 +7,7 @@ pub mod audio_session;
 pub mod backend;
 pub mod bookmarks;
 pub mod engine;
+pub mod dsp;
 pub mod equalizer;
 pub mod history;
 pub mod library;
@@ -29,6 +30,7 @@ pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
 pub use engine::PlayerCore;
+pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor};
 pub use equalizer::{EqualizerBand, EqualizerPreset, EqualizerSettings};
 pub use history::PlayHistory;
 pub use library::{AlbumSummary, Library, SortKey};
