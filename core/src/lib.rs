@@ -3,12 +3,14 @@
 //! This crate deliberately contains no UI and no platform audio implementation.
 //! Android Media3 and iOS AVFoundation adapters will consume this stable command/event API.
 
+pub mod audio_session;
 pub mod backend;
 pub mod engine;
 pub mod model;
 pub mod queue;
 pub mod runtime;
 
+pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use engine::PlayerCore;
 pub use model::{
     AudioSource, BackendAction, BackendEvent, CoreOutput, PlaybackState, PlaybackStatus,
