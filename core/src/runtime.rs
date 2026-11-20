@@ -1,6 +1,7 @@
 use crate::backend::{dispatch_output, AudioBackend, BackendDispatchError};
 use crate::engine::PlayerCore;
 use crate::model::{BackendEvent, CoreOutput, PlayerCommand, PlayerError, PlayerEvent};
+use crate::persistence::{PlayerSnapshot, SnapshotError};
 use thiserror::Error;
 
 /// Drives the platform-independent player core against a native audio backend.
@@ -10,6 +11,17 @@ pub struct PlayerRuntime<B> {
 }
 
 impl<B: AudioBackend> PlayerRuntime<B> {
+    /// Restore a saved player snapshot and rehydrate the native backend.
+    pub fn restore(
+        backend: B,
+        snapshot: PlayerSnapshot,
+    ) -> Result<(Self, CoreOutput), RuntimeError> {
+        let (core, output) = PlayerCore::restore(snapshot)?;
+        let mut runtime = Self { core, backend };
+        runtime.dispatch_or_mark_failed(&output)?;
+        Ok((runtime, output))
+    }
+
     pub fn new(backend: B) -> Self {
         Self {
             core: PlayerCore::new(),
@@ -75,6 +87,8 @@ impl<B: AudioBackend> PlayerRuntime<B> {
 pub enum RuntimeError {
     #[error(transparent)]
     Player(#[from] PlayerError),
+    #[error(transparent)]
+    Snapshot(#[from] SnapshotError),
     #[error(transparent)]
     BackendDispatch(#[from] BackendDispatchError),
 }
