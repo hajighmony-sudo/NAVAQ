@@ -163,10 +163,7 @@ pub fn mix_equal_power_crossfade(
     progress: f32,
     output: &mut [f32],
 ) -> Result<(), DspError> {
-    if outgoing.is_empty()
-        || outgoing.len() != incoming.len()
-        || outgoing.len() != output.len()
-    {
+    if outgoing.is_empty() || outgoing.len() != incoming.len() || outgoing.len() != output.len() {
         return Err(DspError::InvalidCrossfadeBuffers);
     }
     let progress = if progress.is_finite() {
