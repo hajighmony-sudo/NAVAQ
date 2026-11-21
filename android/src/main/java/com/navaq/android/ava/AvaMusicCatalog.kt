@@ -9,7 +9,6 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.util.Locale
-import kotlin.random.Random
 
 data class AvaCatalogTrack(
     val id: String,
@@ -59,7 +58,11 @@ class AvaMusicCatalog(private val context: Context) {
         if (settings.musicSources != AvaMusicSources.DEVICE) {
             result += AvaInAppCatalog.search(query).filter { matches(it, query) }
         }
-        return result.distinctBy { it.id }
+        return result
+            .distinctBy { it.id }
+            .sortedWith(compareBy<AvaCatalogTrack> { relevance(it, query) }
+                .thenBy { it.title.lowercase(Locale.ROOT) }
+                .thenBy { it.id })
     }
 
     fun chooseRandom(settings: AvaSettings): AvaCatalogTrack? {
@@ -113,6 +116,23 @@ class AvaMusicCatalog(private val context: Context) {
             // An OEM MediaStore provider may reject a query on this collection.
         }
         return tracks
+    }
+
+    private fun relevance(track: AvaCatalogTrack, query: String?): Int {
+        if (query.isNullOrBlank()) return 10
+        val needle = normalize(query)
+        val title = normalize(track.title)
+        val artist = normalize(track.artist.orEmpty())
+        val album = normalize(track.album.orEmpty())
+        return when {
+            title == needle -> 0
+            title.startsWith(needle) -> 1
+            title.contains(needle) -> 2
+            artist == needle -> 3
+            artist.contains(needle) -> 4
+            album.contains(needle) -> 5
+            else -> 6
+        }
     }
 
     private fun matches(track: AvaCatalogTrack, query: String?): Boolean {
