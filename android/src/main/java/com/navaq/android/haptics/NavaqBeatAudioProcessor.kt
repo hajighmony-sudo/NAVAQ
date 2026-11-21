@@ -26,6 +26,7 @@ class NavaqBeatAudioProcessor(
     private var lastBeatAtMs = Long.MIN_VALUE
     private var dspHandle = 0L
 
+    @Synchronized
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT &&
             inputAudioFormat.encoding != C.ENCODING_PCM_16BIT
@@ -42,6 +43,7 @@ class NavaqBeatAudioProcessor(
         return inputAudioFormat
     }
 
+    @Synchronized
     override fun queueInput(inputBuffer: ByteBuffer) {
         val view = inputBuffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
         val bytesPerSample = if (encoding == C.ENCODING_PCM_FLOAT) 4 else 2
@@ -78,6 +80,7 @@ class NavaqBeatAudioProcessor(
     }
 
     /** Apply a validated Rust EQ configuration; false means it was rejected. */
+    @Synchronized
     fun setEqualizerJson(equalizerJson: String): Boolean =
         dspHandle != 0L && NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, equalizerJson)
 
@@ -111,6 +114,7 @@ class NavaqBeatAudioProcessor(
         resetAnalysis()
     }
 
+    @Synchronized
     override fun onReset() {
         releaseDsp()
         sampleRate = 0
@@ -120,6 +124,7 @@ class NavaqBeatAudioProcessor(
         resetAnalysis()
     }
 
+    @Synchronized
     private fun releaseDsp() {
         if (dspHandle != 0L) {
             NavaqNativeBridge.nativeDestroyDsp(dspHandle)
