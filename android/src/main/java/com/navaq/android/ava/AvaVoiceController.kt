@@ -26,6 +26,9 @@ class AvaVoiceController(
         check(AvaPermissions.hasMicrophoneAccess(appContext)) {
             "Microphone permission is required"
         }
+        check(AvaSpeechModelManager(appContext).isInstalled()) {
+            "Download the offline Persian/English speech model from AVA settings first"
+        }
         stopListening()
 
         val input = AvaSpeechInput(
@@ -46,7 +49,7 @@ class AvaVoiceController(
         try {
             input.startListening(
                 languageTag = settings.speechLanguageTag(),
-                preferOffline = settings.preferOfflineSpeech()
+                preferOffline = true
             )
         } catch (error: Exception) {
             input.release()
