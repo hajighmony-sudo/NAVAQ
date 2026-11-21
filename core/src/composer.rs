@@ -99,10 +99,16 @@ impl Composition {
             && (1..=512).contains(&self.bars)
             && !self.tracks.is_empty()
             && self.tracks.len() <= 64
-            && self.tracks.iter().all(|track| {
-                track.is_valid() && track_ids.insert(track.id.as_str())
-            })
-            && self.tracks.iter().filter(|track| track.instrument == Instrument::Drums).count() <= 1
+            && self
+                .tracks
+                .iter()
+                .all(|track| track.is_valid() && track_ids.insert(track.id.as_str()))
+            && self
+                .tracks
+                .iter()
+                .filter(|track| track.instrument == Instrument::Drums)
+                .count()
+                <= 1
             && self
                 .tracks
                 .iter()
