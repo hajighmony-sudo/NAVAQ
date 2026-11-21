@@ -187,6 +187,12 @@ impl CreativeStore {
         now_ms: u64,
     ) -> Result<(), CreativeError> {
         let job = self.jobs.get_mut(id).ok_or(CreativeError::JobNotFound)?;
+        if status != JobStatus::Running || job.status != JobStatus::Queued {
+            return Err(CreativeError::InvalidTransition);
+        }
+        if now_ms < job.updated_at_ms {
+            return Err(CreativeError::TimeWentBackwards);
+        }
         job.status = status;
         job.updated_at_ms = now_ms;
         Ok(())
@@ -199,6 +205,15 @@ impl CreativeStore {
         now_ms: u64,
     ) -> Result<(), CreativeError> {
         let job = self.jobs.get_mut(id).ok_or(CreativeError::JobNotFound)?;
+        if job.status != JobStatus::Running {
+            return Err(CreativeError::InvalidTransition);
+        }
+        if &result.job_id != id {
+            return Err(CreativeError::ResultJobMismatch);
+        }
+        if now_ms < job.updated_at_ms {
+            return Err(CreativeError::TimeWentBackwards);
+        }
         job.status = JobStatus::Succeeded;
         job.result = Some(result);
         job.error_message = None;
@@ -208,7 +223,14 @@ impl CreativeStore {
 
     pub fn fail(&mut self, id: &JobId, message: String, now_ms: u64) -> Result<(), CreativeError> {
         let job = self.jobs.get_mut(id).ok_or(CreativeError::JobNotFound)?;
+        if !matches!(job.status, JobStatus::Queued | JobStatus::Running) {
+            return Err(CreativeError::InvalidTransition);
+        }
+        if now_ms < job.updated_at_ms {
+            return Err(CreativeError::TimeWentBackwards);
+        }
         job.status = JobStatus::Failed;
+        job.result = None;
         job.error_message = Some(message);
         job.updated_at_ms = now_ms;
         Ok(())
@@ -216,8 +238,11 @@ impl CreativeStore {
 
     pub fn cancel(&mut self, id: &JobId, now_ms: u64) -> Result<(), CreativeError> {
         let job = self.jobs.get_mut(id).ok_or(CreativeError::JobNotFound)?;
-        if matches!(job.status, JobStatus::Succeeded | JobStatus::Failed) {
+        if !matches!(job.status, JobStatus::Queued | JobStatus::Running) {
             return Err(CreativeError::AlreadyFinished);
+        }
+        if now_ms < job.updated_at_ms {
+            return Err(CreativeError::TimeWentBackwards);
         }
         job.status = JobStatus::Cancelled;
         job.updated_at_ms = now_ms;
@@ -254,6 +279,14 @@ pub enum CreativeError {
     AlreadyFinished,
     #[error("manual composition is invalid")]
     InvalidComposition,
+    #[error("creative request contains invalid options")]
+    InvalidRequest,
+    #[error("creative job state transition is not allowed")]
+    InvalidTransition,
+    #[error("result belongs to a different creative job")]
+    ResultJobMismatch,
+    #[error("job update timestamp cannot move backwards")]
+    TimeWentBackwards,
 }
 
 #[cfg(test)]
