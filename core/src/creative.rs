@@ -164,6 +164,15 @@ impl CreativeStore {
                 if r.stems.is_empty() && !r.produce_instrumental_mix {
                     return Err(CreativeError::NoStemsRequested);
                 }
+                if r.source_track_id.0.trim().is_empty() {
+                    return Err(CreativeError::InvalidRequest);
+                }
+                let mut unique = r.stems.clone();
+                unique.sort_by_key(|stem| *stem as u8);
+                unique.dedup();
+                if unique.len() != r.stems.len() {
+                    return Err(CreativeError::InvalidRequest);
+                }
             }
             CreativeRequest::ManualComposition(composition) => {
                 if !composition.is_valid() {
@@ -212,6 +221,13 @@ impl CreativeStore {
         let job = self.jobs.get_mut(id).ok_or(CreativeError::JobNotFound)?;
         if job.status != JobStatus::Running {
             return Err(CreativeError::InvalidTransition);
+        }
+        if result.title.trim().is_empty() || result.title.len() > 512
+            || result.artist.as_ref().map_or(false, |artist| artist.len() > 256)
+            || result.tags.len() > 64
+            || result.tags.iter().any(|(key, value)| key.trim().is_empty() || key.len() > 64 || value.len() > 512)
+        {
+            return Err(CreativeError::InvalidRequest);
         }
         if &result.job_id != id {
             return Err(CreativeError::ResultJobMismatch);
