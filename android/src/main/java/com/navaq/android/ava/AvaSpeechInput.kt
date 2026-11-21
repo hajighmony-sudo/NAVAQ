@@ -23,10 +23,10 @@ import kotlin.math.sqrt
 /**
  * Fully offline Persian/English speech input.
  *
- * Audio is captured with AudioRecord and decoded locally by the multilingual
- * Whisper model through Sherpa-ONNX. The only network operation is the user's
- * one-time model download in AvaSpeechModelManager; microphone audio and
- * recognized text are never sent to a cloud recognizer.
+ * One Sherpa-ONNX Whisper recognizer is kept alive for the whole listening
+ * session. Audio is captured locally, split into utterances with a lightweight
+ * voice-activity detector, and decoded on-device. No audio or transcript is
+ * sent to a network speech service.
  */
 class AvaSpeechInput(
     context: Context,
@@ -98,23 +98,21 @@ class AvaSpeechInput(
                 else -> ""
             }
 
-            val modelConfig = OfflineModelConfig(
-                whisper = OfflineWhisperModelConfig(
-                    encoder = model.modelPath("tiny-encoder.int8.onnx"),
-                    decoder = model.modelPath("tiny-decoder.int8.onnx"),
-                    // Empty language enables Whisper's built-in language detection.
-                    language = language,
-                    task = "transcribe"
-                ),
-                tokens = model.modelPath("tiny-tokens.txt"),
-                numThreads = RECOGNIZER_THREADS,
-                provider = "cpu",
-                modelType = "whisper"
-            )
             recognizer = OfflineRecognizer(
                 config = OfflineRecognizerConfig(
                     featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-                    modelConfig = modelConfig
+                    modelConfig = OfflineModelConfig(
+                        whisper = OfflineWhisperModelConfig(
+                            encoder = model.modelPath("tiny-encoder.int8.onnx"),
+                            decoder = model.modelPath("tiny-decoder.int8.onnx"),
+                            language = language,
+                            task = "transcribe"
+                        ),
+                        tokens = model.modelPath("tiny-tokens.txt"),
+                        numThreads = RECOGNIZER_THREADS,
+                        provider = "cpu",
+                        modelType = "whisper"
+                    )
                 )
             )
             if (session.cancelled.get()) return
@@ -128,129 +126,55 @@ class AvaSpeechInput(
                 "The microphone does not support 16 kHz mono recording"
             }
 
-            recorder = AudioRecord(
+            val audioRecorder = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minBuffer, BUFFER_BYTES)
             )
-            check(recorder.state == AudioRecord.STATE_INITIALIZED) {
+            recorder = audioRecorder
+            session.recorder = audioRecorder
+            check(audioRecorder.state == AudioRecord.STATE_INITIALIZED) {
                 "Could not initialize the microphone"
             }
-
-            session.recorder = recorder
             if (session.cancelled.get()) return
 
-            recorder.startRecording()
+            audioRecorder.startRecording()
             postListening(session, true)
 
-            val pcm = ShortArray(READ_SAMPLES)
-            val collected = FloatAccumulator(SAMPLE_RATE * MAX_CAPTURE_SECONDS)
-            val preRoll = ShortArray(PRE_ROLL_SAMPLES)
-            var preRollWriteIndex = 0
-            var preRollCount = 0
-            var speechDetected = false
-            var silenceSamples = 0
-            val startedAt = SystemClock.elapsedRealtime()
+            while (!session.cancelled.get()) {
+                val utterance = captureUtterance(session, audioRecorder) ?: continue
+                if (session.cancelled.get()) break
 
-            while (
-                !session.cancelled.get() &&
-                collected.size < SAMPLE_RATE * MAX_CAPTURE_SECONDS
-            ) {
-                val count = recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
-                if (count <= 0) {
-                    if (
-                        count == AudioRecord.ERROR_INVALID_OPERATION ||
-                        count == AudioRecord.ERROR_BAD_VALUE ||
-                        count == AudioRecord.ERROR_DEAD_OBJECT
-                    ) {
-                        throw IllegalStateException("Microphone capture failed ($count)")
+                postListening(session, false)
+                if (audioRecorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecorder.stop()
+                }
+
+                val stream = recognizer.createStream()
+                try {
+                    if (language.isEmpty()) {
+                        // Whisper language IDs are restricted to the two languages
+                        // AVA supports, while retaining one shared encoder pass.
+                        stream.setOption("language_candidates", "fa,en")
                     }
-                    continue
-                }
-
-                var energy = 0.0
-                for (index in 0 until count) {
-                    val normalized = pcm[index] / 32768.0
-                    energy += normalized * normalized
-                }
-                val rms = sqrt(energy / count)
-
-                if (!speechDetected && rms >= SPEECH_RMS_THRESHOLD) {
-                    speechDetected = true
-                    // Preserve a short lead-in so the first syllable is not clipped.
-                    val firstPreRoll = (preRollWriteIndex - preRollCount + PRE_ROLL_SAMPLES) %
-                        PRE_ROLL_SAMPLES
-                    for (index in 0 until preRollCount) {
-                        val sample = preRoll[(firstPreRoll + index) % PRE_ROLL_SAMPLES]
-                        collected.add(sample / 32768.0f)
+                    stream.acceptWaveform(utterance, SAMPLE_RATE)
+                    recognizer.decode(stream)
+                    val transcript = recognizer.getResult(stream).text.trim()
+                    if (transcript.isNotEmpty() && !session.cancelled.get()) {
+                        mainHandler.post {
+                            if (!session.cancelled.get()) onTranscript(transcript)
+                        }
                     }
-                    for (index in 0 until count) {
-                        collected.add(pcm[index] / 32768.0f)
-                    }
-                } else if (speechDetected) {
-                    for (index in 0 until count) {
-                        collected.add(pcm[index] / 32768.0f)
-                    }
-                    if (rms < SPEECH_RMS_THRESHOLD) {
-                        silenceSamples += count
-                    } else {
-                        silenceSamples = 0
-                    }
-                } else {
-                    for (index in 0 until count) {
-                        preRoll[preRollWriteIndex] = pcm[index]
-                        preRollWriteIndex = (preRollWriteIndex + 1) % PRE_ROLL_SAMPLES
-                        if (preRollCount < PRE_ROLL_SAMPLES) preRollCount++
-                    }
+                } finally {
+                    stream.release()
                 }
 
-                if (
-                    !speechDetected &&
-                    SystemClock.elapsedRealtime() - startedAt >= NO_SPEECH_TIMEOUT_MS
-                ) {
-                    throw AvaSpeechException(ERROR_NO_SPEECH, "No speech was detected")
+                if (!session.cancelled.get()) {
+                    audioRecorder.startRecording()
+                    postListening(session, true)
                 }
-                if (
-                    speechDetected &&
-                    silenceSamples >= SAMPLE_RATE * END_SILENCE_SECONDS
-                ) {
-                    break
-                }
-            }
-
-            if (session.cancelled.get()) return
-            check(speechDetected && collected.size >= MIN_SPEECH_SAMPLES) {
-                "No usable speech was captured"
-            }
-
-            if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                recorder.stop()
-            }
-            val stream = recognizer.createStream()
-            try {
-                if (language.isEmpty()) {
-                    // Whisper detects the spoken language, constrained to AVA's
-                    // supported languages to reduce short-utterance misclassification.
-                    stream.setOption("language_candidates", "fa,en")
-                }
-                stream.acceptWaveform(collected.toArray(), SAMPLE_RATE)
-                recognizer.decode(stream)
-
-                val result = recognizer.getResult(stream)
-                val transcript = result.text.trim()
-                if (transcript.isEmpty()) {
-                    throw AvaSpeechException(
-                        ERROR_NO_TRANSCRIPT,
-                        "AVA could not recognize the speech"
-                    )
-                }
-                mainHandler.post {
-                    if (!session.cancelled.get()) onTranscript(transcript)
-                }
-            } finally {
-                stream.release()
             }
         } catch (error: Throwable) {
             if (!session.cancelled.get()) {
@@ -274,6 +198,98 @@ class AvaSpeechInput(
                 currentSession = null
                 mainHandler.post { onListeningChanged(false) }
             }
+        }
+    }
+
+    /**
+     * Returns one speech segment, or null after an idle interval. Idle time is
+     * not treated as a recognition error: the same microphone/model session
+     * simply keeps waiting for the next command.
+     */
+    private fun captureUtterance(
+        session: CaptureSession,
+        recorder: AudioRecord
+    ): FloatArray? {
+        val pcm = ShortArray(READ_SAMPLES)
+        val collected = FloatAccumulator(SAMPLE_RATE * MAX_CAPTURE_SECONDS)
+        val preRoll = ShortArray(PRE_ROLL_SAMPLES)
+        var preRollWriteIndex = 0
+        var preRollCount = 0
+        var speechDetected = false
+        var silenceSamples = 0
+        val startedAt = SystemClock.elapsedRealtime()
+
+        while (
+            !session.cancelled.get() &&
+            collected.size < SAMPLE_RATE * MAX_CAPTURE_SECONDS
+        ) {
+            val count = recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
+            if (count <= 0) {
+                if (
+                    count == AudioRecord.ERROR_INVALID_OPERATION ||
+                    count == AudioRecord.ERROR_BAD_VALUE ||
+                    count == AudioRecord.ERROR_DEAD_OBJECT
+                ) {
+                    throw AvaSpeechException(
+                        ERROR_MICROPHONE,
+                        "Microphone capture failed ($count)"
+                    )
+                }
+                continue
+            }
+
+            var energy = 0.0
+            for (index in 0 until count) {
+                val normalized = pcm[index] / 32768.0
+                energy += normalized * normalized
+            }
+            val rms = sqrt(energy / count)
+
+            if (!speechDetected && rms >= SPEECH_RMS_THRESHOLD) {
+                speechDetected = true
+                // Keep a short lead-in so the first syllable is not clipped.
+                val firstPreRoll =
+                    (preRollWriteIndex - preRollCount + PRE_ROLL_SAMPLES) % PRE_ROLL_SAMPLES
+                for (index in 0 until preRollCount) {
+                    val sample = preRoll[(firstPreRoll + index) % PRE_ROLL_SAMPLES]
+                    collected.add(sample / 32768.0f)
+                }
+                for (index in 0 until count) {
+                    collected.add(pcm[index] / 32768.0f)
+                }
+            } else if (speechDetected) {
+                for (index in 0 until count) {
+                    collected.add(pcm[index] / 32768.0f)
+                }
+                if (rms < SPEECH_RMS_THRESHOLD) {
+                    silenceSamples += count
+                } else {
+                    silenceSamples = 0
+                }
+            } else {
+                for (index in 0 until count) {
+                    preRoll[preRollWriteIndex] = pcm[index]
+                    preRollWriteIndex = (preRollWriteIndex + 1) % PRE_ROLL_SAMPLES
+                    if (preRollCount < PRE_ROLL_SAMPLES) preRollCount++
+                }
+            }
+
+            if (
+                !speechDetected &&
+                SystemClock.elapsedRealtime() - startedAt >= NO_SPEECH_TIMEOUT_MS
+            ) {
+                return null
+            }
+            if (speechDetected && silenceSamples >= SAMPLE_RATE * END_SILENCE_SECONDS) {
+                break
+            }
+        }
+
+        if (session.cancelled.get()) return null
+        return if (speechDetected && collected.size >= MIN_SPEECH_SAMPLES) {
+            collected.toArray()
+        } else {
+            null
         }
     }
 
@@ -333,6 +349,7 @@ class AvaSpeechInput(
         private const val SPEECH_RMS_THRESHOLD = 0.008
         const val ERROR_NO_SPEECH = 1001
         const val ERROR_NO_TRANSCRIPT = 1002
-        const val ERROR_RECOGNITION = 1003
+        const val ERROR_MICROPHONE = 1003
+        const val ERROR_RECOGNITION = 1004
     }
 }
