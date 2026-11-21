@@ -20,6 +20,14 @@
         <item>silent</item>
         <item>voice</item>
     </string-array>
+    <string-array name="ava_activation_labels">
+        <item>Start / Stop listening</item>
+        <item>Wake phrase: Hey Ava / هی آوا</item>
+    </string-array>
+    <string-array name="ava_activation_values">
+        <item>push_to_talk</item>
+        <item>wake_word</item>
+    </string-array>
     <string-array name="ava_language_labels">
         <item>Automatic</item>
         <item>Persian</item>
