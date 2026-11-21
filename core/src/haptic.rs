@@ -103,9 +103,10 @@ impl HapticSettings {
         (0.0..=1.0).contains(&self.master_intensity)
             && self.active_triggers.len() <= 16
             && self.custom_patterns.len() <= 16
-            && self.custom_patterns.iter().all(|(_, p)| {
-                p.name.len() <= 64 && p.pulses.len() <= 64 && p.is_valid()
-            })
+            && self
+                .custom_patterns
+                .iter()
+                .all(|(_, p)| p.name.len() <= 64 && p.pulses.len() <= 64 && p.is_valid())
     }
 
     /// Return the active pattern with intensity scaled for the current device.
