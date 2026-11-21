@@ -109,8 +109,12 @@ class AvaActivity : Activity() {
             onTranscript = { transcript ->
                 runOnUiThread {
                     transcriptText.text = "Heard: $transcript"
-                    statusText.text = "Command recognized. Executing locally…"
-                    stopButton.isEnabled = false
+                    statusText.text = "Speech recognized locally."
+                }
+            },
+            onWakePhraseDetected = {
+                runOnUiThread {
+                    statusText.text = "AVA activated. Say your command…"
                 }
             }
         )
