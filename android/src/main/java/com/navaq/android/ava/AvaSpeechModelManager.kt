@@ -80,7 +80,7 @@ class AvaSpeechModelManager(context: Context) {
             check(connection.responseCode == HttpURLConnection.HTTP_OK) {
                 "AVA model download failed (HTTP \${connection.responseCode})"
             }
-            val total = connection.contentLengthLong
+            val total = connection.contentLength.toLong()
             var downloaded = 0L
             var lastUpdate = 0L
             BufferedInputStream(connection.inputStream).use { input ->
