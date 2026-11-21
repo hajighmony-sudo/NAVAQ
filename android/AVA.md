@@ -14,8 +14,9 @@ and Rust `PlayerCore`; it does not create a second player.
 - Optional text-to-speech output; Visual is the default and Silent never speaks.
 - Optional confirmation before replacing an existing playback queue.
 - Explicit microphone and audio-library permission helpers.
-- Sherpa-ONNX offline multilingual Whisper tiny INT8 speech recognition for Persian and English.
-- One-time, in-app speech-model installation with progress and app-private model storage.
+- Sherpa-ONNX offline multilingual Whisper tiny INT8 speech recognition for Persian and English, with automatic language detection restricted to Persian/English.
+- One-time, in-app speech-model installation with progress, free-space validation, archive-size validation, and app-private model storage.
+- A launcher Activity for AVA with microphone permission flow, start/stop listening, recognized transcript display, model setup, command-result display, and music-change confirmation.
 
 ## Embed the settings page
 
@@ -65,7 +66,7 @@ Request `AvaPermissions.microphonePermission()` at runtime before starting
 when the user chooses Device or Both as the music source. Do not request either
 permission silently.
 
-A visible screen can start listening after permission is granted:
+Launch NAVAQ to the AVA screen. Install the speech model once while connected to the internet; after installation the model runs locally. The AVA screen requests microphone permission and, when the selected source includes device music, audio-library permission. A visible screen can start listening after permission is granted:
 
 ```kotlin
 speechInput.startListening(
@@ -88,9 +89,13 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
 - The in-app provider must be registered by the real NAVAQ library owner.
 - AVA does not use an online AI engine. Recognized text is interpreted by the local Rust command parser; unsupported requests receive a local explanation rather than being sent to a cloud model.
 - Offline speech uses Sherpa-ONNX and the multilingual Whisper tiny INT8 model.
-  The model is installed once from the AVA settings page (approximately 116 MB)
-  and then runs from app-private storage without network access. The first-time
-  download is required before the offline microphone recognizer can start.
+  The model is installed once from the AVA screen or settings page (approximately
+  116 MB) and then runs from app-private storage without network access. The
+  first-time download is required before the offline microphone recognizer can start.
+- Automatic language detection is constrained to Persian and English; users can
+  also pin either language in settings. The recognizer captures one utterance at
+  a time, preserves a short audio pre-roll, and stops on a silence interval or
+  after its maximum capture window.
 - Wake-word activation is not exposed in this settings screen because no
   wake-word engine is integrated. Push-to-talk is the supported activation path.
 - Android 11+ background microphone behavior is permission- and OS-policy-bound.
