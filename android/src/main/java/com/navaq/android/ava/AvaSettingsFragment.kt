@@ -115,4 +115,4 @@ class AvaSettingsFragment : PreferenceFragmentCompat() {
             true
         }
     }
-}}
+}
