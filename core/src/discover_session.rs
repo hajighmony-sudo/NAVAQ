@@ -2,9 +2,7 @@
 //! Provider I/O remains in the host; this module owns paging, result accumulation,
 //! deterministic provider planning and bounded session history.
 
-use crate::discover::{
-    DiscoverError, DiscoverProvider, DiscoverSearchPage, DiscoverSearchRequest,
-};
+use crate::discover::{DiscoverError, DiscoverProvider, DiscoverSearchPage, DiscoverSearchRequest};
 use crate::discover_catalog::DiscoverProviderRegistry;
 use std::collections::BTreeSet;
 
@@ -122,7 +120,10 @@ impl DiscoverSession {
         }
         self.has_more &= page.has_more && self.results.len() < MAX_SESSION_RESULTS;
         if self.has_more {
-            self.next_page = self.next_page.checked_add(1).ok_or(DiscoverError::InvalidPage)?;
+            self.next_page = self
+                .next_page
+                .checked_add(1)
+                .ok_or(DiscoverError::InvalidPage)?;
         }
         Ok(added)
     }
@@ -186,11 +187,19 @@ mod tests {
 
     #[test]
     fn session_accumulates_pages_and_deduplicates_urls() {
-        let mut session = DiscoverSession::new(DiscoverSearchRequest::new("ambient").unwrap()).unwrap();
-        assert_eq!(session.apply_page(page(0, &["https://cdn.example/a"], true)), Ok(1));
+        let mut session =
+            DiscoverSession::new(DiscoverSearchRequest::new("ambient").unwrap()).unwrap();
+        assert_eq!(
+            session.apply_page(page(0, &["https://cdn.example/a"], true)),
+            Ok(1)
+        );
         assert_eq!(session.next_request().unwrap().page, 1);
         assert_eq!(
-            session.apply_page(page(1, &["https://cdn.example/a", "https://cdn.example/b"], false)),
+            session.apply_page(page(
+                1,
+                &["https://cdn.example/a", "https://cdn.example/b"],
+                false
+            )),
             Ok(1)
         );
         assert_eq!(session.results().len(), 2);
@@ -205,8 +214,12 @@ mod tests {
             session.apply_page(page(1, &["https://cdn.example/a"], false)),
             Err(DiscoverError::MismatchedPage)
         );
-        session.apply_page(page(0, &["https://cdn.example/a"], false)).unwrap();
-        session.restart(DiscoverSearchRequest::new("jazz").unwrap()).unwrap();
+        session
+            .apply_page(page(0, &["https://cdn.example/a"], false))
+            .unwrap();
+        session
+            .restart(DiscoverSearchRequest::new("jazz").unwrap())
+            .unwrap();
         assert!(session.results().is_empty());
         assert_eq!(session.request().query, "jazz");
     }
@@ -218,7 +231,10 @@ mod tests {
         registry.register(provider("legacy", false, true)).unwrap();
         registry.register(provider("off", true, false)).unwrap();
         let mut request = DiscoverSearchRequest::new("ambient").unwrap();
-        assert_eq!(plan_provider_searches(&registry, &request).unwrap().len(), 2);
+        assert_eq!(
+            plan_provider_searches(&registry, &request).unwrap().len(),
+            2
+        );
         request.page = 1;
         let plan = plan_provider_searches(&registry, &request).unwrap();
         assert_eq!(plan.len(), 1);
