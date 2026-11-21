@@ -14,16 +14,32 @@ class AvaSpeechOutput(
 ) : TextToSpeech.OnInitListener {
     private var engine: TextToSpeech? = TextToSpeech(context.applicationContext, this)
     private var ready = false
+    private var pendingText: String? = null
+    private var pendingSettings: AvaSettings? = null
 
     override fun onInit(status: Int) {
         ready = status == TextToSpeech.SUCCESS
         onReady(ready)
+        if (ready) {
+            val text = pendingText
+            val settings = pendingSettings
+            pendingText = null
+            pendingSettings = null
+            if (text != null && settings != null) speakNow(text, settings)
+        }
     }
 
     fun speak(text: String, settings: AvaSettings): Boolean {
-        if (!ready || settings.responseMode != AvaResponseMode.VOICE || text.isBlank()) {
+        if (settings.responseMode != AvaResponseMode.VOICE || text.isBlank()) return false
+        if (!ready) {
+            pendingText = text
+            pendingSettings = settings
             return false
         }
+        return speakNow(text, settings)
+    }
+
+    private fun speakNow(text: String, settings: AvaSettings): Boolean {
         val locale = when (settings.language) {
             AvaLanguage.PERSIAN -> Locale.forLanguageTag("fa-IR")
             AvaLanguage.ENGLISH -> Locale.forLanguageTag("en-US")
@@ -41,6 +57,8 @@ class AvaSpeechOutput(
     }
 
     fun release() {
+        pendingText = null
+        pendingSettings = null
         engine?.stop()
         engine?.shutdown()
         engine = null
