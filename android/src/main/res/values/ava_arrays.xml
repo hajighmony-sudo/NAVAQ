@@ -10,16 +10,6 @@
         <item>device</item>
         <item>in_app</item>
     </string-array>
-    <string-array name="ava_ai_mode_labels">
-        <item>Adaptive (recommended)</item>
-        <item>Offline only</item>
-        <item>Online only</item>
-    </string-array>
-    <string-array name="ava_ai_mode_values">
-        <item>adaptive</item>
-        <item>offline_only</item>
-        <item>online_only</item>
-    </string-array>
     <string-array name="ava_response_labels">
         <item>Visual only</item>
         <item>Silent</item>
