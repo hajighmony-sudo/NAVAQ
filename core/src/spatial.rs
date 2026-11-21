@@ -68,8 +68,12 @@ pub struct SpeakerPosition {
 
 impl SpeakerPosition {
     pub fn is_valid(&self) -> bool {
-        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
-            && self.x.abs() <= 30.0 && self.y.abs() <= 10.0 && self.z.abs() <= 30.0
+        self.x.is_finite()
+            && self.y.is_finite()
+            && self.z.is_finite()
+            && self.x.abs() <= 30.0
+            && self.y.abs() <= 10.0
+            && self.z.abs() <= 30.0
     }
 }
 
@@ -98,8 +102,20 @@ impl SpeakerLayout {
     pub fn is_valid(&self) -> bool {
         match self {
             SpeakerLayout::Stereo { left, right } => left.is_valid() && right.is_valid(),
-            SpeakerLayout::Surround5_1 { front_left, front_right, center, surround_left, surround_right } => [front_left, front_right, center, surround_left, surround_right].iter().all(|p| p.is_valid()),
-            SpeakerLayout::Custom { speakers } => !speakers.is_empty() && speakers.len() <= 32 && speakers.iter().all(|p| p.is_valid()),
+            SpeakerLayout::Surround5_1 {
+                front_left,
+                front_right,
+                center,
+                surround_left,
+                surround_right,
+            } => [front_left, front_right, center, surround_left, surround_right]
+                .iter()
+                .all(|p| p.is_valid()),
+            SpeakerLayout::Custom { speakers } => {
+                !speakers.is_empty()
+                    && speakers.len() <= 32
+                    && speakers.iter().all(|p| p.is_valid())
+            },
         }
     }
 
@@ -163,9 +179,16 @@ impl SpatialSettings {
         let w = self.room.width;
         let d = self.room.depth;
         let h = self.room.height;
-        let area = 2.0 * (w * d * self.absorption.floor + w * d * self.absorption.ceiling
-            + w * h * self.absorption.walls + d * h * self.absorption.walls);
-        if area <= f32::EPSILON { 0.0 } else { 0.161 * self.room.volume() / area }
+        let area = 2.0
+            * (w * d * self.absorption.floor
+                + w * d * self.absorption.ceiling
+                + w * h * self.absorption.walls
+                + d * h * self.absorption.walls);
+        if area <= f32::EPSILON {
+            0.0
+        } else {
+            0.161 * self.room.volume() / area
+        }
     }
 
     pub fn is_valid(&self) -> bool {
@@ -175,7 +198,8 @@ impl SpatialSettings {
             && (0.0..=1.0).contains(&self.reverb_mix)
             && self.listener.is_valid()
             && self.listener.x.abs() <= self.room.width * 0.5
-            && self.listener.y >= 0.0 && self.listener.y <= self.room.height
+            && self.listener.y >= 0.0
+            && self.listener.y <= self.room.height
             && self.listener.z.abs() <= self.room.depth * 0.5
     }
 }
@@ -208,7 +232,9 @@ mod tests {
     #[test]
     fn spatial_validation_rejects_non_finite_speakers_and_out_of_room_listener() {
         let mut settings = SpatialSettings::default();
-        if let SpeakerLayout::Stereo { left, .. } = &mut settings.layout { left.z = f32::NAN; }
+        if let SpeakerLayout::Stereo { left, .. } = &mut settings.layout {
+            left.z = f32::NAN;
+        }
         assert!(!settings.is_valid());
         settings = SpatialSettings::default();
         settings.listener.x = 100.0;
