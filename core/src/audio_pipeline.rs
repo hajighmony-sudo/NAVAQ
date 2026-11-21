@@ -54,9 +54,9 @@ impl PcmPipelineSettings {
             && self.master_gain.is_finite()
             && (0.0..=4.0).contains(&self.master_gain)
             && self.replay_gain * self.master_gain <= 4.0
-            && self.peak_ceiling.map_or(true, |v| {
-                v.is_finite() && (0.1..=1.0).contains(&v)
-            })
+            && self
+                .peak_ceiling
+                .map_or(true, |v| v.is_finite() && (0.1..=1.0).contains(&v))
             && self.echo.map_or(true, |echo| {
                 (1..=2_000).contains(&echo.delay_ms)
                     && echo.feedback.is_finite()
@@ -98,10 +98,7 @@ pub struct PcmAudioPipeline {
 }
 
 impl PcmAudioPipeline {
-    pub fn new(
-        format: PcmFormat,
-        settings: PcmPipelineSettings,
-    ) -> Result<Self, PcmPipelineError> {
+    pub fn new(format: PcmFormat, settings: PcmPipelineSettings) -> Result<Self, PcmPipelineError> {
         if format.sample_rate == 0
             || format.sample_rate > 384_000
             || format.channels == 0
@@ -150,10 +147,7 @@ impl PcmAudioPipeline {
 
     /// Replace settings. Rebuilding the filters resets their delay histories;
     /// hosts should apply this between PCM buffers, never midway through a buffer.
-    pub fn set_settings(
-        &mut self,
-        settings: PcmPipelineSettings,
-    ) -> Result<(), PcmPipelineError> {
+    pub fn set_settings(&mut self, settings: PcmPipelineSettings) -> Result<(), PcmPipelineError> {
         if !settings.is_valid() {
             return Err(PcmPipelineError::InvalidSettings);
         }
@@ -247,8 +241,7 @@ mod tests {
 
     #[test]
     fn default_pipeline_preserves_quiet_pcm_and_reports_meters() {
-        let mut pipeline =
-            PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
+        let mut pipeline = PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
         let mut pcm = [0.25, -0.5, 0.75, -1.0];
         let stats = pipeline.process_interleaved(&mut pcm).unwrap();
         assert_eq!(pcm, [0.25, -0.5, 0.75, -1.0]);
