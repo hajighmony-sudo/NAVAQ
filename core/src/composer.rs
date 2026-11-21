@@ -153,7 +153,16 @@ impl Composition {
             (micros_per_beat & 0xFF) as u8,
         ]);
         let denominator_power = self.denominator.trailing_zeros() as u8;
-        conductor.extend_from_slice(&[0x00, 0xFF, 0x58, 0x04, self.numerator, denominator_power, 24, 8]);
+        conductor.extend_from_slice(&[
+            0x00,
+            0xFF,
+            0x58,
+            0x04,
+            self.numerator,
+            denominator_power,
+            24,
+            8,
+        ]);
         conductor.extend_from_slice(&[0x00, 0xFF, 0x2F, 0x00]);
         let mut chunks = Vec::with_capacity(self.tracks.len() + 1);
         chunks.push(midi_track_chunk(conductor));
@@ -228,7 +237,10 @@ fn push_variable_length(output: &mut Vec<u8>, mut value: u32) {
     let mut buffer = [0u8; 4];
     let mut index = 3;
     buffer[index] = (value & 0x7F) as u8;
-    while { value >>= 7; value != 0 } {
+    while {
+        value >>= 7;
+        value != 0
+    } {
         index -= 1;
         buffer[index] = ((value & 0x7F) as u8) | 0x80;
     }
