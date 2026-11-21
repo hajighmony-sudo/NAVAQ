@@ -141,7 +141,10 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeProce
         Err(_) => return 0,
     };
     let mut values = vec![0.0_f32; length as usize];
-    if env.get_float_array_region(&samples, 0, &mut values).is_err() {
+    if env
+        .get_float_array_region(&samples, 0, &mut values)
+        .is_err()
+    {
         return 0;
     }
     let shared = unsafe { &*(handle as *const SharedPcmPipeline) };
