@@ -129,8 +129,12 @@ impl AvaCore {
         } else {
             match settings.ai_mode {
                 AvaAiMode::OfflineOnly => AvaExecutionRoute::OfflineFallback,
-                AvaAiMode::Adaptive if network_available => AvaExecutionRoute::Online,
-                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => AvaExecutionRoute::OfflineFallback,
+                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly if network_available => {
+                    AvaExecutionRoute::Online
+                }
+                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => {
+                    AvaExecutionRoute::OfflineFallback
+                }
             }
         };
 
@@ -225,14 +229,32 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
         return AvaIntent::PlayRandom;
     }
 
+    // Natural Persian orderings: "فلان آهنگ رو پخش کن", "پخش کن آهنگ فلان".
+    for suffix in [" رو پخش کن", " را پخش کن", " پخش کن"] {
+        if let Some(query) = value.strip_suffix(suffix) {
+            let query = query
+                .trim()
+                .strip_suffix(" آهنگ")
+                .unwrap_or(query.trim())
+                .trim();
+            if !query.is_empty() && query != "آهنگ" && query != "موسیقی" {
+                return AvaIntent::SearchMusic {
+                    query: query.to_owned(),
+                };
+            }
+        }
+    }
+
     for prefix in [
+        "پخش کن آهنگ ",
+        "پخش کن موسیقی ",
+        "پخش آهنگ ",
+        "پخش موسیقی ",
         "آهنگ ",
         "موسیقی ",
-        "پخش آهنگ ",
-        "پخش کن ",
         "play song ",
-        "play ",
         "play track ",
+        "play ",
     ] {
         if let Some(query) = value.strip_prefix(prefix) {
             let query = query
@@ -246,17 +268,6 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
                     query: query.to_owned(),
                 };
             }
-        }
-    }
-
-    if let Some(query) = value
-        .strip_prefix("آهنگ ")
-        .and_then(|v| v.strip_suffix(" رو پخش کن"))
-    {
-        if !query.trim().is_empty() {
-            return AvaIntent::SearchMusic {
-                query: query.trim().to_owned(),
-            };
         }
     }
 
@@ -326,6 +337,37 @@ mod tests {
             AvaIntent::SearchMusic {
                 query: "hello".to_owned()
             }
+        );
+    }
+
+    #[test]
+    fn parses_natural_persian_named_track_orderings() {
+        let core = AvaCore::new();
+        let settings = AvaSettings::default();
+        for phrase in [
+            "فلان آهنگ رو پخش کن",
+            "فلان آهنگ را پخش کن",
+            "پخش کن آهنگ فلان",
+        ] {
+            assert_eq!(
+                core.interpret(phrase, &settings, false).intent,
+                AvaIntent::SearchMusic { query: "فلان".to_owned() }
+            );
+        }
+    }
+
+    #[test]
+    fn online_only_uses_online_route_when_connected() {
+        let core = AvaCore::new();
+        let mut settings = AvaSettings::default();
+        settings.ai_mode = AvaAiMode::OnlineOnly;
+        assert_eq!(
+            core.interpret("یک درخواست پیچیده", &settings, true).route,
+            AvaExecutionRoute::Online
+        );
+        assert_eq!(
+            core.interpret("یک درخواست پیچیده", &settings, false).route,
+            AvaExecutionRoute::OfflineFallback
         );
     }
 
