@@ -86,11 +86,11 @@ class AvaActivity : Activity() {
                             listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
                         } else {
                             if (statusText.text.startsWith("Listening")) {
-                                statusText.text = "Recognizing speech locally…"
+                                statusText.text = "Ready for another command."
                             }
-                            // Keep the mic button disabled during Whisper decoding.
-                            // A transcript or an error re-enables it.
-                            listenButton.isEnabled = false
+                            // Natural completion and errors arrive before this final
+                            // idle callback, so the mic becomes available again here.
+                            listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
                         }
                     }
                 }
@@ -106,7 +106,6 @@ class AvaActivity : Activity() {
                 runOnUiThread {
                     transcriptText.text = "Heard: $transcript"
                     statusText.text = "Command recognized. Executing locally…"
-                    listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
                     stopButton.isEnabled = false
                 }
             }
