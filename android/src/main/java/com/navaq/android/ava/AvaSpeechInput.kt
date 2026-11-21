@@ -42,11 +42,14 @@ class AvaSpeechInput(
 
         stopListening()
 
-        recognizer = if (
-            preferOffline &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        val onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
-        ) {
+        if (preferOffline && !onDeviceAvailable) {
+            throw IllegalStateException(
+                "On-device speech recognition is unavailable. Install an offline speech model or enable online recognition."
+            )
+        }
+        recognizer = if (preferOffline) {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
         } else {
             SpeechRecognizer.createSpeechRecognizer(appContext)
