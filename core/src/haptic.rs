@@ -222,6 +222,17 @@ mod tests {
     }
 
     #[test]
+    fn disabled_or_inactive_trigger_emits_no_haptics_and_enabled_scales_intensity() {
+        let mut settings = HapticSettings::default();
+        assert!(settings.pulses_for(HapticTrigger::BassHit).is_empty());
+        settings.enabled = true;
+        settings.master_intensity = 0.5;
+        let pulses = settings.pulses_for(HapticTrigger::BassHit);
+        assert_eq!(pulses.len(), 1);
+        assert!((pulses[0].intensity - 0.45).abs() < 1e-6);
+        assert!(settings.pulses_for(HapticTrigger::HiHat).is_empty());
+    }
+    #[test]
     fn custom_pattern_overrides() {
         let mut s = HapticSettings::default();
         let custom = HapticPattern {
