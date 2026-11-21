@@ -490,7 +490,10 @@ mod tests {
         queue.enqueue(track("valid")).unwrap();
         let mut invalid = track("invalid");
         invalid.title = "   ".into();
-        assert_eq!(queue.enqueue(invalid.clone()), Err(PlayerError::InvalidTrack));
+        assert_eq!(
+            queue.enqueue(invalid.clone()),
+            Err(PlayerError::InvalidTrack)
+        );
         assert_eq!(queue.enqueue_next(invalid), Err(PlayerError::InvalidTrack));
         assert_eq!(queue.len(), 1);
         assert_eq!(queue.current().unwrap().id, TrackId::from("valid"));
