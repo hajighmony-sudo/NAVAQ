@@ -58,7 +58,9 @@ pub use model::{
     PlaybackStatus, PlayerCommand, PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
 pub use music_dna::{
-    rank_matches, rank_opted_in_matches, DnaBuilder, MatchResult, TasteCandidate, TasteProfile,
+    rank_collaborative_tracks, rank_matches, rank_opted_in_matches,
+    CollaborativeTrackCandidate, CollaborativeTrackResult, DnaBuilder, MatchResult,
+    TasteCandidate, TasteProfile,
 };
 pub use persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 pub use playlist::{Playlist, PlaylistError, PlaylistStore};
