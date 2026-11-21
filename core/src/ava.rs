@@ -135,7 +135,29 @@ fn clean_transcript(input: &str) -> String {
 }
 
 fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
-    let value = normalized.trim();
+    // Accept an optional spoken wake phrase when AVA is already in a
+    // user-started listening session. This is command-prefix handling, not
+    // background microphone activation.
+    let mut value = normalized.trim();
+    for prefix in [
+        "هی آوا، ",
+        "هی آوا ",
+        "اوکی آوا، ",
+        "اوکی آوا ",
+        "hey ava, ",
+        "hey ava ",
+        "okay ava, ",
+        "okay ava ",
+        "ok ava, ",
+        "ok ava ",
+        "آوا، ",
+        "آوا ",
+    ] {
+        if let Some(command) = value.strip_prefix(prefix) {
+            value = command.trim();
+            break;
+        }
+    }
     if value.is_empty() {
         return AvaIntent::Unknown {
             transcript: original.to_owned(),
@@ -356,6 +378,26 @@ mod tests {
             assert_eq!(decision.intent, AvaIntent::Transport { command: expected });
             assert_eq!(decision.route, AvaExecutionRoute::Local);
         }
+    }
+
+    #[test]
+    fn accepts_optional_ava_wake_phrase_before_commands() {
+        let core = AvaCore::new();
+        let settings = AvaSettings::default();
+        for phrase in ["هی آوا، آهنگ بعدی", "Hey Ava, next song", "اوکی آوا بعدی"] {
+            assert_eq!(
+                core.interpret(phrase, &settings, false).intent,
+                AvaIntent::Transport {
+                    command: PlayerCommand::Next
+                }
+            );
+        }
+        assert_eq!(
+            core.interpret("هی آوا آهنگ آرام رو پخش کن", &settings, false).intent,
+            AvaIntent::SearchMusic {
+                query: "آرام".to_owned()
+            }
+        );
     }
 
     #[test]
