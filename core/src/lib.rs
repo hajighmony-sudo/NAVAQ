@@ -44,7 +44,7 @@ pub use creative::{
     InstrumentalRequest, JobId, JobStatus, LyricToMelodyRequest, StemKind,
 };
 pub use cue::{parse_cue, CueSheet, CueTrack};
-pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor};
+pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor, EchoProcessor};
 pub use engine::PlayerCore;
 pub use equalizer::{EqualizerBand, EqualizerPreset, EqualizerSettings};
 pub use haptic::{HapticError, HapticPattern, HapticPulse, HapticSettings, HapticTrigger};
