@@ -1,30 +1,25 @@
 package com.navaq.android.ava
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import androidx.annotation.MainThread
 
 /**
- * Activity-facing AVA voice coordinator.
- *
- * A user starts a visible listening session explicitly. AVA then accepts
- * multiple one-utterance commands until Stop is pressed or the Activity leaves
- * the foreground. No background microphone or cloud recognition is used.
+ * Owns one local speech-recognition session for the visible AVA screen.
+ * The Whisper model and microphone pipeline stay alive between utterances.
  */
 class AvaVoiceController(
     context: Context,
     private val onListeningChanged: (Boolean) -> Unit = {},
     private val onError: (Throwable) -> Unit = {},
-    private val onTranscript: (String) -> Unit = {}
+    private val onTranscript: (String) -> Unit = {},
+    private val onWakePhraseDetected: () -> Unit = {}
 ) {
     private val appContext = context.applicationContext
     private val settingsStore = AvaSettingsStore(appContext)
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var speechInput: AvaSpeechInput? = null
+
     @Volatile
     private var continuousListening = false
-    private var restartTask: Runnable? = null
 
     val isContinuousListening: Boolean
         get() = continuousListening
@@ -39,40 +34,37 @@ class AvaVoiceController(
         check(AvaSpeechModelManager(appContext).isInstalled()) {
             "Download the offline Persian/English speech model from AVA settings first"
         }
+
         stopListening()
         continuousListening = true
-        startRecognitionSession()
-    }
-
-    @MainThread
-    private fun startRecognitionSession() {
-        if (!continuousListening) return
-        val settings = settingsStore.load()
-        if (!settings.enabled) {
-            stopListening()
-            onError(IllegalStateException("AVA is disabled in settings"))
-            return
-        }
 
         val input = AvaSpeechInput(
             context = appContext,
             onTranscript = { transcript ->
                 if (continuousListening) {
+                    onTranscript(transcript)
                     try {
-                        onTranscript(transcript)
-                        AvaCommandClient.submitTranscript(appContext, transcript)
+                        val latestSettings = settingsStore.load()
+                        val command = if (latestSettings.activationMode == AvaActivationMode.WAKE_WORD) {
+                            extractWakeCommand(transcript)
+                        } else {
+                            transcript
+                        }
+
+                        when {
+                            command == null -> Unit // Wake phrase was not spoken; do not execute.
+                            command.isBlank() -> onWakePhraseDetected()
+                            else -> AvaCommandClient.submitTranscript(appContext, command)
+                        }
                     } catch (error: Exception) {
                         onError(error)
                     }
-                    scheduleNextUtterance(NEXT_UTTERANCE_DELAY_MS)
                 }
             },
             onError = { code ->
-                if (continuousListening && code == AvaSpeechInput.ERROR_NO_SPEECH) {
-                    scheduleNextUtterance(NO_SPEECH_RETRY_DELAY_MS)
-                } else if (continuousListening) {
+                if (continuousListening) {
                     continuousListening = false
-                    onError(IllegalStateException("Speech recognition failed (code $code)"))
+                    onError(IllegalStateException("Offline speech recognition failed (code $code)"))
                 }
             },
             onListeningChanged = onListeningChanged
@@ -92,24 +84,8 @@ class AvaVoiceController(
     }
 
     @MainThread
-    private fun scheduleNextUtterance(delayMs: Long) {
-        restartTask?.let(mainHandler::removeCallbacks)
-        val task = Runnable {
-            if (continuousListening) {
-                speechInput?.release()
-                speechInput = null
-                startRecognitionSession()
-            }
-        }
-        restartTask = task
-        mainHandler.postDelayed(task, delayMs)
-    }
-
-    @MainThread
     fun stopListening() {
         continuousListening = false
-        restartTask?.let(mainHandler::removeCallbacks)
-        restartTask = null
         speechInput?.release()
         speechInput = null
     }
@@ -117,8 +93,22 @@ class AvaVoiceController(
     @MainThread
     fun release() = stopListening()
 
-    companion object {
-        private const val NEXT_UTTERANCE_DELAY_MS = 700L
-        private const val NO_SPEECH_RETRY_DELAY_MS = 250L
+    /**
+     * Wake phrase detection is deliberately local and scoped to an already
+     * user-started, foreground listening session. It is not an always-on
+     * background hotword service.
+     */
+    private fun extractWakeCommand(transcript: String): String? {
+        val normalized = transcript
+            .lowercase()
+            .replace('ي', 'ی')
+            .replace('ك', 'ک')
+            .trim()
+        val patterns = listOf(
+            Regex("^(?:هی\\s*)?آوا(?:\\s*[,،:؛.!؟-]?\\s*)(.*)$"),
+            Regex("^(?:hey\\s+ava|okay\\s+ava|ok\\s+ava|ava)(?:\\s*[,،:;.!?—-]?\\s*)(.*)$")
+        )
+        val match = patterns.firstNotNullOfOrNull { it.matchEntire(normalized) } ?: return null
+        return match.groupValues.getOrElse(1) { "" }.trim()
     }
 }
