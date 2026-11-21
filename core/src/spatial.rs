@@ -185,6 +185,9 @@ impl SpatialSettings {
         let w = self.room.width;
         let d = self.room.depth;
         let h = self.room.height;
+        if !self.room.is_valid() || !self.absorption.is_valid() {
+            return 0.0;
+        }
         let area = 2.0
             * (w * d * self.absorption.floor
                 + w * d * self.absorption.ceiling
@@ -207,6 +210,9 @@ impl SpatialSettings {
             && self.listener.y >= 0.0
             && self.listener.y <= self.room.height
             && self.listener.z.abs() <= self.room.depth * 0.5
+            && self.hrtf_profile.as_ref().map_or(true, |profile| {
+                !profile.trim().is_empty() && profile.len() <= 128
+            })
     }
 }
 
