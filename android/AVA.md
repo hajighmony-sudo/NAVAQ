@@ -6,7 +6,7 @@ and Rust `PlayerCore`; it does not create a second player.
 ## Current implementation
 
 - Bilingual deterministic command parsing in Rust (Persian and English).
-- Adaptive route decision for unknown requests; deterministic music commands stay local.
+- Fully local, deterministic Persian/English command interpretation; no cloud AI route or AI-provider credentials.
 - Persistent settings shared by `AvaSettingsStore` and `AvaSettingsFragment`.
 - Read-only device music discovery through Android MediaStore.
 - An adapter contract for the existing NAVAQ in-app music catalog.
@@ -25,7 +25,6 @@ The fragment and `AvaSettingsStore` share the private preference file
 Available settings:
 - AVA enabled/disabled
 - Music source: both, device, or in-app
-- AI mode: adaptive, offline-only, or online-only
 - Response: visual, silent, or voice
 - Language: automatic, Persian, or English
 - Confirm before replacing the current queue
@@ -85,14 +84,12 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
   attach the fragment to. The fragment is reusable, but the host app must add it
   to its settings navigation.
 - The in-app provider must be registered by the real NAVAQ library owner.
-- An online AI endpoint/provider is not configured in this repository. Adaptive
-  routing selects the online route for complex requests, but does not pretend a
-  cloud model was called. Add a provider with app-managed credentials before
-  enabling complex online actions.
+- AVA does not use an online AI engine. Recognized text is interpreted by the local Rust command parser; unsupported requests receive a local explanation rather than being sent to a cloud model.
 - Offline speech uses Android's on-device recognizer when the OS exposes one.
   If it is unavailable, AVA reports that limitation rather than silently
   switching to a network recognizer. A bundled Sherpa-ONNX Persian/English
-  model is a later integration step.
+  model is still required for consistent offline speech recognition across
+  Android 11+ devices and is not yet packaged.
 - Wake-word activation is not exposed in this settings screen because no
   wake-word engine is integrated. Push-to-talk is the supported activation path.
 - Android 11+ background microphone behavior is permission- and OS-policy-bound.
