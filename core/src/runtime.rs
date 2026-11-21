@@ -450,8 +450,9 @@ mod tests {
 
     #[test]
     fn ducking_preserves_domain_events() {
-        let runtime =
+        let mut runtime =
             PlayerRuntime::with_audio_session(FakeBackend::default(), AudioSessionPolicy::new(0.5));
+        runtime.handle_audio_focus(AudioFocusChange::Duck).unwrap();
         let output = CoreOutput {
             backend_actions: vec![BackendAction::SetVolume(0.8)],
             events: vec![PlayerEvent::PlaybackStarted],
