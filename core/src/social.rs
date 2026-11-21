@@ -142,6 +142,8 @@ pub struct SharedRoom {
     /// Per-participant private effects (only audible to that user or as they choose).
     pub participant_effects: BTreeMap<ParticipantId, EffectStack>,
     /// Effects contributed by participants and audible to the whole room.
+    #[serde(default)]
+    pub shared_effects: BTreeMap<ParticipantId, EffectStack>,
     /// Maximum number of participants (0 = unlimited).
     pub max_participants: u32,
     /// Room is public and discoverable.
