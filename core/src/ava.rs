@@ -384,7 +384,8 @@ mod tests {
     fn accepts_optional_ava_wake_phrase_before_commands() {
         let core = AvaCore::new();
         let settings = AvaSettings::default();
-        for phrase in ["هی آوا، آهنگ بعدی", "Hey Ava, next song", "اوکی آوا بعدی"] {
+        for phrase in ["هی آوا، آهنگ بعدی", "Hey Ava, next song", "اوکی آوا بعدی"]
+        {
             assert_eq!(
                 core.interpret(phrase, &settings, false).intent,
                 AvaIntent::Transport {
@@ -393,7 +394,8 @@ mod tests {
             );
         }
         assert_eq!(
-            core.interpret("هی آوا آهنگ آرام رو پخش کن", &settings, false).intent,
+            core.interpret("هی آوا آهنگ آرام رو پخش کن", &settings, false)
+                .intent,
             AvaIntent::SearchMusic {
                 query: "آرام".to_owned()
             }
