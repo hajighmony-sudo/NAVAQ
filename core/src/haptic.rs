@@ -102,7 +102,10 @@ impl HapticSettings {
 
     /// Return the active pattern with intensity scaled for the current device.
     pub fn pulses_for(&self, trigger: HapticTrigger) -> Vec<HapticPulse> {
-        if !self.enabled || !self.active_triggers.contains(&trigger) || self.master_intensity <= 0.0
+        if !self.is_valid()
+            || !self.enabled
+            || !self.active_triggers.contains(&trigger)
+            || self.master_intensity <= 0.0
         {
             return Vec::new();
         }
