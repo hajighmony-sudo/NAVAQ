@@ -13,6 +13,21 @@
         android:allowBackup="false"
         android:label="NAVAQ"
         android:supportsRtl="true">
+        <activity
+            android:name=".ava.AvaSettingsActivity"
+            android:exported="false"
+            android:label="AVA settings"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name=".ava.AvaActivity"
+            android:exported="true"
+            android:label="NAVAQ"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".playback.NavaqPlaybackService"
             android:exported="true"
