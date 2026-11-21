@@ -9,12 +9,6 @@ enum class AvaMusicSources(val wireValue: String) {
     BOTH("both")
 }
 
-enum class AvaAiMode(val wireValue: String) {
-    OFFLINE_ONLY("offline_only"),
-    ONLINE_ONLY("online_only"),
-    ADAPTIVE("adaptive")
-}
-
 enum class AvaResponseMode(val wireValue: String) {
     SILENT("silent"),
     VISUAL("visual"),
@@ -39,7 +33,6 @@ enum class AvaActivationMode(val wireValue: String) {
 data class AvaSettings(
     val enabled: Boolean = true,
     val musicSources: AvaMusicSources = AvaMusicSources.BOTH,
-    val aiMode: AvaAiMode = AvaAiMode.ADAPTIVE,
     // AVA stays visual-only until the user explicitly selects Voice.
     val responseMode: AvaResponseMode = AvaResponseMode.VISUAL,
     val language: AvaLanguage = AvaLanguage.AUTO,
@@ -53,16 +46,11 @@ data class AvaSettings(
         AvaLanguage.AUTO -> java.util.Locale.getDefault().toLanguageTag()
     }
 
-    fun preferOfflineSpeech(networkAvailable: Boolean): Boolean = when (aiMode) {
-        AvaAiMode.OFFLINE_ONLY -> true
-        AvaAiMode.ONLINE_ONLY -> false
-        AvaAiMode.ADAPTIVE -> !networkAvailable
-    }
+    fun preferOfflineSpeech(): Boolean = true
 
     fun toWireJson(): String = JSONObject()
         .put("enabled", enabled)
         .put("music_sources", musicSources.wireValue)
-        .put("ai_mode", aiMode.wireValue)
         .put("response_mode", responseMode.wireValue)
         .put("language", language.wireValue)
         .put("activation_mode", activationMode.wireValue)
@@ -79,7 +67,6 @@ class AvaSettingsStore(context: Context) {
     fun load(): AvaSettings = AvaSettings(
         enabled = preferences.getBoolean(KEY_ENABLED, true),
         musicSources = enumValue(preferences.getString(KEY_MUSIC_SOURCES, null), AvaMusicSources.BOTH),
-        aiMode = enumValue(preferences.getString(KEY_AI_MODE, null), AvaAiMode.ADAPTIVE),
         responseMode = enumValue(preferences.getString(KEY_RESPONSE_MODE, null), AvaResponseMode.VISUAL),
         language = enumValue(preferences.getString(KEY_LANGUAGE, null), AvaLanguage.AUTO),
         activationMode = enumValue(
@@ -93,7 +80,6 @@ class AvaSettingsStore(context: Context) {
         preferences.edit()
             .putBoolean(KEY_ENABLED, settings.enabled)
             .putString(KEY_MUSIC_SOURCES, settings.musicSources.wireValue)
-            .putString(KEY_AI_MODE, settings.aiMode.wireValue)
             .putString(KEY_RESPONSE_MODE, settings.responseMode.wireValue)
             .putString(KEY_LANGUAGE, settings.language.wireValue)
             .putString(KEY_ACTIVATION_MODE, settings.activationMode.wireValue)
@@ -105,7 +91,6 @@ class AvaSettingsStore(context: Context) {
         return enumValues<T>().firstOrNull { candidate ->
             when (candidate) {
                 is AvaMusicSources -> candidate.wireValue == value
-                is AvaAiMode -> candidate.wireValue == value
                 is AvaResponseMode -> candidate.wireValue == value
                 is AvaLanguage -> candidate.wireValue == value
                 is AvaActivationMode -> candidate.wireValue == value
@@ -118,7 +103,6 @@ class AvaSettingsStore(context: Context) {
         private const val PREFS_NAME = "navaq_ava_preferences"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_MUSIC_SOURCES = "music_sources"
-        private const val KEY_AI_MODE = "ai_mode"
         private const val KEY_RESPONSE_MODE = "response_mode"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_ACTIVATION_MODE = "activation_mode"
