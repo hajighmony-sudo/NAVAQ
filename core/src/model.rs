@@ -234,6 +234,9 @@ pub enum BackendEvent {
     },
 }
 
+// Keep state snapshots inline to preserve the simple public event API; these events
+// are emitted at state transitions rather than on every audio sample.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlayerEvent {
     StateChanged(PlaybackState),
