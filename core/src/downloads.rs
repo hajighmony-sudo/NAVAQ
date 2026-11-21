@@ -341,6 +341,8 @@ pub enum DownloadError {
     InvalidTransition,
     #[error("a download with this id already exists")]
     DuplicateId,
+    #[error("download task was not found")]
+    TaskNotFound,
 }
 
 #[cfg(test)]
