@@ -57,7 +57,7 @@ pub use audio_pipeline::{
 };
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use ava::{
-    AvaActivationMode, AvaAiMode, AvaCore, AvaDecision, AvaExecutionRoute, AvaIntent, AvaLanguage,
+    AvaActivationMode, AvaCore, AvaDecision, AvaExecutionRoute, AvaIntent, AvaLanguage,
     AvaMusicSources, AvaResponseMode, AvaSettings,
 };
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
