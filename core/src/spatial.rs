@@ -256,7 +256,13 @@ mod tests {
     fn estimated_rt60_is_finite_and_positive() {
         let settings = SpatialSettings::default();
         let rt60 = settings.estimated_rt60_seconds();
+        let expected = 0.161 * settings.room.volume()
+            / (settings.room.width * settings.room.depth * settings.absorption.floor
+                + settings.room.width * settings.room.depth * settings.absorption.ceiling
+                + 2.0 * settings.room.width * settings.room.height * settings.absorption.walls
+                + 2.0 * settings.room.depth * settings.room.height * settings.absorption.walls);
         assert!(rt60.is_finite() && rt60 > 0.0);
+        assert!((rt60 - expected).abs() < 1e-6);
     }
 
     #[test]
