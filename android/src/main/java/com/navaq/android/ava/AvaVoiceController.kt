@@ -13,7 +13,8 @@ import androidx.annotation.MainThread
 class AvaVoiceController(
     context: Context,
     private val onListeningChanged: (Boolean) -> Unit = {},
-    private val onError: (Throwable) -> Unit = {}
+    private val onError: (Throwable) -> Unit = {},
+    private val onTranscript: (String) -> Unit = {}
 ) {
     private val appContext = context.applicationContext
     private val settingsStore = AvaSettingsStore(appContext)
@@ -35,6 +36,7 @@ class AvaVoiceController(
             context = appContext,
             onTranscript = { transcript ->
                 try {
+                    onTranscript(transcript)
                     AvaCommandClient.submitTranscript(appContext, transcript)
                 } catch (error: Exception) {
                     onError(error)
