@@ -165,6 +165,9 @@ class AvaSpeechInput(
             postListening(false)
             val stream = recognizer.createStream()
             try {
+                if (language.isEmpty()) {
+                    stream.setOption("language_candidates", "fa,en")
+                }
                 stream.acceptWaveform(collected.toArray(), SAMPLE_RATE)
                 recognizer.decode(stream)
                 val transcript = recognizer.getResult(stream).text.trim()
