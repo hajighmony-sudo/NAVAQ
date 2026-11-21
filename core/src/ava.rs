@@ -360,8 +360,10 @@ mod tests {
     #[test]
     fn online_only_uses_online_route_when_connected() {
         let core = AvaCore::new();
-        let mut settings = AvaSettings::default();
-        settings.ai_mode = AvaAiMode::OnlineOnly;
+        let settings = AvaSettings {
+            ai_mode: AvaAiMode::OnlineOnly,
+            ..AvaSettings::default()
+        };
         assert_eq!(
             core.interpret("یک درخواست پیچیده", &settings, true).route,
             AvaExecutionRoute::Online
