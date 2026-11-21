@@ -3,16 +3,15 @@ package com.navaq.android.haptics
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
+import com.navaq.android.core.NavaqNativeBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * Observes decoded PCM on Media3's audio-processing path and forwards generic
- * energy onsets. The input bytes are copied unchanged to the output buffer.
- *
- * This is deliberately not an instrument classifier: a transient may be a beat,
- * percussion hit, or another sudden change in energy.
+ * Runs the Rust stateful PCM DSP chain, then observes its output for generic
+ * energy onsets. If native DSP cannot be initialized, PCM passes through.
  */
 class NavaqBeatAudioProcessor(
     private val onBeat: (Float) -> Unit,
@@ -25,6 +24,7 @@ class NavaqBeatAudioProcessor(
     private var squareSum = 0.0
     private var noiseFloor: Float? = null
     private var lastBeatAtMs = Long.MIN_VALUE
+    private var dspHandle = 0L
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT &&
@@ -32,33 +32,54 @@ class NavaqBeatAudioProcessor(
         ) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
+        releaseDsp()
         sampleRate = inputAudioFormat.sampleRate
         channels = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
         samplesPerWindow = (sampleRate / 50).coerceAtLeast(1) * channels
+        dspHandle = NavaqNativeBridge.nativeCreateDsp(sampleRate, channels)
+        resetAnalysis()
         return inputAudioFormat
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val view = inputBuffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+        val bytesPerSample = if (encoding == C.ENCODING_PCM_FLOAT) 4 else 2
+        val count = view.remaining() / bytesPerSample
+        val samples = FloatArray(count)
+
         when (encoding) {
             C.ENCODING_PCM_FLOAT -> {
-                while (view.remaining() >= Float.SIZE_BYTES) {
-                    val sample = view.float
-                    acceptSample(if (sample.isFinite()) sample.toDouble() else 0.0)
+                for (i in samples.indices) {
+                    val value = view.float
+                    samples[i] = if (value.isFinite()) value else 0f
                 }
             }
             C.ENCODING_PCM_16BIT -> {
-                while (view.remaining() >= Short.SIZE_BYTES) {
-                    acceptSample(view.short.toDouble() / Short.MAX_VALUE.toDouble())
-                }
+                for (i in samples.indices) samples[i] = view.short.toFloat() / 32768f
             }
         }
 
-        val output = replaceOutputBuffer(inputBuffer.remaining())
-        output.put(inputBuffer)
+        // Native failure is fail-open: preserve playback rather than interrupt audio.
+        if (dspHandle != 0L) {
+            NavaqNativeBridge.nativeProcessDsp(dspHandle, samples)
+        }
+        samples.forEach { acceptSample(it.toDouble()) }
+
+        val output = replaceOutputBuffer(count * bytesPerSample).order(ByteOrder.LITTLE_ENDIAN)
+        when (encoding) {
+            C.ENCODING_PCM_FLOAT -> samples.forEach { output.putFloat(it) }
+            C.ENCODING_PCM_16BIT -> samples.forEach {
+                output.putShort((it.coerceIn(-1f, 1f) * 32768f).roundToInt().coerceIn(-32768, 32767).toShort())
+            }
+        }
+        inputBuffer.position(inputBuffer.limit())
         output.flip()
     }
+
+    /** Apply a validated Rust EQ configuration; false means it was rejected. */
+    fun setEqualizerJson(equalizerJson: String): Boolean =
+        dspHandle != 0L && NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, equalizerJson)
 
     private fun acceptSample(sample: Double) {
         squareSum += sample * sample
@@ -91,11 +112,19 @@ class NavaqBeatAudioProcessor(
     }
 
     override fun onReset() {
+        releaseDsp()
         sampleRate = 0
         channels = 0
         encoding = C.ENCODING_INVALID
         samplesPerWindow = 0
         resetAnalysis()
+    }
+
+    private fun releaseDsp() {
+        if (dspHandle != 0L) {
+            NavaqNativeBridge.nativeDestroyDsp(dspHandle)
+            dspHandle = 0L
+        }
     }
 
     private fun resetAnalysis() {
