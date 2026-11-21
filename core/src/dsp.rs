@@ -167,22 +167,42 @@ pub struct EchoProcessor {
 }
 
 impl EchoProcessor {
-    pub fn new(sample_rate: u32, channels: u16, delay_ms: u32, feedback: f32, mix: f32) -> Result<Self, DspError> {
+    pub fn new(
+        sample_rate: u32,
+        channels: u16,
+        delay_ms: u32,
+        feedback: f32,
+        mix: f32,
+    ) -> Result<Self, DspError> {
         if sample_rate == 0 || sample_rate > 384_000 || channels == 0 || channels > 8 {
             return Err(DspError::InvalidFormat);
         }
-        if delay_ms == 0 || delay_ms > 2000 || !feedback.is_finite() || !(0.0..=0.95).contains(&feedback)
-            || !mix.is_finite() || !(0.0..=1.0).contains(&mix) {
+        if delay_ms == 0
+            || delay_ms > 2000
+            || !feedback.is_finite()
+            || !(0.0..=0.95).contains(&feedback)
+            || !mix.is_finite()
+            || !(0.0..=1.0).contains(&mix)
+        {
             return Err(DspError::InvalidEffectSettings);
         }
         let channels = channels as usize;
         let delay_frames = ((sample_rate as u64 * delay_ms as u64 + 999) / 1000) as usize;
-        Ok(Self { channels, delay_frames, write_frame: 0, feedback, mix, delay: vec![0.0; delay_frames * channels] })
+        Ok(Self {
+            channels,
+            delay_frames,
+            write_frame: 0,
+            feedback,
+            mix,
+            delay: vec![0.0; delay_frames * channels],
+        })
     }
 
     /// Process complete interleaved frames in place; state persists across callbacks.
     pub fn process_interleaved(&mut self, samples: &mut [f32]) -> Result<(), DspError> {
-        if samples.len() % self.channels != 0 { return Err(DspError::MisalignedBuffer); }
+        if samples.len() % self.channels != 0 {
+            return Err(DspError::MisalignedBuffer);
+        }
         for frame in samples.chunks_exact_mut(self.channels) {
             let base = self.write_frame * self.channels;
             for (channel, sample) in frame.iter_mut().enumerate() {
@@ -197,6 +217,7 @@ impl EchoProcessor {
         Ok(())
     }
 }
+
 /// Mix two equally sized interleaved PCM buffers with an equal-power crossfade.
 ///
 /// `progress` is clamped to 0..=1. At the midpoint both streams are attenuated
@@ -305,7 +326,10 @@ mod tests {
             DspError::InvalidEffectSettings
         );
         let mut echo = EchoProcessor::new(48_000, 2, 250, 0.5, 0.5).unwrap();
-        assert_eq!(echo.process_interleaved(&mut [0.0]), Err(DspError::MisalignedBuffer));
+        assert_eq!(
+            echo.process_interleaved(&mut [0.0]),
+            Err(DspError::MisalignedBuffer)
+        );
     }
 
     #[test]
