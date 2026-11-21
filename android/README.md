@@ -51,10 +51,11 @@ other apps" permission.
 - **Other Android devices:** the same session provides the standard lock-screen,
   notification-shade, headset, Bluetooth, and compatible cast/media controls.
 
-The service now supplies title, artist, album, playable state, and optional
-artwork when an artwork URI is present in the track payload under
-`artwork_uri`, `artwork_url`, `cover_uri`, or `image_url`. Artwork schemes
-are restricted to Android resource, content, local file, and HTTP(S) URIs.
+The service supplies title, artist, album, and playable state. The Android
+adapter can also read artwork URI keys (`artwork_uri`, `artwork_url`,
+`cover_uri`, or `image_url`) if supplied by a future enriched track payload;
+the current Rust `Track` model does not yet expose artwork metadata, so cover
+art is not claimed as end-to-end complete.
 
 ### Device-side checks
 
