@@ -284,7 +284,10 @@ impl PlayerCore {
     pub fn handle_backend_event(&mut self, event: BackendEvent) -> CoreOutput {
         let mut output = CoreOutput::default();
         match event {
-            BackendEvent::Prepared { track_id, duration_ms } => {
+            BackendEvent::Prepared {
+                track_id,
+                duration_ms,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.duration_ms = duration_ms.or(self.state.duration_ms);
                     self.state.is_buffering = false;
@@ -293,7 +296,10 @@ impl PlayerCore {
                     }
                 }
             }
-            BackendEvent::Position { track_id, position_ms } => {
+            BackendEvent::Position {
+                track_id,
+                position_ms,
+            } => {
                 let accepts_position = matches!(
                     self.state.status,
                     PlaybackStatus::Loading
@@ -328,7 +334,10 @@ impl PlayerCore {
                     }
                 }
             }
-            BackendEvent::Buffering { track_id, is_buffering } => {
+            BackendEvent::Buffering {
+                track_id,
+                is_buffering,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.is_buffering = is_buffering;
                 }
@@ -340,7 +349,11 @@ impl PlayerCore {
                     self.advance(true, &mut output);
                 }
             }
-            BackendEvent::Failed { track_id, code, message } => {
+            BackendEvent::Failed {
+                track_id,
+                code,
+                message,
+            } => {
                 if self.state.current_track.as_ref() == Some(&track_id) {
                     self.state.status = PlaybackStatus::Error;
                     self.state.is_buffering = false;
@@ -427,7 +440,12 @@ impl PlayerCore {
         output.events.push(PlayerEvent::PlaybackStarted);
     }
 
-    fn sync_selected_track(&mut self, track: &Track, output: &mut CoreOutput, reset_position: bool) {
+    fn sync_selected_track(
+        &mut self,
+        track: &Track,
+        output: &mut CoreOutput,
+        reset_position: bool,
+    ) {
         let same_track = self.state.current_track.as_ref() == Some(&track.id);
         self.state.current_track = Some(track.id.clone());
         self.state.duration_ms = track.duration_ms;
@@ -436,13 +454,18 @@ impl PlayerCore {
             self.state.loop_region = None;
         }
         self.state.is_buffering = false;
-        self.scrobble.start(track.id.clone(), self.state.position_ms);
+        self.scrobble
+            .start(track.id.clone(), self.state.position_ms);
         if self.backend_loaded_track.as_ref() != Some(&track.id) {
-            output.backend_actions.push(BackendAction::Prepare(track.clone()));
+            output
+                .backend_actions
+                .push(BackendAction::Prepare(track.clone()));
             self.backend_loaded_track = Some(track.id.clone());
             self.state.status = PlaybackStatus::Loading;
         }
-        output.events.push(PlayerEvent::TrackChanged(Some(track.id.clone())));
+        output
+            .events
+            .push(PlayerEvent::TrackChanged(Some(track.id.clone())));
     }
 
     fn reset_to_empty(&mut self, output: &mut CoreOutput) {
