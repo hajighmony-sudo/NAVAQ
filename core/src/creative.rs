@@ -148,14 +148,14 @@ impl CreativeStore {
                 }
                 if r.lyrics.chars().count() > 20_000
                     || r.tempo_bpm
-                        .map_or(false, |v| !v.is_finite() || !(30.0..=300.0).contains(&v))
-                    || r.duration_secs.map_or(false, |v| !(1..=1800).contains(&v))
+                        .is_some_and(|v| !v.is_finite() || !(30.0..=300.0).contains(&v))
+                    || r.duration_secs.is_some_and(|v| !(1..=1800).contains(&v))
                     || r.style
                         .as_ref()
-                        .map_or(false, |v| v.trim().is_empty() || v.len() > 80)
+                        .is_some_and(|v| v.trim().is_empty() || v.len() > 80)
                     || r.key
                         .as_ref()
-                        .map_or(false, |v| v.trim().is_empty() || v.len() > 32)
+                        .is_some_and(|v| v.trim().is_empty() || v.len() > 32)
                 {
                     return Err(CreativeError::InvalidRequest);
                 }
