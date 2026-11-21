@@ -27,8 +27,11 @@ impl DownloadSummary {
         if self.tasks_with_known_size == 0 || self.expected_bytes == 0 {
             return None;
         }
-        Some(((self.known_size_received_bytes.min(self.expected_bytes) as f64
-            / self.expected_bytes as f64) * 100.0) as f32)
+        Some(
+            ((self.known_size_received_bytes.min(self.expected_bytes) as f64
+                / self.expected_bytes as f64)
+                * 100.0) as f32,
+        )
     }
 }
 
@@ -48,11 +51,15 @@ impl DownloadManagerExt for DownloadManager {
     }
 
     fn resume_download(&mut self, id: &DownloadId) -> Result<(), DownloadError> {
-        self.get_mut(id).ok_or(DownloadError::TaskNotFound)?.resume()
+        self.get_mut(id)
+            .ok_or(DownloadError::TaskNotFound)?
+            .resume()
     }
 
     fn cancel_download(&mut self, id: &DownloadId) -> Result<(), DownloadError> {
-        self.get_mut(id).ok_or(DownloadError::TaskNotFound)?.cancel()
+        self.get_mut(id)
+            .ok_or(DownloadError::TaskNotFound)?
+            .cancel()
     }
 
     fn retry_download(&mut self, id: &DownloadId) -> Result<(), DownloadError> {
@@ -65,7 +72,8 @@ impl DownloadManagerExt for DownloadManager {
             summary.total += 1;
             summary.received_bytes = summary.received_bytes.saturating_add(task.received_bytes);
             if let Some(total) = task.expected_bytes {
-                summary.known_size_received_bytes = summary.known_size_received_bytes
+                summary.known_size_received_bytes = summary
+                    .known_size_received_bytes
                     .saturating_add(task.received_bytes.min(total));
                 summary.expected_bytes = summary.expected_bytes.saturating_add(total);
                 summary.tasks_with_known_size += 1;
@@ -103,8 +111,11 @@ mod tests {
         manager.enqueue(request("two")).unwrap();
         let id: DownloadId = "one".into();
         manager.get_mut(&id).unwrap().start().unwrap();
-        manager.get_mut(&id).unwrap()
-            .set_response_metadata(Some(200), Some("audio/mpeg".into()), true).unwrap();
+        manager
+            .get_mut(&id)
+            .unwrap()
+            .set_response_metadata(Some(200), Some("audio/mpeg".into()), true)
+            .unwrap();
         manager.get_mut(&id).unwrap().update_progress(50).unwrap();
 
         assert_eq!(manager.summarize().total, 2);
