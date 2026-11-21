@@ -112,6 +112,17 @@ impl EffectStack {
     }
 }
 
+/// Revision-checked commands accepted by a shared room.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "command", rename_all = "snake_case")]
+pub enum RoomCommand {
+    SetTrack(Option<Track>),
+    SetPlayback { position_ms: u64, is_playing: bool },
+    SetGlobalEffect(LiveEffect),
+    SetLocalEffect(LiveEffect),
+    ClearLocalEffects,
+}
+
 /// Snapshot of a shared room at a moment in time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SharedRoom {
@@ -195,6 +206,19 @@ impl SharedRoom {
         self.revision = self.revision.saturating_add(1);
     }
 
+    /// Apply a revision-checked command. Transport is shared; track and global mix are host-only.
+    pub fn apply_command(&mut self, actor: &ParticipantId, expected_revision: u64, command: RoomCommand) -> Result<u64, SocialError> {
+        if !self.participants.contains(actor) { return Err(SocialError::NotInRoom); }
+        if expected_revision != self.revision { return Err(SocialError::RevisionConflict { current: self.revision }); }
+        match command {
+            RoomCommand::SetTrack(track) => { if !self.is_host(actor) { return Err(SocialError::HostOnly); } self.set_track(track); }
+            RoomCommand::SetPlayback { position_ms, is_playing } => { self.position_ms = position_ms; self.is_playing = is_playing; self.revision = self.revision.saturating_add(1); }
+            RoomCommand::SetGlobalEffect(effect) => { if !self.is_host(actor) { return Err(SocialError::HostOnly); } self.apply_global_effect(effect)?; self.revision = self.revision.saturating_add(1); }
+            RoomCommand::SetLocalEffect(effect) => { self.apply_participant_effect(actor, effect)?; self.revision = self.revision.saturating_add(1); }
+            RoomCommand::ClearLocalEffects => { self.participant_effects.remove(actor); self.revision = self.revision.saturating_add(1); }
+        }
+        Ok(self.revision)
+    }
     pub fn apply_global_effect(&mut self, effect: LiveEffect) -> Result<(), SocialError> {
         self.global_effects.push(effect)
     }
@@ -282,6 +306,10 @@ pub enum SocialError {
     InvalidEffect,
     #[error("room not found")]
     RoomNotFound,
+    #[error("only the room host can perform this action")]
+    HostOnly,
+    #[error("room changed; current revision is {current}")]
+    RevisionConflict { current: u64 },
 }
 
 #[cfg(test)]
