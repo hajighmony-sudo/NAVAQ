@@ -113,7 +113,7 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeCreat
     sample_rate: jni::sys::jint,
     channels: jni::sys::jint,
 ) -> jlong {
-    if sample_rate <= 0 || channels <= 0 {
+    if !(1..=384_000).contains(&sample_rate) || !(1..=8).contains(&channels) {
         return 0;
     }
     let format = PcmFormat {
