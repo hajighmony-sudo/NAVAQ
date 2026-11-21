@@ -5,7 +5,7 @@
 //! Android host to resolve and execute. Speech recognition, network AI providers,
 //! and music-library access remain platform adapters.
 
-use crate::model::PlayerCommand;
+use crate::model::{PlayerCommand, RepeatMode};
 use crate::text::normalize_for_search;
 use serde::{Deserialize, Serialize};
 
@@ -206,6 +206,42 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
         };
     }
 
+    if contains_any(value, &["shuffle on", "turn shuffle on", "حالت تصادفی روشن", "تصادفی کن"]) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetShuffle(true),
+        };
+    }
+    if contains_any(value, &["shuffle off", "turn shuffle off", "حالت تصادفی خاموش"]) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetShuffle(false),
+        };
+    }
+    if contains_any(value, &["repeat one", "تکرار همین آهنگ", "تکرار آهنگ"]) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetRepeatMode(RepeatMode::One),
+        };
+    }
+    if contains_any(value, &["repeat all", "تکرار همه", "تکرار صف"]) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetRepeatMode(RepeatMode::All),
+        };
+    }
+    if contains_any(value, &["repeat off", "تکرار خاموش", "بدون تکرار"]) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetRepeatMode(RepeatMode::Off),
+        };
+    }
+    if contains_any(value, &["mute", "بی صدا", "صدا قطع"]) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetVolume(0.0),
+        };
+    }
+    if let Some(volume) = parse_volume(value) {
+        return AvaIntent::Transport {
+            command: PlayerCommand::SetVolume(volume),
+        };
+    }
+
     if contains_any(
         value,
         &[
@@ -273,6 +309,26 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
     AvaIntent::Unknown {
         transcript: original.to_owned(),
     }
+}
+
+fn parse_volume(value: &str) -> Option<f32> {
+    let value = value
+        .strip_prefix("set volume ")
+        .or_else(|| value.strip_prefix("volume "))
+        .or_else(|| value.strip_prefix("صدا "))
+        .or_else(|| value.strip_prefix("بلندی صدا "))
+        .or_else(|| value.strip_prefix("صدای "))
+        .or_else(|| value.strip_prefix("volume to "))?
+        .trim()
+        .trim_end_matches('%')
+        .trim_end_matches("percent")
+        .trim_end_matches("درصد")
+        .trim();
+    let percent = value.parse::<f32>().ok()?;
+    if !(0.0..=100.0).contains(&percent) {
+        return None;
+    }
+    Some(percent / 100.0)
 }
 
 fn contains_any(value: &str, candidates: &[&str]) -> bool {
@@ -371,6 +427,28 @@ mod tests {
         assert_eq!(
             core.interpret("یک درخواست پیچیده", &settings, false).route,
             AvaExecutionRoute::OfflineFallback
+        );
+    }
+
+    #[test]
+    fn parses_shuffle_repeat_and_volume_controls() {
+        let core = AvaCore::new();
+        let settings = AvaSettings::default();
+        assert_eq!(
+            core.interpret("shuffle on", &settings, false).intent,
+            AvaIntent::Transport { command: PlayerCommand::SetShuffle(true) }
+        );
+        assert_eq!(
+            core.interpret("repeat all", &settings, false).intent,
+            AvaIntent::Transport { command: PlayerCommand::SetRepeatMode(RepeatMode::All) }
+        );
+        assert_eq!(
+            core.interpret("volume 50", &settings, false).intent,
+            AvaIntent::Transport { command: PlayerCommand::SetVolume(0.5) }
+        );
+        assert_eq!(
+            core.interpret("mute", &settings, false).intent,
+            AvaIntent::Transport { command: PlayerCommand::SetVolume(0.0) }
         );
     }
 
