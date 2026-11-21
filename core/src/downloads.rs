@@ -29,6 +29,22 @@ pub struct DownloadRequest {
 }
 
 impl DownloadRequest {
+    /// Creates a direct-download request from a validated Discover result.
+    /// The host still performs the actual HTTP transfer and filesystem write.
+    pub fn from_discover_result(
+        id: impl Into<DownloadId>,
+        result: &crate::discover::DiscoverResult,
+        file_name: Option<String>,
+    ) -> Result<Self, DownloadError> {
+        let request = Self {
+            id: id.into(),
+            url: result.url.clone(),
+            file_name,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
     pub fn validate(&self) -> Result<(), DownloadError> {
         if self.id.0.trim().is_empty() || self.id.0.len() > 128 {
             return Err(DownloadError::InvalidId);
@@ -426,6 +442,33 @@ mod tests {
             url: "https://cdn.example.org/audio/song.mp3".into(),
             file_name: Some("song.mp3".into()),
         }
+    }
+
+    #[test]
+    fn discover_results_can_be_queued_as_direct_downloads() {
+        let result = crate::discover::DiscoverResult {
+            id: "provider-track-1".into(),
+            title: "Track".into(),
+            url: "https://cdn.example.org/track.mp3".into(),
+            snippet: None,
+            source_name: "Search".into(),
+            media_type: Some("audio/mpeg".into()),
+        };
+        let request = DownloadRequest::from_discover_result(
+            "download-1",
+            &result,
+            Some("track.mp3".into()),
+        )
+        .unwrap();
+        assert_eq!(request.url, result.url);
+        assert_eq!(request.file_name.as_deref(), Some("track.mp3"));
+
+        let mut unsafe_result = result;
+        unsafe_result.url = "http://127.0.0.1/private".into();
+        assert_eq!(
+            DownloadRequest::from_discover_result("bad", &unsafe_result, None),
+            Err(DownloadError::BlockedDestination)
+        );
     }
 
     #[test]
