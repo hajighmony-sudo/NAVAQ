@@ -303,9 +303,10 @@ pub fn rank_collaborative_tracks(
     }
 
     let mut participants = BTreeSet::new();
-    if participant_ids.iter().any(|id| {
-        id.trim().is_empty() || id.len() > 128 || !participants.insert(id.as_str())
-    }) {
+    if participant_ids
+        .iter()
+        .any(|id| id.trim().is_empty() || id.len() > 128 || !participants.insert(id.as_str()))
+    {
         return Vec::new();
     }
 
@@ -318,7 +319,9 @@ pub fn rank_collaborative_tracks(
             || candidate.track_id.0.len() > 256
             || !seen_tracks.insert(candidate.track_id.clone())
             || candidate.participant_scores.iter().any(|(id, score)| {
-                !participants.contains(id.as_str()) || !score.is_finite() || !(0.0..=1.0).contains(score)
+                !participants.contains(id.as_str())
+                    || !score.is_finite()
+                    || !(0.0..=1.0).contains(score)
             })
         {
             continue;
@@ -431,10 +434,7 @@ mod tests {
         let candidates = vec![
             CollaborativeTrackCandidate {
                 track_id: "balanced".into(),
-                participant_scores: BTreeMap::from([
-                    ("a".into(), 0.8),
-                    ("b".into(), 0.8),
-                ]),
+                participant_scores: BTreeMap::from([("a".into(), 0.8), ("b".into(), 0.8)]),
             },
             CollaborativeTrackCandidate {
                 track_id: "one_sided".into(),
