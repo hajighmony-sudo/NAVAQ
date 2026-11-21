@@ -12,9 +12,15 @@ pub struct DiscoverProviderRegistry {
 }
 
 impl DiscoverProviderRegistry {
-    pub fn new() -> Self { Self::default() }
-    pub fn len(&self) -> usize { self.providers.len() }
-    pub fn is_empty(&self) -> bool { self.providers.is_empty() }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn len(&self) -> usize {
+        self.providers.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.providers.is_empty()
+    }
 
     pub fn register(&mut self, provider: DiscoverProvider) -> Result<(), DiscoverError> {
         provider.validate()?;
@@ -36,7 +42,10 @@ impl DiscoverProviderRegistry {
     }
 
     pub fn set_enabled(&mut self, id: &str, enabled: bool) -> Result<(), DiscoverError> {
-        let provider = self.providers.get_mut(id).ok_or(DiscoverError::ProviderNotFound)?;
+        let provider = self
+            .providers
+            .get_mut(id)
+            .ok_or(DiscoverError::ProviderNotFound)?;
         provider.enabled = enabled;
         Ok(())
     }
@@ -84,7 +93,12 @@ pub fn merge_discover_pages(
         }
     }
 
-    Ok(DiscoverSearchPage { query, page, results, has_more })
+    Ok(DiscoverSearchPage {
+        query,
+        page,
+        results,
+        has_more,
+    })
 }
 
 #[cfg(test)]
@@ -120,7 +134,10 @@ mod tests {
     fn registry_validates_and_controls_providers() {
         let mut registry = DiscoverProviderRegistry::new();
         registry.register(provider("web")).unwrap();
-        assert_eq!(registry.register(provider("web")), Err(DiscoverError::DuplicateProvider));
+        assert_eq!(
+            registry.register(provider("web")),
+            Err(DiscoverError::DuplicateProvider)
+        );
         registry.set_enabled("web", false).unwrap();
         assert_eq!(registry.enabled().count(), 0);
         assert!(registry.remove("web").is_some());
@@ -133,7 +150,8 @@ mod tests {
             page("ambient", "https://example.org/a", "one"),
             page("ambient", "https://example.org/a", "duplicate"),
             page("ambient", "https://example.org/b", "two"),
-        ]).unwrap();
+        ])
+        .unwrap();
         assert_eq!(merged.results.len(), 2);
         assert_eq!(merged.results[0].id, "one");
         assert_eq!(merged.results[1].id, "two");
@@ -142,8 +160,10 @@ mod tests {
     #[test]
     fn merged_pages_reject_mismatched_queries() {
         assert_eq!(
-            merge_discover_pages(&[page("one", "https://example.org/a", "a"),
-                page("two", "https://example.org/b", "b")]),
+            merge_discover_pages(&[
+                page("one", "https://example.org/a", "a"),
+                page("two", "https://example.org/b", "b")
+            ]),
             Err(DiscoverError::MismatchedPage)
         );
     }
