@@ -19,7 +19,7 @@ NAVAQ is being developed as a cross-platform music playback core. This repositor
 - Resume/Play continue from the current position and only re-prepare when the native item was released (Stop, completion, failure) or never loaded.
 - Previous restarts the track after 3 s of playback; at the start of the queue it restarts the first track (or wraps with repeat-all).
 - Late `Position` callbacks after Stop/completion and `Ended` callbacks that race with Pause are ignored.
-- Track ids must be unique within a queue; the host should mint distinct ids if the same file appears twice.
+- Track ids must be unique within a queue; track metadata and source identifiers are validated at queue insertion and snapshot restoration. The host should mint distinct ids if the same file appears twice.
 
 ## Playback persistence
 
@@ -68,7 +68,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ### Exclusive / differentiating modules
 
-- **`social`** — Shared Listening Rooms state model with revision-checked commands, participant membership, host-only shared-track/global-mix changes, shared transport updates, private effects, and participant-contributed room-wide effects (Echo, Reverb, PitchShift, VocalOverlay, Custom). `RoomStore` is in-memory; WebSocket/WebRTC transport, clock-drift correction, presence, moderation and real-time audio mixing still belong to a server/native host.
+- **`social`** — Shared Listening Rooms state model with revision-checked commands, participant membership, host-only shared-track/global-mix changes, shared transport updates, latency-aware drift correction (gentle playback-rate adjustment or hard seek), private effects, and participant-contributed room-wide effects (Echo, Reverb, PitchShift, VocalOverlay, Custom). `RoomStore` is in-memory; WebSocket/WebRTC transport, clock-drift correction, presence, moderation and real-time audio mixing still belong to a server/native host.
 - **`music_dna`** — Taste profiles built from play history + ratings + optional genre/tempo/energy tags. Similarity scores normalize vectors and validate inputs. `rank_opted_in_matches` excludes profiles that have not explicitly enabled discovery and supports a minimum history threshold; account privacy, consent UI and collaborative playlist persistence remain host responsibilities.
 - **`creative` + `composer`** — Lyric-to-Melody and instrumental/stem-separation job contracts plus a manual multi-track composition model (tempo, meter, key, bars, instruments, notes, velocity, volume and pan). Manual arrangements are validated, can be queued for rendering, and can be exported as a Standard MIDI File. Actual synthesis, AI melody generation and stem separation require a host renderer/model and are not bundled into this Rust crate.
 - **`haptic`** — Haptic patterns for BassHit, Snare, HiHat, VocalOnset and Beat, with intensity scaling and trigger gating. A host still needs beat/onset analysis and platform vibrator/controller adapters.
