@@ -18,14 +18,20 @@ pub struct DiscoverSearchRequest {
 
 impl DiscoverSearchRequest {
     pub fn new(query: impl Into<String>) -> Result<Self, DiscoverError> {
-        let request = Self { query: query.into(), page: 0, page_size: 20, safe_search: true };
+        let request = Self {
+            query: query.into(),
+            page: 0,
+            page_size: 20,
+            safe_search: true,
+        };
         request.validate()?;
         Ok(request)
     }
 
     pub fn validate(&self) -> Result<(), DiscoverError> {
         let query = self.query.trim();
-        if query.is_empty() || query.len() > MAX_QUERY_BYTES || query.chars().any(char::is_control) {
+        if query.is_empty() || query.len() > MAX_QUERY_BYTES || query.chars().any(char::is_control)
+        {
             return Err(DiscoverError::InvalidQuery);
         }
         if self.page_size == 0 || usize::from(self.page_size) > MAX_RESULTS {
@@ -50,9 +56,12 @@ pub struct DiscoverResult {
 
 impl DiscoverResult {
     pub fn validate(&self) -> Result<(), DiscoverError> {
-        if self.id.trim().is_empty() || self.id.len() > 256
-            || self.title.trim().is_empty() || self.title.len() > 512
-            || self.source_name.trim().is_empty() || self.source_name.len() > 128
+        if self.id.trim().is_empty()
+            || self.id.len() > 256
+            || self.title.trim().is_empty()
+            || self.title.len() > 512
+            || self.source_name.trim().is_empty()
+            || self.source_name.len() > 128
             || self.snippet.as_ref().is_some_and(|s| s.len() > 4_096)
             || self.media_type.as_ref().is_some_and(|s| s.len() > 128)
         {
@@ -72,7 +81,8 @@ pub struct DiscoverSearchPage {
 
 impl DiscoverSearchPage {
     pub fn validate(&self) -> Result<(), DiscoverError> {
-        if self.query.trim().is_empty() || self.query.len() > MAX_QUERY_BYTES
+        if self.query.trim().is_empty()
+            || self.query.len() > MAX_QUERY_BYTES
             || self.results.len() > MAX_RESULTS
         {
             return Err(DiscoverError::InvalidPage);
@@ -95,8 +105,10 @@ pub struct DiscoverProvider {
 
 impl DiscoverProvider {
     pub fn validate(&self) -> Result<(), DiscoverError> {
-        if self.id.trim().is_empty() || self.id.len() > 128
-            || self.display_name.trim().is_empty() || self.display_name.len() > 128
+        if self.id.trim().is_empty()
+            || self.id.len() > 128
+            || self.display_name.trim().is_empty()
+            || self.display_name.len() > 128
         {
             return Err(DiscoverError::InvalidProvider);
         }
