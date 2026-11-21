@@ -293,6 +293,18 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unsupported_device_channel_counts_and_sample_rates() {
+        assert_eq!(
+            DspProcessor::new(768_000, 2, &EqualizerSettings::default(), 1.0).unwrap_err(),
+            DspError::InvalidFormat
+        );
+        assert_eq!(
+            DspProcessor::new(48_000, 9, &EqualizerSettings::default(), 1.0).unwrap_err(),
+            DspError::InvalidFormat
+        );
+    }
+
+    #[test]
     fn rejects_invalid_formats_and_misaligned_buffers() {
         assert_eq!(
             DspProcessor::new(0, 2, &EqualizerSettings::default(), 1.0).unwrap_err(),
