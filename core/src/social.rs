@@ -426,6 +426,39 @@ mod tests {
     }
 
     #[test]
+    fn room_commands_enforce_host_permissions_and_revision() {
+        let mut room = SharedRoom::new("r".into(), "host".into());
+        room.join("guest".into()).unwrap();
+        let guest = ParticipantId::from("guest");
+        let revision = room.revision;
+        assert_eq!(
+            room.apply_command(&guest, revision, RoomCommand::SetTrack(None)),
+            Err(SocialError::HostOnly)
+        );
+        let next = room
+            .apply_command(
+                &guest,
+                revision,
+                RoomCommand::SetPlayback { position_ms: 2_000, is_playing: true },
+            )
+            .unwrap();
+        assert!(next > revision);
+        assert_eq!(
+            room.apply_command(&guest, revision, RoomCommand::ClearLocalEffects),
+            Err(SocialError::RevisionConflict { current: next })
+        );
+    }
+
+    #[test]
+    fn duplicate_join_does_not_consume_room_capacity() {
+        let mut room = SharedRoom::new("r".into(), "host".into());
+        room.max_participants = 2;
+        room.join("guest".into()).unwrap();
+        room.join("guest".into()).unwrap();
+        assert_eq!(room.participant_count(), 2);
+        assert_eq!(room.join("third".into()), Err(SocialError::RoomFull));
+    }
+    #[test]
     fn set_track_and_sync() {
         let mut room = SharedRoom::new("r".into(), "h".into());
         room.set_track(Some(sample_track()));
