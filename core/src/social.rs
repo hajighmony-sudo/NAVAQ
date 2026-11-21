@@ -137,6 +137,73 @@ pub enum RoomCommand {
     ClearSharedEffects,
 }
 
+/// Policy for correcting clock drift between a room host and a listener.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RoomSyncPolicy {
+    /// Drift below this threshold is ignored.
+    pub soft_drift_ms: u64,
+    /// Drift above this threshold causes a hard seek.
+    pub hard_drift_ms: u64,
+    /// Maximum relative playback-rate correction (0.03 = ±3%).
+    pub max_rate_adjustment: f32,
+}
+
+impl Default for RoomSyncPolicy {
+    fn default() -> Self {
+        Self {
+            soft_drift_ms: 40,
+            hard_drift_ms: 250,
+            max_rate_adjustment: 0.03,
+        }
+    }
+}
+
+impl RoomSyncPolicy {
+    pub fn is_valid(&self) -> bool {
+        self.soft_drift_ms < self.hard_drift_ms
+            && self.hard_drift_ms > 0
+            && self.max_rate_adjustment.is_finite()
+            && (0.001..=0.1).contains(&self.max_rate_adjustment)
+    }
+}
+
+/// Action a listener should take to follow the room's authoritative transport clock.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RoomSyncDecision {
+    InSync,
+    AdjustRate { speed: f32 },
+    Seek { position_ms: u64 },
+}
+
+/// Estimate host position after one-way latency and choose a gentle correction or seek.
+pub fn calculate_room_sync(
+    local_position_ms: u64,
+    host_position_ms: u64,
+    one_way_latency_ms: u64,
+    current_speed: f32,
+    policy: RoomSyncPolicy,
+) -> Result<RoomSyncDecision, SocialError> {
+    if !policy.is_valid() || !current_speed.is_finite() || !(0.25..=4.0).contains(&current_speed) {
+        return Err(SocialError::InvalidSyncPolicy);
+    }
+    let expected_position = host_position_ms.saturating_add(one_way_latency_ms);
+    let drift = expected_position as i128 - local_position_ms as i128;
+    let absolute_drift = drift.unsigned_abs();
+    if absolute_drift <= policy.soft_drift_ms as u128 {
+        return Ok(RoomSyncDecision::InSync);
+    }
+    if absolute_drift >= policy.hard_drift_ms as u128 {
+        return Ok(RoomSyncDecision::Seek {
+            position_ms: expected_position,
+        });
+    }
+    let correction = (drift as f32 / policy.hard_drift_ms as f32)
+        * policy.max_rate_adjustment;
+    let speed = (current_speed + correction).clamp(0.25, 4.0);
+    Ok(RoomSyncDecision::AdjustRate { speed })
+}
+
 /// Snapshot of a shared room at a moment in time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SharedRoom {
@@ -388,6 +455,8 @@ pub enum SocialError {
     InvalidTrack,
     #[error("a room needs a track before playback can start")]
     NoTrack,
+    #[error("invalid room synchronization policy or playback speed")]
+    InvalidSyncPolicy,
 }
 
 #[cfg(test)]
