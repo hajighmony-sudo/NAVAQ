@@ -15,7 +15,9 @@ const MAX_NAME_BYTES: usize = 255;
 pub struct DownloadId(pub String);
 
 impl From<&str> for DownloadId {
-    fn from(value: &str) -> Self { Self(value.to_owned()) }
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,7 +84,9 @@ impl DownloadTask {
 
     pub fn progress_percent(&self) -> Option<f32> {
         let total = self.expected_bytes?;
-        if total == 0 { return Some(100.0); }
+        if total == 0 {
+            return Some(100.0);
+        }
         Some(((self.received_bytes.min(total) as f64 / total as f64) * 100.0) as f32)
     }
 
@@ -129,7 +133,10 @@ impl DownloadTask {
         if self.status != DownloadStatus::Downloading {
             return Err(DownloadError::InvalidTransition);
         }
-        if mime_type.as_ref().is_some_and(|v| v.len() > 255 || v.chars().any(char::is_control)) {
+        if mime_type
+            .as_ref()
+            .is_some_and(|v| v.len() > 255 || v.chars().any(char::is_control))
+        {
             return Err(DownloadError::InvalidMetadata);
         }
         if expected_bytes.is_some_and(|total| self.received_bytes > total) {
@@ -147,7 +154,9 @@ impl DownloadTask {
             return Err(DownloadError::InvalidTransition);
         }
         if received_bytes < self.received_bytes
-            || self.expected_bytes.is_some_and(|total| received_bytes > total)
+            || self
+                .expected_bytes
+                .is_some_and(|total| received_bytes > total)
         {
             return Err(DownloadError::InvalidProgress);
         }
@@ -159,7 +168,10 @@ impl DownloadTask {
         if self.status != DownloadStatus::Downloading {
             return Err(DownloadError::InvalidTransition);
         }
-        if self.expected_bytes.is_some_and(|total| self.received_bytes != total) {
+        if self
+            .expected_bytes
+            .is_some_and(|total| self.received_bytes != total)
+        {
             return Err(DownloadError::IncompleteDownload);
         }
         self.status = DownloadStatus::Completed;
@@ -168,7 +180,10 @@ impl DownloadTask {
     }
 
     pub fn fail(&mut self, message: impl Into<String>) -> Result<(), DownloadError> {
-        if !matches!(self.status, DownloadStatus::Downloading | DownloadStatus::Queued | DownloadStatus::Paused) {
+        if !matches!(
+            self.status,
+            DownloadStatus::Downloading | DownloadStatus::Queued | DownloadStatus::Paused
+        ) {
             return Err(DownloadError::InvalidTransition);
         }
         let message = message.into();
@@ -191,7 +206,10 @@ impl DownloadTask {
     }
 
     pub fn cancel(&mut self) -> Result<(), DownloadError> {
-        if matches!(self.status, DownloadStatus::Completed | DownloadStatus::Cancelled) {
+        if matches!(
+            self.status,
+            DownloadStatus::Completed | DownloadStatus::Cancelled
+        ) {
             return Err(DownloadError::InvalidTransition);
         }
         self.status = DownloadStatus::Cancelled;
@@ -205,15 +223,27 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    pub fn new() -> Self { Self::default() }
-    pub fn len(&self) -> usize { self.tasks.len() }
-    pub fn is_empty(&self) -> bool { self.tasks.is_empty() }
-    pub fn get(&self, id: &DownloadId) -> Option<&DownloadTask> { self.tasks.get(id) }
-    pub fn tasks(&self) -> impl Iterator<Item = &DownloadTask> { self.tasks.values() }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn len(&self) -> usize {
+        self.tasks.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+    }
+    pub fn get(&self, id: &DownloadId) -> Option<&DownloadTask> {
+        self.tasks.get(id)
+    }
+    pub fn tasks(&self) -> impl Iterator<Item = &DownloadTask> {
+        self.tasks.values()
+    }
 
     pub fn enqueue(&mut self, request: DownloadRequest) -> Result<&DownloadTask, DownloadError> {
         let task = DownloadTask::from_request(request)?;
-        if self.tasks.contains_key(&task.id) { return Err(DownloadError::DuplicateId); }
+        if self.tasks.contains_key(&task.id) {
+            return Err(DownloadError::DuplicateId);
+        }
         let id = task.id.clone();
         self.tasks.insert(id.clone(), task);
         Ok(self.tasks.get(&id).expect("inserted task"))
@@ -228,7 +258,12 @@ impl DownloadManager {
     }
 
     pub fn clear_finished(&mut self) {
-        self.tasks.retain(|_, task| !matches!(task.status, DownloadStatus::Completed | DownloadStatus::Cancelled));
+        self.tasks.retain(|_, task| {
+            !matches!(
+                task.status,
+                DownloadStatus::Completed | DownloadStatus::Cancelled
+            )
+        });
     }
 }
 
@@ -244,25 +279,42 @@ pub fn validate_http_url(url: &str) -> Result<(), DownloadError> {
         return Err(DownloadError::UnsupportedScheme);
     }
     let authority = remainder.split(['/', '?', '#']).next().unwrap_or("");
-    if authority.is_empty() || authority.contains('@') || authority.bytes().any(|b| b.is_ascii_whitespace()) {
+    if authority.is_empty()
+        || authority.contains('@')
+        || authority.bytes().any(|b| b.is_ascii_whitespace())
+    {
         return Err(DownloadError::InvalidUrl);
     }
     let host = if authority.starts_with('[') {
         let end = authority.find(']').ok_or(DownloadError::InvalidUrl)?;
-        let parsed: Ipv6Addr = authority[1..end].parse().map_err(|_| DownloadError::InvalidUrl)?;
+        let parsed: Ipv6Addr = authority[1..end]
+            .parse()
+            .map_err(|_| DownloadError::InvalidUrl)?;
         if authority[end + 1..].starts_with(':') {
             let port = &authority[end + 2..];
-            if !port.is_empty() && port.parse::<u16>().is_err() { return Err(DownloadError::InvalidUrl); }
+            if !port.is_empty() && port.parse::<u16>().is_err() {
+                return Err(DownloadError::InvalidUrl);
+            }
         } else if !authority[end + 1..].is_empty() {
             return Err(DownloadError::InvalidUrl);
         }
-        if is_blocked_ip(IpAddr::V6(parsed)) { return Err(DownloadError::BlockedDestination); }
+        if is_blocked_ip(IpAddr::V6(parsed)) {
+            return Err(DownloadError::BlockedDestination);
+        }
         return Ok(());
     } else {
-        authority.rsplit_once(':').filter(|(h, p)| !h.contains(':') && !p.is_empty())
+        authority
+            .rsplit_once(':')
+            .filter(|(h, p)| !h.contains(':') && !p.is_empty())
             .map(|(h, p)| {
-                if p.parse::<u16>().is_err() { Err(DownloadError::InvalidUrl) } else { Ok(h) }
-            }).transpose()?.unwrap_or(authority)
+                if p.parse::<u16>().is_err() {
+                    Err(DownloadError::InvalidUrl)
+                } else {
+                    Ok(h)
+                }
+            })
+            .transpose()?
+            .unwrap_or(authority)
     };
     if host.is_empty() || host.len() > 253 || host.starts_with('.') || host.ends_with('.') {
         return Err(DownloadError::InvalidUrl);
@@ -275,16 +327,24 @@ pub fn validate_http_url(url: &str) -> Result<(), DownloadError> {
         return Err(DownloadError::BlockedDestination);
     }
     if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_blocked_ip(ip) { return Err(DownloadError::BlockedDestination); }
+        if is_blocked_ip(ip) {
+            return Err(DownloadError::BlockedDestination);
+        }
     } else if host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
-        || host.strip_prefix("0x").is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit()))
+        || host.strip_prefix("0x").is_some_and(|digits| {
+            !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit())
+        })
     {
         // Reject non-canonical numeric IPv4 forms (for example 127.1 or 0x7f000001).
         return Err(DownloadError::BlockedDestination);
     } else if !host.split('.').all(|label| {
-        !label.is_empty() && label.len() <= 63
-            && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
-            && !label.starts_with('-') && !label.ends_with('-')
+        !label.is_empty()
+            && label.len() <= 63
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
     }) {
         return Err(DownloadError::InvalidUrl);
     }
@@ -294,13 +354,19 @@ pub fn validate_http_url(url: &str) -> Result<(), DownloadError> {
 fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
-            v4.is_private() || v4.is_loopback() || v4.is_link_local()
-                || v4.is_broadcast() || v4.is_unspecified() || v4.is_multicast()
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_multicast()
                 || v4.octets()[0] == 0
                 || (v4.octets()[0] == 100 && (64..=127).contains(&v4.octets()[1]))
         }
         IpAddr::V6(v6) => {
-            v6.is_loopback() || v6.is_unspecified() || v6.is_multicast()
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
                 || (v6.segments()[0] & 0xffc0) == 0xfe80
                 || v6.to_ipv4().is_some_and(|v4| is_blocked_ip(IpAddr::V4(v4)))
@@ -309,8 +375,13 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 }
 
 fn validate_file_name(name: &str) -> Result<(), DownloadError> {
-    if name.is_empty() || name.len() > MAX_NAME_BYTES || name == "." || name == ".."
-        || name.contains('/') || name.contains('\\') || name.chars().any(char::is_control)
+    if name.is_empty()
+        || name.len() > MAX_NAME_BYTES
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(char::is_control)
     {
         return Err(DownloadError::InvalidFileName);
     }
@@ -350,7 +421,11 @@ mod tests {
     use super::*;
 
     fn request(id: &str) -> DownloadRequest {
-        DownloadRequest { id: id.into(), url: "https://cdn.example.org/audio/song.mp3".into(), file_name: Some("song.mp3".into()) }
+        DownloadRequest {
+            id: id.into(),
+            url: "https://cdn.example.org/audio/song.mp3".into(),
+            file_name: Some("song.mp3".into()),
+        }
     }
 
     #[test]
@@ -367,7 +442,8 @@ mod tests {
     fn tracks_progress_pause_resume_and_completion() {
         let mut task = DownloadTask::from_request(request("one")).unwrap();
         task.start().unwrap();
-        task.set_response_metadata(Some(100), Some("audio/mpeg".into()), true).unwrap();
+        task.set_response_metadata(Some(100), Some("audio/mpeg".into()), true)
+            .unwrap();
         task.update_progress(40).unwrap();
         assert_eq!(task.progress_percent(), Some(40.0));
         task.pause().unwrap();
@@ -391,7 +467,10 @@ mod tests {
     fn retry_resets_failed_attempt_and_manager_rejects_duplicate_ids() {
         let mut manager = DownloadManager::new();
         manager.enqueue(request("one")).unwrap();
-        assert_eq!(manager.enqueue(request("one")).unwrap_err(), DownloadError::DuplicateId);
+        assert_eq!(
+            manager.enqueue(request("one")).unwrap_err(),
+            DownloadError::DuplicateId
+        );
         let task = manager.get_mut(&"one".into()).unwrap();
         task.start().unwrap();
         task.fail("network").unwrap();
@@ -404,11 +483,17 @@ mod tests {
     fn rejects_path_traversal_file_names_and_non_monotonic_progress() {
         let mut bad = request("bad");
         bad.file_name = Some("../secret".into());
-        assert_eq!(DownloadTask::from_request(bad).unwrap_err(), DownloadError::InvalidFileName);
+        assert_eq!(
+            DownloadTask::from_request(bad).unwrap_err(),
+            DownloadError::InvalidFileName
+        );
         let mut task = DownloadTask::from_request(request("ok")).unwrap();
         task.start().unwrap();
         task.set_response_metadata(Some(50), None, true).unwrap();
         task.update_progress(20).unwrap();
-        assert_eq!(task.update_progress(10), Err(DownloadError::InvalidProgress));
+        assert_eq!(
+            task.update_progress(10),
+            Err(DownloadError::InvalidProgress)
+        );
     }
 }
