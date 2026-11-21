@@ -91,8 +91,8 @@ class AvaMusicCatalog(private val context: Context) {
                 while (cursor.moveToNext()) {
                     val mediaId = cursor.getLong(idColumn)
                     val title = cursor.getString(titleColumn)?.takeIf(String::isNotBlank) ?: continue
-                    val artist = cursor.getString(artistColumn)?.takeUnless(String?::isNullOrBlank)
-                    val album = cursor.getString(albumColumn)?.takeUnless(String?::isNullOrBlank)
+                    val artist = cursor.getString(artistColumn)?.takeUnless { it.isNullOrBlank() }
+                    val album = cursor.getString(albumColumn)?.takeUnless { it.isNullOrBlank() }
                     val duration = cursor.getLong(durationColumn).takeIf { it > 0L }
                     val uri = ContentUris.withAppendedId(collection, mediaId)
                     val track = AvaCatalogTrack(
