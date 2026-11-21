@@ -45,7 +45,12 @@ impl TasteProfile {
 
     /// Merge another profile with a weight (useful for time-decayed updates).
     pub fn merge(&mut self, other: &TasteProfile, weight: f32) {
-        if !self.is_valid() || !weight.is_finite() || weight <= 0.0 || weight > 100.0 || !other.is_valid() {
+        if !self.is_valid()
+            || !weight.is_finite()
+            || weight <= 0.0
+            || weight > 100.0
+            || !other.is_valid()
+        {
             return;
         }
         for (k, &v) in &other.artists {
