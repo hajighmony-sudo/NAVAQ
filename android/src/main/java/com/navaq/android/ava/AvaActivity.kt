@@ -74,13 +74,18 @@ class AvaActivity : Activity() {
             context = this,
             onListeningChanged = { listening ->
                 runOnUiThread {
-                    statusText.text = if (listening) {
-                        "Listening… speak one command"
+                    if (listening) {
+                        statusText.text = "Listening… speak one command"
+                        stopButton.isEnabled = true
                     } else {
-                        "Processing speech locally…"
+                        if (statusText.text.startsWith("Listening")) {
+                            statusText.text = "Recognizing speech locally…"
+                        }
+                        stopButton.isEnabled = false
                     }
-                    listenButton.isEnabled = !listening && AvaSpeechModelManager(this).isInstalled()
-                    stopButton.isEnabled = listening
+                    // Keep the mic button disabled during Whisper decoding. It is
+                    // re-enabled when a transcript or an error is delivered.
+                    listenButton.isEnabled = false
                 }
             },
             onError = { error ->
@@ -94,6 +99,8 @@ class AvaActivity : Activity() {
                 runOnUiThread {
                     transcriptText.text = "Heard: $transcript"
                     statusText.text = "Command recognized. Executing locally…"
+                    listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
+                    stopButton.isEnabled = false
                 }
             }
         )
@@ -115,6 +122,7 @@ class AvaActivity : Activity() {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         receiverRegistered = true
+        refreshModelState()
     }
 
     override fun onStop() {
