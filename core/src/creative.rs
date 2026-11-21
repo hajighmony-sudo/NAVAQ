@@ -225,10 +225,17 @@ impl CreativeStore {
         if job.status != JobStatus::Running {
             return Err(CreativeError::InvalidTransition);
         }
-        if result.title.trim().is_empty() || result.title.len() > 512
-            || result.artist.as_ref().map_or(false, |artist| artist.len() > 256)
+        if result.title.trim().is_empty()
+            || result.title.len() > 512
+            || result
+                .artist
+                .as_ref()
+                .map_or(false, |artist| artist.len() > 256)
             || result.tags.len() > 64
-            || result.tags.iter().any(|(key, value)| key.trim().is_empty() || key.len() > 64 || value.len() > 512)
+            || result
+                .tags
+                .iter()
+                .any(|(key, value)| key.trim().is_empty() || key.len() > 64 || value.len() > 512)
         {
             return Err(CreativeError::InvalidRequest);
         }
@@ -359,23 +366,41 @@ mod tests {
     fn creative_jobs_reject_invalid_transitions_and_wrong_result_ids() {
         let mut store = CreativeStore::new();
         let request = CreativeRequest::LyricToMelody(LyricToMelodyRequest {
-            lyrics: "A short line".into(), style: None, tempo_bpm: None, key: None,
-            duration_secs: None, also_instrumental: false,
+            lyrics: "A short line".into(),
+            style: None,
+            tempo_bpm: None,
+            key: None,
+            duration_secs: None,
+            also_instrumental: false,
         });
         store.submit("job".into(), request, 100).unwrap();
         let result = CreativeResult {
-            job_id: "other".into(), title: "Generated".into(), artist: None,
-            duration_ms: Some(1_000), source: AudioSource::LocalFile("/tmp/out.wav".into()),
+            job_id: "other".into(),
+            title: "Generated".into(),
+            artist: None,
+            duration_ms: Some(1_000),
+            source: AudioSource::LocalFile("/tmp/out.wav".into()),
             tags: BTreeMap::new(),
         };
-        assert_eq!(store.complete(&"job".into(), result, 200), Err(CreativeError::InvalidTransition));
-        store.set_status(&"job".into(), JobStatus::Running, 150).unwrap();
+        assert_eq!(
+            store.complete(&"job".into(), result, 200),
+            Err(CreativeError::InvalidTransition)
+        );
+        store
+            .set_status(&"job".into(), JobStatus::Running, 150)
+            .unwrap();
         let wrong = CreativeResult {
-            job_id: "other".into(), title: "Generated".into(), artist: None,
-            duration_ms: Some(1_000), source: AudioSource::LocalFile("/tmp/out.wav".into()),
+            job_id: "other".into(),
+            title: "Generated".into(),
+            artist: None,
+            duration_ms: Some(1_000),
+            source: AudioSource::LocalFile("/tmp/out.wav".into()),
             tags: BTreeMap::new(),
         };
-        assert_eq!(store.complete(&"job".into(), wrong, 200), Err(CreativeError::ResultJobMismatch));
+        assert_eq!(
+            store.complete(&"job".into(), wrong, 200),
+            Err(CreativeError::ResultJobMismatch)
+        );
     }
     #[test]
     fn instrumental_rejects_duplicate_stems_and_blank_source_ids() {
