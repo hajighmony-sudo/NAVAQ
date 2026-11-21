@@ -247,13 +247,23 @@ impl SharedRoom {
                 if !self.is_host(actor) {
                     return Err(SocialError::HostOnly);
                 }
+                if track.as_ref().map_or(false, |value| !value.is_valid()) {
+                    return Err(SocialError::InvalidTrack);
+                }
                 self.set_track(track);
             }
             RoomCommand::SetPlayback {
                 position_ms,
                 is_playing,
             } => {
-                self.position_ms = position_ms;
+                if is_playing && self.current_track.is_none() {
+                    return Err(SocialError::NoTrack);
+                }
+                self.position_ms = self
+                    .current_track
+                    .as_ref()
+                    .and_then(|track| track.duration_ms)
+                    .map_or(position_ms, |duration| position_ms.min(duration));
                 self.is_playing = is_playing;
                 self.revision = self.revision.saturating_add(1);
             }
@@ -374,6 +384,10 @@ pub enum SocialError {
     HostOnly,
     #[error("room changed; current revision is {current}")]
     RevisionConflict { current: u64 },
+    #[error("track metadata or source is invalid")]
+    InvalidTrack,
+    #[error("a room needs a track before playback can start")]
+    NoTrack,
 }
 
 #[cfg(test)]
@@ -456,6 +470,7 @@ mod tests {
     fn room_commands_enforce_host_permissions_and_revision() {
         let mut room = SharedRoom::new("r".into(), "host".into());
         room.join("guest".into()).unwrap();
+        room.set_track(Some(sample_track()));
         let guest = ParticipantId::from("guest");
         let revision = room.revision;
         assert_eq!(
