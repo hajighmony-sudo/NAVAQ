@@ -72,7 +72,7 @@ impl AudioOnsetAnalyzer {
         channels: u16,
         settings: AudioAnalysisSettings,
     ) -> Result<Self, AudioAnalysisError> {
-        if sample_rate < 8_000 || sample_rate > 192_000 || channels == 0 || channels > 8 {
+        if !(8_000..=192_000).contains(&sample_rate) || channels == 0 || channels > 8 {
             return Err(AudioAnalysisError::InvalidFormat);
         }
         if !settings.is_valid() {
@@ -180,8 +180,10 @@ mod tests {
             AudioOnsetAnalyzer::new(1_000, 2, AudioAnalysisSettings::default()).err(),
             Some(AudioAnalysisError::InvalidFormat)
         );
-        let mut settings = AudioAnalysisSettings::default();
-        settings.sensitivity = f32::NAN;
+        let settings = AudioAnalysisSettings {
+            sensitivity: f32::NAN,
+            ..AudioAnalysisSettings::default()
+        };
         assert_eq!(
             AudioOnsetAnalyzer::new(48_000, 2, settings).err(),
             Some(AudioAnalysisError::InvalidSettings)
