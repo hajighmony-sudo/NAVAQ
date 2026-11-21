@@ -20,15 +20,6 @@ pub enum AvaMusicSources {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum AvaAiMode {
-    OfflineOnly,
-    OnlineOnly,
-    #[default]
-    Adaptive,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
 pub enum AvaResponseMode {
     Silent,
     Voice,
@@ -58,7 +49,6 @@ pub enum AvaActivationMode {
 pub struct AvaSettings {
     pub enabled: bool,
     pub music_sources: AvaMusicSources,
-    pub ai_mode: AvaAiMode,
     pub response_mode: AvaResponseMode,
     pub language: AvaLanguage,
     pub activation_mode: AvaActivationMode,
@@ -70,7 +60,6 @@ impl Default for AvaSettings {
         Self {
             enabled: true,
             music_sources: AvaMusicSources::Both,
-            ai_mode: AvaAiMode::Adaptive,
             response_mode: AvaResponseMode::Visual,
             language: AvaLanguage::Auto,
             activation_mode: AvaActivationMode::PushToTalk,
@@ -83,7 +72,6 @@ impl Default for AvaSettings {
 #[serde(rename_all = "snake_case")]
 pub enum AvaExecutionRoute {
     Local,
-    Online,
     OfflineFallback,
 }
 
@@ -112,14 +100,12 @@ impl AvaCore {
         Self
     }
 
-    /// Interpret a recognized transcript. Deterministic transport and music
-    /// commands stay local; only unrecognized/complex requests may use an online
-    /// provider in adaptive mode.
+    /// Interpret a recognized transcript using only deterministic local rules.
     pub fn interpret(
         &self,
         transcript: &str,
         settings: &AvaSettings,
-        network_available: bool,
+        _network_available: bool,
     ) -> AvaDecision {
         let normalized = clean_transcript(&normalize_for_search(transcript));
         let intent = parse_intent(&normalized, transcript);
@@ -127,13 +113,7 @@ impl AvaCore {
         let route = if is_deterministic {
             AvaExecutionRoute::Local
         } else {
-            match settings.ai_mode {
-                AvaAiMode::OfflineOnly => AvaExecutionRoute::OfflineFallback,
-                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly if network_available => {
-                    AvaExecutionRoute::Online
-                }
-                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => AvaExecutionRoute::OfflineFallback,
-            }
+            AvaExecutionRoute::OfflineFallback
         };
 
         AvaDecision {
@@ -354,7 +334,6 @@ mod tests {
     fn defaults_match_ava_product_decisions() {
         let settings = AvaSettings::default();
         assert_eq!(settings.music_sources, AvaMusicSources::Both);
-        assert_eq!(settings.ai_mode, AvaAiMode::Adaptive);
         assert_eq!(settings.response_mode, AvaResponseMode::Visual);
         assert_eq!(settings.activation_mode, AvaActivationMode::PushToTalk);
     }
