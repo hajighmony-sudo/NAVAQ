@@ -13,4 +13,11 @@ object AvaCommandClient {
             .putExtra(NavaqPlaybackService.EXTRA_AVA_TRANSCRIPT, transcript)
         context.startService(intent)
     }
+
+    fun confirmMusicChange(context: Context, accepted: Boolean) {
+        val intent = Intent(context, NavaqPlaybackService::class.java)
+            .setAction(NavaqPlaybackService.ACTION_CONFIRM_AVA_PLAYBACK)
+            .putExtra(NavaqPlaybackService.EXTRA_AVA_ACCEPT, accepted)
+        context.startService(intent)
+    }
 }
