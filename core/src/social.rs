@@ -476,6 +476,40 @@ mod tests {
     }
 
     #[test]
+    fn room_sync_uses_soft_correction_and_hard_seek_thresholds() {
+        let policy = RoomSyncPolicy::default();
+        assert_eq!(
+            calculate_room_sync(1_020, 1_000, 0, 1.0, policy).unwrap(),
+            RoomSyncDecision::InSync
+        );
+        match calculate_room_sync(1_000, 1_100, 0, 1.0, policy).unwrap() {
+            RoomSyncDecision::AdjustRate { speed } => assert!(speed > 1.0 && speed <= 1.03),
+            other => panic!("expected gentle rate correction, got {other:?}"),
+        }
+        assert_eq!(
+            calculate_room_sync(1_000, 1_400, 0, 1.0, policy).unwrap(),
+            RoomSyncDecision::Seek { position_ms: 1_400 }
+        );
+    }
+
+    #[test]
+    fn room_sync_accounts_for_latency_and_rejects_invalid_policy() {
+        let policy = RoomSyncPolicy::default();
+        assert_eq!(
+            calculate_room_sync(1_100, 1_000, 100, 1.0, policy).unwrap(),
+            RoomSyncDecision::InSync
+        );
+        let invalid = RoomSyncPolicy {
+            hard_drift_ms: 0,
+            ..policy
+        };
+        assert_eq!(
+            calculate_room_sync(0, 0, 0, 1.0, invalid),
+            Err(SocialError::InvalidSyncPolicy)
+        );
+    }
+
+    #[test]
     fn create_join_leave_and_effects() {
         let mut store = RoomStore::new();
         let room = store.create("room1".into(), "host".into()).unwrap().clone();
