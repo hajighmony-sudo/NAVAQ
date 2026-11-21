@@ -170,7 +170,9 @@ impl SharedRoom {
     }
 
     pub fn join(&mut self, participant: ParticipantId) -> Result<(), SocialError> {
-        if self.participants.contains(&participant) { return Ok(()); }
+        if self.participants.contains(&participant) {
+            return Ok(());
+        }
         if self.max_participants > 0 && self.participants.len() as u32 >= self.max_participants {
             return Err(SocialError::RoomFull);
         }
@@ -207,15 +209,50 @@ impl SharedRoom {
     }
 
     /// Apply a revision-checked command. Transport is shared; track and global mix are host-only.
-    pub fn apply_command(&mut self, actor: &ParticipantId, expected_revision: u64, command: RoomCommand) -> Result<u64, SocialError> {
-        if !self.participants.contains(actor) { return Err(SocialError::NotInRoom); }
-        if expected_revision != self.revision { return Err(SocialError::RevisionConflict { current: self.revision }); }
+    pub fn apply_command(
+        &mut self,
+        actor: &ParticipantId,
+        expected_revision: u64,
+        command: RoomCommand,
+    ) -> Result<u64, SocialError> {
+        if !self.participants.contains(actor) {
+            return Err(SocialError::NotInRoom);
+        }
+        if expected_revision != self.revision {
+            return Err(SocialError::RevisionConflict {
+                current: self.revision,
+            });
+        }
         match command {
-            RoomCommand::SetTrack(track) => { if !self.is_host(actor) { return Err(SocialError::HostOnly); } self.set_track(track); }
-            RoomCommand::SetPlayback { position_ms, is_playing } => { self.position_ms = position_ms; self.is_playing = is_playing; self.revision = self.revision.saturating_add(1); }
-            RoomCommand::SetGlobalEffect(effect) => { if !self.is_host(actor) { return Err(SocialError::HostOnly); } self.apply_global_effect(effect)?; self.revision = self.revision.saturating_add(1); }
-            RoomCommand::SetLocalEffect(effect) => { self.apply_participant_effect(actor, effect)?; self.revision = self.revision.saturating_add(1); }
-            RoomCommand::ClearLocalEffects => { self.participant_effects.remove(actor); self.revision = self.revision.saturating_add(1); }
+            RoomCommand::SetTrack(track) => {
+                if !self.is_host(actor) {
+                    return Err(SocialError::HostOnly);
+                }
+                self.set_track(track);
+            }
+            RoomCommand::SetPlayback {
+                position_ms,
+                is_playing,
+            } => {
+                self.position_ms = position_ms;
+                self.is_playing = is_playing;
+                self.revision = self.revision.saturating_add(1);
+            }
+            RoomCommand::SetGlobalEffect(effect) => {
+                if !self.is_host(actor) {
+                    return Err(SocialError::HostOnly);
+                }
+                self.apply_global_effect(effect)?;
+                self.revision = self.revision.saturating_add(1);
+            }
+            RoomCommand::SetLocalEffect(effect) => {
+                self.apply_participant_effect(actor, effect)?;
+                self.revision = self.revision.saturating_add(1);
+            }
+            RoomCommand::ClearLocalEffects => {
+                self.participant_effects.remove(actor);
+                self.revision = self.revision.saturating_add(1);
+            }
         }
         Ok(self.revision)
     }
