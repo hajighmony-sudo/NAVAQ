@@ -6,6 +6,7 @@
 pub mod audio_analysis;
 pub mod audio_pipeline;
 pub mod audio_session;
+pub mod ava;
 pub mod backend;
 pub mod bookmarks;
 pub mod composer;
@@ -55,6 +56,10 @@ pub use audio_pipeline::{
     PcmProcessStats,
 };
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
+pub use ava::{
+    AvaActivationMode, AvaAiMode, AvaCore, AvaDecision, AvaExecutionRoute, AvaIntent,
+    AvaLanguage, AvaMusicSources, AvaResponseMode, AvaSettings,
+};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
 pub use composer::{ComposerError, Composition, Instrument, InstrumentTrack, NoteEvent};
