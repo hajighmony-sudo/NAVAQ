@@ -240,6 +240,25 @@ mod tests {
         assert!(settings.pulses_for(HapticTrigger::HiHat).is_empty());
     }
     #[test]
+    fn invalid_or_oversized_custom_patterns_are_rejected() {
+        let mut settings = HapticSettings::default();
+        settings.custom_patterns.push((
+            HapticTrigger::BassHit,
+            HapticPattern {
+                name: "x".repeat(65),
+                pulses: vec![HapticPulse {
+                    intensity: 1.0,
+                    duration_ms: 10,
+                    sharpness: 0.5,
+                    delay_ms: 0,
+                }],
+            },
+        ));
+        assert!(!settings.is_valid());
+        assert!(settings.pulses_for(HapticTrigger::BassHit).is_empty());
+    }
+
+    #[test]
     fn custom_pattern_overrides() {
         let mut s = HapticSettings::default();
         let custom = HapticPattern {
