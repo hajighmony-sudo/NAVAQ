@@ -206,12 +206,23 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
         };
     }
 
-    if contains_any(value, &["shuffle on", "turn shuffle on", "حالت تصادفی روشن", "تصادفی کن"]) {
+    if contains_any(
+        value,
+        &[
+            "shuffle on",
+            "turn shuffle on",
+            "حالت تصادفی روشن",
+            "تصادفی کن",
+        ],
+    ) {
         return AvaIntent::Transport {
             command: PlayerCommand::SetShuffle(true),
         };
     }
-    if contains_any(value, &["shuffle off", "turn shuffle off", "حالت تصادفی خاموش"]) {
+    if contains_any(
+        value,
+        &["shuffle off", "turn shuffle off", "حالت تصادفی خاموش"],
+    ) {
         return AvaIntent::Transport {
             command: PlayerCommand::SetShuffle(false),
         };
@@ -436,19 +447,27 @@ mod tests {
         let settings = AvaSettings::default();
         assert_eq!(
             core.interpret("shuffle on", &settings, false).intent,
-            AvaIntent::Transport { command: PlayerCommand::SetShuffle(true) }
+            AvaIntent::Transport {
+                command: PlayerCommand::SetShuffle(true)
+            }
         );
         assert_eq!(
             core.interpret("repeat all", &settings, false).intent,
-            AvaIntent::Transport { command: PlayerCommand::SetRepeatMode(RepeatMode::All) }
+            AvaIntent::Transport {
+                command: PlayerCommand::SetRepeatMode(RepeatMode::All)
+            }
         );
         assert_eq!(
             core.interpret("volume 50", &settings, false).intent,
-            AvaIntent::Transport { command: PlayerCommand::SetVolume(0.5) }
+            AvaIntent::Transport {
+                command: PlayerCommand::SetVolume(0.5)
+            }
         );
         assert_eq!(
             core.interpret("mute", &settings, false).intent,
-            AvaIntent::Transport { command: PlayerCommand::SetVolume(0.0) }
+            AvaIntent::Transport {
+                command: PlayerCommand::SetVolume(0.0)
+            }
         );
     }
 
