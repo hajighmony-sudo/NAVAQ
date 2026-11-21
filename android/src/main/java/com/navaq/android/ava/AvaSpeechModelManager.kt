@@ -86,9 +86,10 @@ class AvaSpeechModelManager(context: Context) {
     private fun downloadArchive(destination: File, onProgress: (Int) -> Unit) {
         val connection = (URL(MODEL_ARCHIVE_URL).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
-            readTimeout = 45_000
+            readTimeout = 120_000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "NAVAQ-AVA/1.0")
+            setRequestProperty("Accept-Encoding", "identity")
         }
         try {
             connection.connect()
