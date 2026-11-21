@@ -127,22 +127,50 @@ impl Composition {
 
     /// Export this arrangement as a Standard MIDI File (format 1).
     pub fn to_midi_bytes(&self) -> Result<Vec<u8>, ComposerError> {
-        if !self.is_valid() { return Err(ComposerError::InvalidTrack); }
-        if self.tracks.len() > 15 { return Err(ComposerError::TooManyMidiTracks); }
+        if !self.is_valid() {
+            return Err(ComposerError::InvalidTrack);
+        }
+        if self.tracks.len() > 15 {
+            return Err(ComposerError::TooManyMidiTracks);
+        }
         let mut conductor = Vec::new();
         let micros_per_beat = (60_000_000.0 / self.tempo_bpm).round() as u32;
-        conductor.extend_from_slice(&[0x00, 0xFF, 0x51, 0x03, ((micros_per_beat >> 16) & 0xFF) as u8, ((micros_per_beat >> 8) & 0xFF) as u8, (micros_per_beat & 0xFF) as u8]);
+        conductor.extend_from_slice(&[
+            0x00,
+            0xFF,
+            0x51,
+            0x03,
+            ((micros_per_beat >> 16) & 0xFF) as u8,
+            ((micros_per_beat >> 8) & 0xFF) as u8,
+            (micros_per_beat & 0xFF) as u8,
+        ]);
         let denominator_power = self.denominator.trailing_zeros() as u8;
         conductor.extend_from_slice(&[0x00, 0xFF, 0x58, 0x04, self.numerator, denominator_power, 24, 8]);
         conductor.extend_from_slice(&[0x00, 0xFF, 0x2F, 0x00]);
         let mut chunks = Vec::with_capacity(self.tracks.len() + 1);
         chunks.push(midi_track_chunk(conductor));
         for (index, track) in self.tracks.iter().enumerate() {
-            let channel = if track.instrument == Instrument::Drums { 9 } else if index >= 9 { index as u8 + 1 } else { index as u8 };
+            let channel = if track.instrument == Instrument::Drums {
+                9
+            } else if index >= 9 {
+                index as u8 + 1
+            } else {
+                index as u8
+            };
             let mut events: Vec<(u32, u8, [u8; 3], usize)> = Vec::new();
             events.push((0, 0, [0xC0 | channel, track.instrument.program(), 0], 2));
-            events.push((0, 1, [0xB0 | channel, 7, (track.volume * 127.0).round() as u8], 3));
-            events.push((0, 2, [0xB0 | channel, 10, ((track.pan + 1.0) * 63.5).round() as u8], 3));
+            events.push((
+                0,
+                1,
+                [0xB0 | channel, 7, (track.volume * 127.0).round() as u8],
+                3,
+            ));
+            events.push((
+                0,
+                2,
+                [0xB0 | channel, 10, ((track.pan + 1.0) * 63.5).round() as u8],
+                3,
+            ));
             if !track.muted {
                 for note in &track.notes {
                     let start = (note.start_beat * 480.0).round() as u32;
@@ -168,9 +196,12 @@ impl Composition {
         output.extend_from_slice(&1u16.to_be_bytes());
         output.extend_from_slice(&(chunks.len() as u16).to_be_bytes());
         output.extend_from_slice(&480u16.to_be_bytes());
-        for chunk in chunks { output.extend_from_slice(&chunk); }
+        for chunk in chunks {
+            output.extend_from_slice(&chunk);
+        }
         Ok(output)
     }
+
     pub fn remove_track(&mut self, id: &str) -> Option<InstrumentTrack> {
         let index = self.tracks.iter().position(|track| track.id == id)?;
         Some(self.tracks.remove(index))
@@ -212,6 +243,7 @@ impl Instrument {
         }
     }
 }
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ComposerError {
     #[error("instrument track is invalid")]
