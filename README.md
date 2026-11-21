@@ -38,7 +38,7 @@ android/scripts/build-rust-android.sh
 gradle :android:assembleDebug
 ```
 
-The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. These algorithms are ready for a native PCM pipeline, but the Android Media3 service does not yet insert them into its decoding/output path. MediaStore library scanning, durable Android storage wiring, and a user-facing Android interface also remain host-integration tasks.
+The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. `NavaqHaptics` provides an opt-in, rate-limited Android vibrator adapter for classified bass/snare/hi-hat/vocal/beat events; it is intentionally disabled by default and awaits event wiring from the audio-analysis pipeline. The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. These algorithms are ready for a native PCM pipeline, but the Android Media3 service does not yet insert them into its decoding/output path. MediaStore library scanning, durable Android storage wiring, and a user-facing Android interface also remain host-integration tasks.
 
 ## Development
 
@@ -82,4 +82,27 @@ These modules do no I/O. Scanning files, reading tags, networking, AI inference,
 
 Implemented: everything in the modules above plus typed track/source models, playback state, command/event contract, queue operations (move, clear, unique ids, next-track lookup for gapless preloading), repeat/shuffle, native backend contract, asynchronous event runtime, audio-focus handling with ducking, failure recovery, versioned snapshots with safe paused restoration, and unit tests.
 
-Not in the core (platform work): real-time network transport and audio mixing for Shared Rooms; account/authentication, safety/moderation and consent UX; on-device beat/source separation and AI inference; synthesis/rendering of manual arrangements and generated melodies; audio-reactive haptic analysis and hardware drivers; full binaural/HRTF rendering; MediaStore scanning, downloads and tag reading; complete Android DSP integration; and the iOS AVFoundation adapter.
+Not in the core (platform work): real-time network transport and audio mixing for Shared Rooms; account/authentication, safety/moderation and consent UX; on-device beat/source separation and AI inference; synthesis/rendering of manual arrangements and generated melodies; audio-reactive beat/onset analysis and event wiring (the Android actuator exists, but is not yet connected to the analyzer); full binaural/HRTF rendering; MediaStore scanning, downloads and tag reading; complete Android DSP integration; and the iOS AVFoundation adapter.
+
+
+### Social, sensory and creative integration status
+
+The core APIs are intentionally platform-neutral. The following boundaries are
+important when planning an end-to-end release:
+
+| Feature | In repository | Still required for a live product |
+| --- | --- | --- |
+| Shared Listening Rooms | Room state, revision-checked commands, participant effect stacks, host authority, drift correction | Authenticated room server, WebSocket/WebRTC transport, clock source, low-latency audio routing/mixing, reconnect and moderation flows |
+| Music DNA Matching | Taste profile builder, similarity scoring, opt-in candidate ranking | Explicit discovery/privacy controls, backend candidate discovery, block/report controls, shared-playlist storage and invitations |
+| Haptic feedback | Trigger patterns, intensity settings, Android vibrator adapter | Audio beat/onset detector, Rust-to-Android event dispatch, user settings UI and device QA |
+| Personalized spatial audio | Room/speaker/listener models, validation and RT60 estimate | Room setup UI, calibrated measurements, HRTF dataset/renderer, head tracking where supported, native audio pipeline integration |
+| Manual instrumental creation | Editable note/instrument arrangement and MIDI export | SoundFont/instrument renderer, preview transport, editing UI, export/share workflow |
+| Lyric-to-Melody | Validated job request/result lifecycle and playback-ready result contract | Actual local/cloud generative model, melody/harmony arrangement, rendering, cancellation/progress adapter and consent/cost controls |
+| Instrumental/stem creation | Stem request/result contracts | Actual source-separation model and audio renderer |
+
+The Android haptic adapter accepts only classified events from a trusted host
+component. It does not record microphone audio or perform background capture.
+The app must expose a clear user toggle before dispatching events. For shared
+rooms, participant-generated vocal/effect streams must be explicitly enabled
+and mixed by the room host/server; the Rust room model alone is not a network
+audio mixer.
