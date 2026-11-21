@@ -158,11 +158,30 @@ class NavaqPlaybackService : MediaSessionService() {
             "content_uri", "remote_url" -> Uri.parse(value)
             else -> return
         }
-        val metadata = MediaMetadata.Builder()
-            .setTitle(track.optString("title").takeIf { it.isNotBlank() })
-            .setArtist(track.optString("artist").takeIf { it.isNotBlank() && it != "null" })
-            .setAlbumTitle(track.optString("album").takeIf { it.isNotBlank() && it != "null" })
-            .build()
+        val title = track.optString("title").takeIf { it.isNotBlank() && it != "null" }
+        val artist = track.optString("artist").takeIf { it.isNotBlank() && it != "null" }
+        val album = track.optString("album").takeIf { it.isNotBlank() && it != "null" }
+        val artworkValue = sequenceOf("artwork_uri", "artwork_url", "cover_uri", "image_url")
+            .map { track.optString(it) }
+            .firstOrNull { it.isNotBlank() && it != "null" }
+        val artworkUri = artworkValue
+            ?.let(Uri::parse)
+            ?.takeIf { uri ->
+                uri.scheme in setOf("content", "file", "https", "http", "android.resource")
+            }
+
+        // MediaSession metadata is the interoperability contract used by Android
+        // System UI and OEM media surfaces (including HyperOS media island and
+        // Samsung's media controls/Now Bar where supported by device settings).
+        val metadataBuilder = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(artist)
+            .setAlbumTitle(album)
+            .setIsPlayable(true)
+        if (artworkUri != null) {
+            metadataBuilder.setArtworkUri(artworkUri)
+        }
+        val metadata = metadataBuilder.build()
         val item = MediaItem.Builder()
             .setMediaId(track.optString("id"))
             .setUri(uri)
