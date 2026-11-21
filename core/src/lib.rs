@@ -37,7 +37,9 @@ pub mod text;
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub use audio_analysis::{AudioAnalysisError, AudioAnalysisSettings, AudioOnset, AudioOnsetAnalyzer};
+pub use audio_analysis::{
+    AudioAnalysisError, AudioAnalysisSettings, AudioOnset, AudioOnsetAnalyzer,
+};
 pub use audio_pipeline::{
     EchoSettings, PcmAudioPipeline, PcmFormat, PcmPipelineError, PcmPipelineSettings,
     PcmProcessStats,
