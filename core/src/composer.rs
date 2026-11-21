@@ -313,7 +313,8 @@ mod tests {
     #[test]
     fn rejects_duplicate_track_ids_and_multiple_drum_tracks() {
         let mut arrangement = composition();
-        arrangement.tracks.push(arrangement.tracks[0].clone());
+        let duplicate = arrangement.tracks[0].clone();
+        arrangement.tracks.push(duplicate);
         assert!(!arrangement.is_valid());
 
         let mut arrangement = composition();
