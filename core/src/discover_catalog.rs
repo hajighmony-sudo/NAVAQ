@@ -1,7 +1,9 @@
 //! Provider registry and deterministic result-page composition for Discover.
 
 use crate::discover::{DiscoverError, DiscoverProvider, DiscoverResult, DiscoverSearchPage};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+const MAX_MERGED_RESULTS: usize = 100;
 
 /// Validated provider registry. Provider credentials and network clients remain host-owned.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -63,7 +65,7 @@ pub fn merge_discover_pages(
     let page = first.page;
     let mut has_more = false;
     let mut results: Vec<DiscoverResult> = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
+    let mut seen = BTreeSet::new();
 
     for source in pages {
         source.validate()?;
@@ -73,7 +75,11 @@ pub fn merge_discover_pages(
         has_more |= source.has_more;
         for result in &source.results {
             if seen.insert(result.url.clone()) {
-                results.push(result.clone());
+                if results.len() < MAX_MERGED_RESULTS {
+                    results.push(result.clone());
+                } else {
+                    has_more = true;
+                }
             }
         }
     }
