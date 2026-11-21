@@ -132,9 +132,7 @@ impl AvaCore {
                 AvaAiMode::Adaptive | AvaAiMode::OnlineOnly if network_available => {
                     AvaExecutionRoute::Online
                 }
-                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => {
-                    AvaExecutionRoute::OfflineFallback
-                }
+                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => AvaExecutionRoute::OfflineFallback,
             }
         };
 
@@ -232,11 +230,12 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
     // Natural Persian orderings: "فلان آهنگ رو پخش کن", "پخش کن آهنگ فلان".
     for suffix in [" رو پخش کن", " را پخش کن", " پخش کن"] {
         if let Some(query) = value.strip_suffix(suffix) {
+            let query = query.trim();
             let query = query
-                .trim()
-                .strip_suffix(" آهنگ")
-                .unwrap_or(query.trim())
-                .trim();
+                .strip_prefix("آهنگ ")
+                .or_else(|| query.strip_prefix("موسیقی "))
+                .unwrap_or(query);
+            let query = query.strip_suffix(" آهنگ").unwrap_or(query).trim();
             if !query.is_empty() && query != "آهنگ" && query != "موسیقی" {
                 return AvaIntent::SearchMusic {
                     query: query.to_owned(),
@@ -351,7 +350,9 @@ mod tests {
         ] {
             assert_eq!(
                 core.interpret(phrase, &settings, false).intent,
-                AvaIntent::SearchMusic { query: "فلان".to_owned() }
+                AvaIntent::SearchMusic {
+                    query: "فلان".to_owned()
+                }
             );
         }
     }
