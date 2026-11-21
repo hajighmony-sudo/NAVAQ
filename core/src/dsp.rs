@@ -96,7 +96,7 @@ impl DspProcessor {
         equalizer: &EqualizerSettings,
         linear_gain: f32,
     ) -> Result<Self, DspError> {
-        if sample_rate == 0 || channels == 0 {
+        if sample_rate == 0 || sample_rate > 384_000 || channels == 0 || channels > 8 {
             return Err(DspError::InvalidFormat);
         }
         if !equalizer.is_valid() {
