@@ -3,6 +3,7 @@
 //! This crate deliberately contains no UI or platform audio implementation.
 //! Native Android and iOS adapters consume its command/event API.
 
+pub mod audio_pipeline;
 pub mod audio_session;
 pub mod backend;
 pub mod bookmarks;
@@ -35,6 +36,7 @@ pub mod text;
 #[cfg(target_os = "android")]
 mod android_jni;
 
+pub use audio_pipeline::{EchoSettings, PcmAudioPipeline, PcmFormat, PcmPipelineError, PcmPipelineSettings, PcmProcessStats};
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
