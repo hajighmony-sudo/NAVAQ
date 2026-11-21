@@ -137,6 +137,9 @@ impl CreativeStore {
         request: CreativeRequest,
         now_ms: u64,
     ) -> Result<&CreativeJob, CreativeError> {
+        if id.0.trim().is_empty() || id.0.len() > 128 {
+            return Err(CreativeError::InvalidRequest);
+        }
         if self.jobs.contains_key(&id) {
             return Err(CreativeError::JobExists);
         }
