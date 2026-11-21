@@ -8,7 +8,7 @@ use crate::history::PlayHistory;
 use crate::model::TrackId;
 use crate::ratings::UserRatings;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Sparse feature vector representing musical taste.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -265,6 +265,92 @@ pub fn rank_opted_in_matches(
     });
     results
 }
+/// Per-user affinity scores for a track, supplied by the host's catalog/ranking layer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollaborativeTrackCandidate {
+    pub track_id: TrackId,
+    /// Scores are keyed by participant id and must be in 0.0..=1.0.
+    pub participant_scores: BTreeMap<String, f32>,
+}
+
+/// Consensus ranking for a track in a multi-user playlist.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollaborativeTrackResult {
+    pub track_id: TrackId,
+    /// Mean affinity multiplied by participant coverage, in 0.0..=1.0.
+    pub consensus_score: f32,
+    /// Fraction of requested participants for whom an affinity was supplied.
+    pub coverage: f32,
+}
+
+/// Rank tracks for a shared playlist without allowing one listener's score to
+/// completely dominate. Candidates must meet the requested participant coverage;
+/// missing participants lower the consensus score. The host remains responsible
+/// for obtaining each participant's scores from their consented taste profile.
+pub fn rank_collaborative_tracks(
+    participant_ids: &[String],
+    candidates: &[CollaborativeTrackCandidate],
+    min_coverage: f32,
+    limit: usize,
+) -> Vec<CollaborativeTrackResult> {
+    if participant_ids.is_empty()
+        || participant_ids.len() > 100
+        || !min_coverage.is_finite()
+        || !(0.0..=1.0).contains(&min_coverage)
+        || limit == 0
+    {
+        return Vec::new();
+    }
+
+    let mut participants = BTreeSet::new();
+    if participant_ids.iter().any(|id| {
+        id.trim().is_empty() || id.len() > 128 || !participants.insert(id.as_str())
+    }) {
+        return Vec::new();
+    }
+
+    let required = ((participant_ids.len() as f32 * min_coverage).ceil() as usize).max(1);
+    let mut seen_tracks = BTreeSet::new();
+    let mut results = Vec::new();
+
+    for candidate in candidates {
+        if candidate.track_id.0.trim().is_empty()
+            || candidate.track_id.0.len() > 256
+            || !seen_tracks.insert(candidate.track_id.clone())
+            || candidate.participant_scores.iter().any(|(id, score)| {
+                !participants.contains(id.as_str()) || !score.is_finite() || !(0.0..=1.0).contains(score)
+            })
+        {
+            continue;
+        }
+
+        let scores: Vec<f32> = participant_ids
+            .iter()
+            .filter_map(|id| candidate.participant_scores.get(id).copied())
+            .collect();
+        if scores.len() < required {
+            continue;
+        }
+
+        let coverage = scores.len() as f32 / participant_ids.len() as f32;
+        let mean = scores.iter().sum::<f32>() / scores.len() as f32;
+        results.push(CollaborativeTrackResult {
+            track_id: candidate.track_id.clone(),
+            consensus_score: (mean * coverage).clamp(0.0, 1.0),
+            coverage,
+        });
+    }
+
+    results.sort_by(|a, b| {
+        b.consensus_score
+            .partial_cmp(&a.consensus_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.track_id.cmp(&b.track_id))
+    });
+    results.truncate(limit.min(500));
+    results
+}
+
 /// Rank candidates by similarity to a target profile.
 pub fn rank_matches(
     target: &TasteProfile,
@@ -337,6 +423,43 @@ mod tests {
         let ranked = rank_opted_in_matches(&profile, &candidates, 0.5, 10);
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].participant_id, "visible");
+    }
+
+    #[test]
+    fn collaborative_playlist_rewards_consensus_and_coverage() {
+        let participants = vec!["a".to_string(), "b".to_string()];
+        let candidates = vec![
+            CollaborativeTrackCandidate {
+                track_id: "balanced".into(),
+                participant_scores: BTreeMap::from([
+                    ("a".into(), 0.8),
+                    ("b".into(), 0.8),
+                ]),
+            },
+            CollaborativeTrackCandidate {
+                track_id: "one_sided".into(),
+                participant_scores: BTreeMap::from([("a".into(), 1.0)]),
+            },
+        ];
+        let ranked = rank_collaborative_tracks(&participants, &candidates, 0.5, 10);
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].track_id, TrackId::from("balanced"));
+        assert!((ranked[0].coverage - 1.0).abs() < 1e-6);
+        assert!((ranked[1].coverage - 0.5).abs() < 1e-6);
+        assert!(ranked[0].consensus_score > ranked[1].consensus_score);
+    }
+
+    #[test]
+    fn collaborative_playlist_rejects_invalid_participants_and_scores() {
+        let participants = vec!["a".to_string(), "a".to_string()];
+        let candidates = vec![CollaborativeTrackCandidate {
+            track_id: "track".into(),
+            participant_scores: BTreeMap::from([("a".into(), f32::NAN)]),
+        }];
+        assert!(rank_collaborative_tracks(&participants, &candidates, 0.5, 10).is_empty());
+
+        let participants = vec!["a".to_string()];
+        assert!(rank_collaborative_tracks(&participants, &candidates, 0.5, 10).is_empty());
     }
 
     #[test]
