@@ -2,6 +2,7 @@ package com.navaq.android.ava
 
 import android.content.Context
 import android.os.SystemClock
+import android.os.StatFs
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import java.io.BufferedInputStream
@@ -11,6 +12,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Installs the multilingual Whisper tiny INT8 model into app-private storage.
@@ -34,16 +36,25 @@ class AvaSpeechModelManager(context: Context) {
         onProgress: (Int) -> Unit,
         onComplete: (Result<Unit>) -> Unit
     ) {
+        if (!isInstalling.compareAndSet(false, true)) {
+            onComplete(Result.failure(IllegalStateException("AVA model installation is already running")))
+            return
+        }
         Thread({
+            val archive = File(appContext.cacheDir, "ava-whisper-tiny.tar.bz2")
+            val staging = File(modelDirectory.parentFile, "whisper-tiny.installing")
             try {
+                val availableBytes = StatFs(appContext.filesDir.absolutePath).availableBytes
+                check(availableBytes >= MIN_REQUIRED_FREE_BYTES) {
+                    "At least 250 MB of free storage is required to install AVA's offline speech model"
+                }
+                modelDirectory.parentFile?.mkdirs()
                 if (isInstalled()) {
                     onProgress(100)
                     onComplete(Result.success(Unit))
                     return@Thread
                 }
 
-                val archive = File(appContext.cacheDir, "ava-whisper-tiny.tar.bz2")
-                val staging = File(modelDirectory.parentFile, "whisper-tiny.installing")
                 archive.delete()
                 staging.deleteRecursively()
                 check(staging.mkdirs()) { "Could not create AVA model directory" }
@@ -63,7 +74,11 @@ class AvaSpeechModelManager(context: Context) {
                 onProgress(100)
                 onComplete(Result.success(Unit))
             } catch (error: Throwable) {
+                archive.delete()
+                staging.deleteRecursively()
                 onComplete(Result.failure(error))
+            } finally {
+                isInstalling.set(false)
             }
         }, "ava-model-installer").start()
     }
@@ -101,8 +116,8 @@ class AvaSpeechModelManager(context: Context) {
                     output.flush()
                 }
             }
-            check(destination.length() > 50L * 1024L * 1024L) {
-                "The AVA speech model archive is unexpectedly small"
+            check(destination.length() == EXPECTED_ARCHIVE_BYTES) {
+                "The AVA speech model archive is incomplete or has an unexpected size"
             }
         } finally {
             connection.disconnect()
@@ -144,6 +159,9 @@ class AvaSpeechModelManager(context: Context) {
         private const val MODEL_ARCHIVE_URL =
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2"
         private const val MAX_MODEL_FILE_BYTES = 180L * 1024L * 1024L
+        private const val MIN_REQUIRED_FREE_BYTES = 250L * 1024L * 1024L
+        private const val EXPECTED_ARCHIVE_BYTES = 116_204_861L
+        private val isInstalling = AtomicBoolean(false)
         private val REQUIRED_FILES = setOf(
             "tiny-encoder.int8.onnx",
             "tiny-decoder.int8.onnx",
