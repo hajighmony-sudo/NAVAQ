@@ -1,5 +1,6 @@
 package com.navaq.android.playback
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
@@ -9,10 +10,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.navaq.android.core.NavaqNativeBridge
+import com.navaq.android.haptics.NavaqBeatAudioProcessor
+import com.navaq.android.haptics.NavaqHaptics
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -27,6 +33,8 @@ class NavaqPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private var nativeHandle: Long = 0L
+    private var beatHaptics: NavaqHaptics? = null
+    private var beatProcessor: NavaqBeatAudioProcessor? = null
 
     private val positionReporter = object : Runnable {
         override fun run() {
@@ -92,7 +100,34 @@ class NavaqPlaybackService : MediaSessionService() {
         super.onCreate()
         nativeHandle = NavaqNativeBridge.nativeCreate()
 
-        val audioPlayer = ExoPlayer.Builder(this)
+        val haptics = NavaqHaptics(this)
+        beatHaptics = haptics
+        haptics.setEnabled(
+            getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                .getBoolean(PREFERENCE_BEAT_HAPTICS, false)
+        )
+        val onsetProcessor = NavaqBeatAudioProcessor { strength ->
+            // Vibrator calls are dispatched away from Media3's audio thread.
+            mainHandler.post {
+                haptics.onAudioEvent(NavaqHaptics.Trigger.BEAT, strength)
+            }
+        }
+        beatProcessor = onsetProcessor
+        val renderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParameters: Boolean,
+            ): AudioSink {
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
+                    .setAudioProcessors(arrayOf(onsetProcessor))
+                    .build()
+            }
+        }
+
+        val audioPlayer = ExoPlayer.Builder(this, renderersFactory)
             .build()
             .apply {
                 setHandleAudioBecomingNoisy(true)
@@ -104,6 +139,25 @@ class NavaqPlaybackService : MediaSessionService() {
         player = audioPlayer
         mediaSession = MediaSession.Builder(this, audioPlayer).build()
         mainHandler.post(positionReporter)
+    }
+
+    /**
+     * User preference for beat-reactive haptics. Disabled by default; a settings
+     * screen in the app can call this method after explicit user action.
+     */
+    fun setBeatHapticsEnabled(enabled: Boolean) {
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(PREFERENCE_BEAT_HAPTICS, enabled)
+            .apply()
+        beatHaptics?.setEnabled(enabled)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_SET_BEAT_HAPTICS) {
+            setBeatHapticsEnabled(intent.getBooleanExtra(EXTRA_ENABLED, false))
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     fun dispatchCoreCommand(commandJson: String): String {
@@ -141,8 +195,13 @@ class NavaqPlaybackService : MediaSessionService() {
                             val speed = action.getDouble("SetSpeed").toFloat()
                             player?.setPlaybackSpeed(speed)
                         }
-                        // Equalizer DSP and crossfade rendering require dedicated
-                        // Media3 audio processors; they are not silently simulated here.
+                        action.has("SetEqualizer") -> {
+                            // Rust validates and stores EQ settings; its stateful PCM
+                            // pipeline applies them inside the Media3 audio path.
+                            beatProcessor?.setEqualizerJson(
+                                action.getJSONObject("SetEqualizer").toString()
+                            )
+                        }
                     }
                 }
             }
@@ -158,11 +217,34 @@ class NavaqPlaybackService : MediaSessionService() {
             "content_uri", "remote_url" -> Uri.parse(value)
             else -> return
         }
-        val metadata = MediaMetadata.Builder()
-            .setTitle(track.optString("title").takeIf { it.isNotBlank() })
-            .setArtist(track.optString("artist").takeIf { it.isNotBlank() && it != "null" })
-            .setAlbumTitle(track.optString("album").takeIf { it.isNotBlank() && it != "null" })
-            .build()
+        val title = track.optString("title").takeIf { it.isNotBlank() && it != "null" }
+        val artist = track.optString("artist").takeIf { it.isNotBlank() && it != "null" }
+        val album = track.optString("album").takeIf { it.isNotBlank() && it != "null" }
+        val artworkValue = sequenceOf("artwork_uri", "artwork_url", "cover_uri", "image_url")
+            .map { track.optString(it) }
+            .firstOrNull { it.isNotBlank() && it != "null" }
+        val artworkUri = artworkValue
+            ?.let(Uri::parse)
+            ?.takeIf { uri ->
+                uri.scheme in setOf("content", "file", "https", "http", "android.resource")
+            }
+
+        // Publish complete, normalized metadata through the standard Android
+        // MediaSession contract. System UI and OEM surfaces (including Xiaomi
+        // HyperOS media surfaces and Samsung Now Bar on supported builds) consume
+        // this session; their exact presentation remains controlled by the OS.
+        val displayTitle = title ?: track.optString("id").takeIf { it.isNotBlank() && it != "null" }
+        val metadataBuilder = MediaMetadata.Builder()
+            .setTitle(displayTitle)
+            .setDisplayTitle(displayTitle)
+            .setSubtitle(artist ?: album)
+            .setArtist(artist)
+            .setAlbumTitle(album)
+            .setIsPlayable(true)
+        if (artworkUri != null) {
+            metadataBuilder.setArtworkUri(artworkUri)
+        }
+        val metadata = metadataBuilder.build()
         val item = MediaItem.Builder()
             .setMediaId(track.optString("id"))
             .setUri(uri)
@@ -182,9 +264,21 @@ class NavaqPlaybackService : MediaSessionService() {
         }
     }
 
+    companion object {
+        /** Intent action for a settings UI to change the explicit haptics preference. */
+        const val ACTION_SET_BEAT_HAPTICS =
+            "com.navaq.android.action.SET_BEAT_HAPTICS"
+        const val EXTRA_ENABLED = "com.navaq.android.extra.BEAT_HAPTICS_ENABLED"
+        private const val PREFERENCES_NAME = "navaq_playback_preferences"
+        private const val PREFERENCE_BEAT_HAPTICS = "beat_haptics_enabled"
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacks(positionReporter)
         player?.removeListener(playerListener)
+        beatHaptics?.release()
+        beatHaptics = null
+        beatProcessor = null
         mediaSession?.release()
         player?.release()
         mediaSession = null

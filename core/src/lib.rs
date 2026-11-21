@@ -3,9 +3,12 @@
 //! This crate deliberately contains no UI or platform audio implementation.
 //! Native Android and iOS adapters consume its command/event API.
 
+pub mod audio_analysis;
+pub mod audio_pipeline;
 pub mod audio_session;
 pub mod backend;
 pub mod bookmarks;
+pub mod composer;
 pub mod composition;
 pub mod creative;
 pub mod cue;
@@ -40,18 +43,27 @@ pub mod text;
 #[cfg(target_os = "android")]
 mod android_jni;
 
+pub use audio_analysis::{
+    AudioAnalysisError, AudioAnalysisSettings, AudioOnset, AudioOnsetAnalyzer,
+};
+pub use audio_pipeline::{
+    EchoSettings, PcmAudioPipeline, PcmFormat, PcmPipelineError, PcmPipelineSettings,
+    PcmProcessStats,
+};
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
+pub use composer::{ComposerError, Composition, Instrument, InstrumentTrack, NoteEvent};
 pub use composition::{
-    chord_pitches, ChordQuality, Composition, CompositionError, DrumPattern, Instrument, Note, Part,
+    chord_pitches, ChordQuality, Composition as SongComposition, CompositionError, DrumPattern,
+    Instrument as SynthInstrument, Note, Part,
 };
 pub use creative::{
     CreativeError, CreativeJob, CreativeRequest, CreativeResult, CreativeStore,
     InstrumentalRequest, JobId, JobStatus, LyricToMelodyRequest, StemKind,
 };
 pub use cue::{parse_cue, CueSheet, CueTrack};
-pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor};
+pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor, EchoProcessor};
 pub use engine::PlayerCore;
 pub use equalizer::{EqualizerBand, EqualizerPreset, EqualizerSettings};
 pub use haptic::{HapticError, HapticPattern, HapticPulse, HapticSettings, HapticTrigger};
@@ -73,7 +85,10 @@ pub use model::{
     AudioSource, BackendAction, BackendEvent, CoreOutput, LoopRegion, PlaybackState,
     PlaybackStatus, PlayerCommand, PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
-pub use music_dna::{rank_matches, DnaBuilder, MatchResult, TasteProfile};
+pub use music_dna::{
+    rank_collaborative_tracks, rank_matches, rank_opted_in_matches, CollaborativeTrackCandidate,
+    CollaborativeTrackResult, DnaBuilder, MatchResult, TasteCandidate, TasteProfile,
+};
 pub use persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 pub use playlist::{Playlist, PlaylistError, PlaylistStore};
 pub use queue::{PlaybackQueue, PlaybackQueueSnapshot, QueueSnapshotError};
@@ -81,12 +96,13 @@ pub use ratings::{RatingOutOfRange, UserRatings};
 pub use replaygain::{
     effective_volume, linear_gain, ReplayGainMode, ReplayGainSettings, ReplayGainTags,
 };
-pub use room_control::{ControlMode, DriftAction, RoomCommand};
+pub use room_control::{ControlCommand, ControlMode, DriftAction};
 pub use runtime::{PlayerRuntime, RuntimeError};
 pub use scrobble::ScrobbleTracker;
 pub use sleep_timer::SleepTimer;
 pub use social::{
-    EffectStack, LiveEffect, ParticipantId, RoomId, RoomStore, SharedRoom, SocialError,
+    calculate_room_sync, EffectStack, LiveEffect, ParticipantId, RoomCommand, RoomId, RoomStore,
+    RoomSyncDecision, RoomSyncPolicy, SharedRoom, SocialError,
 };
 pub use spatial::{
     Absorption, RoomDimensions, SpatialError, SpatialSettings, SpeakerLayout, SpeakerPosition,

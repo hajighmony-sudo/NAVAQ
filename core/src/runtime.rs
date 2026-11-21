@@ -224,7 +224,8 @@ impl<B: AudioBackend> PlayerRuntime<B> {
                     other => other,
                 })
                 .collect(),
-            events: Vec::new(),
+            // Ducking is a backend-volume concern; it must never suppress domain events.
+            events: output.events.clone(),
         }
     }
 
@@ -445,6 +446,24 @@ mod tests {
             crate::model::PlaybackStatus::Playing
         );
         assert_eq!(runtime.backend().actions.last(), Some(&BackendAction::Play));
+    }
+
+    #[test]
+    fn ducking_preserves_domain_events() {
+        let mut runtime =
+            PlayerRuntime::with_audio_session(FakeBackend::default(), AudioSessionPolicy::new(0.5));
+        runtime.handle_audio_focus(AudioFocusChange::Duck).unwrap();
+        let output = CoreOutput {
+            backend_actions: vec![BackendAction::SetVolume(0.8)],
+            events: vec![PlayerEvent::PlaybackStarted],
+        };
+
+        let adjusted = runtime.apply_ducking(&output);
+        assert_eq!(
+            adjusted.backend_actions,
+            vec![BackendAction::SetVolume(0.4)]
+        );
+        assert_eq!(adjusted.events, vec![PlayerEvent::PlaybackStarted]);
     }
 
     #[test]

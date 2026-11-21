@@ -3,7 +3,7 @@
 //!
 //! The host (or relay server) is the single authority: it applies commands in arrival
 //! order with its own clock, so concurrent commands resolve as "last accepted wins" and
-//! every accepted command bumps `SharedRoom::version`.
+//! every accepted command bumps `SharedRoom::revision`.
 
 use crate::model::Track;
 use crate::social::{LiveEffect, ParticipantId, SharedRoom, SocialError};
@@ -24,7 +24,7 @@ pub enum ControlMode {
 /// An action a participant asks the room to perform.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum RoomCommand {
+pub enum ControlCommand {
     Play,
     Pause,
     Seek {
@@ -121,10 +121,10 @@ impl SharedRoom {
     }
 
     /// Apply a command from `from` at host time `now_ms`. Returns the new room version.
-    pub fn apply_command(
+    pub fn apply_control(
         &mut self,
         from: &ParticipantId,
-        command: RoomCommand,
+        command: ControlCommand,
         now_ms: u64,
     ) -> Result<u64, SocialError> {
         if !self.participants.contains(from) {
@@ -134,24 +134,24 @@ impl SharedRoom {
         let host = self.is_host(from);
 
         match command {
-            RoomCommand::AddMyEffect { effect } => {
+            ControlCommand::AddMyEffect { effect } => {
                 self.apply_participant_effect(from, effect)?;
             }
-            RoomCommand::ClearMyEffects => {
+            ControlCommand::ClearMyEffects => {
                 self.participant_effects.remove(from);
             }
-            RoomCommand::SetControlMode { mode } => {
+            ControlCommand::SetControlMode { mode } => {
                 require(host)?;
                 self.control_mode = mode;
             }
-            RoomCommand::GrantControl { participant } => {
+            ControlCommand::GrantControl { participant } => {
                 require(host)?;
                 if !self.participants.contains(&participant) {
                     return Err(SocialError::NotInRoom);
                 }
                 self.controllers.insert(participant);
             }
-            RoomCommand::RevokeControl { participant } => {
+            ControlCommand::RevokeControl { participant } => {
                 require(host)?;
                 self.controllers.remove(&participant);
             }
@@ -160,37 +160,41 @@ impl SharedRoom {
                 self.apply_controlled(other, now_ms)?;
             }
         }
-        self.version += 1;
-        Ok(self.version)
+        self.revision = self.revision.saturating_add(1);
+        Ok(self.revision)
     }
 
-    fn apply_controlled(&mut self, command: RoomCommand, now_ms: u64) -> Result<(), SocialError> {
+    fn apply_controlled(
+        &mut self,
+        command: ControlCommand,
+        now_ms: u64,
+    ) -> Result<(), SocialError> {
         match command {
-            RoomCommand::Play => {
+            ControlCommand::Play => {
                 self.position_ms = self.current_position_ms(now_ms);
                 self.is_playing = self.current_track.is_some();
                 self.anchor_at_ms = Some(now_ms);
             }
-            RoomCommand::Pause => {
+            ControlCommand::Pause => {
                 self.position_ms = self.current_position_ms(now_ms);
                 self.is_playing = false;
                 self.anchor_at_ms = Some(now_ms);
             }
-            RoomCommand::Seek { position_ms } => {
+            ControlCommand::Seek { position_ms } => {
                 self.position_ms = match self.current_track.as_ref().and_then(|t| t.duration_ms) {
                     Some(duration) => position_ms.min(duration),
                     None => position_ms,
                 };
                 self.anchor_at_ms = Some(now_ms);
             }
-            RoomCommand::SetTrack { track } => {
+            ControlCommand::SetTrack { track } => {
                 self.set_track(track);
                 if self.current_track.is_none() {
                     self.is_playing = false;
                 }
                 self.anchor_at_ms = Some(now_ms);
             }
-            RoomCommand::Enqueue { track } => {
+            ControlCommand::Enqueue { track } => {
                 if self.current_track.is_none() {
                     self.set_track(Some(track));
                     self.anchor_at_ms = Some(now_ms);
@@ -198,15 +202,15 @@ impl SharedRoom {
                     self.queue.push(track);
                 }
             }
-            RoomCommand::SkipToNext => self.skip_to_next(now_ms),
-            RoomCommand::AddGlobalEffect { effect } => self.apply_global_effect(effect)?,
-            RoomCommand::ClearGlobalEffects => self.clear_global_effects(),
+            ControlCommand::SkipToNext => self.skip_to_next(now_ms),
+            ControlCommand::AddGlobalEffect { effect } => self.apply_global_effect(effect)?,
+            ControlCommand::ClearGlobalEffects => self.clear_global_effects(),
             // Handled by the caller; kept exhaustive for safety.
-            RoomCommand::AddMyEffect { .. }
-            | RoomCommand::ClearMyEffects
-            | RoomCommand::SetControlMode { .. }
-            | RoomCommand::GrantControl { .. }
-            | RoomCommand::RevokeControl { .. } => {}
+            ControlCommand::AddMyEffect { .. }
+            | ControlCommand::ClearMyEffects
+            | ControlCommand::SetControlMode { .. }
+            | ControlCommand::GrantControl { .. }
+            | ControlCommand::RevokeControl { .. } => {}
         }
         Ok(())
     }
@@ -233,7 +237,7 @@ impl SharedRoom {
                 .is_some_and(|duration| self.current_position_ms(now_ms) >= duration);
         if finished {
             self.skip_to_next(now_ms);
-            self.version += 1;
+            self.revision = self.revision.saturating_add(1);
         }
         finished
     }
@@ -278,20 +282,21 @@ mod tests {
     #[test]
     fn everyone_can_control_and_each_command_bumps_the_version() {
         let mut room = room();
-        assert_eq!(
-            room.apply_command(
+        let base = room.revision;
+        let first = room
+            .apply_control(
                 &p("amy"),
-                RoomCommand::Enqueue {
-                    track: track("a", 100_000)
+                ControlCommand::Enqueue {
+                    track: track("a", 100_000),
                 },
-                0
-            ),
-            Ok(1)
-        );
-        assert_eq!(
-            room.apply_command(&p("bob"), RoomCommand::Play, 1_000),
-            Ok(2)
-        );
+                0,
+            )
+            .unwrap();
+        assert!(first > base);
+        let second = room
+            .apply_control(&p("bob"), ControlCommand::Play, 1_000)
+            .unwrap();
+        assert!(second > first);
         assert!(room.is_playing);
         assert_eq!(room.current_position_ms(3_500), 2_500);
     }
@@ -299,20 +304,20 @@ mod tests {
     #[test]
     fn pause_freezes_the_room_clock_and_play_resumes_from_it() {
         let mut room = room();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::Enqueue {
+            ControlCommand::Enqueue {
                 track: track("a", 100_000),
             },
             0,
         )
         .unwrap();
-        room.apply_command(&p("host"), RoomCommand::Play, 0)
+        room.apply_control(&p("host"), ControlCommand::Play, 0)
             .unwrap();
-        room.apply_command(&p("amy"), RoomCommand::Pause, 4_000)
+        room.apply_control(&p("amy"), ControlCommand::Pause, 4_000)
             .unwrap();
         assert_eq!(room.current_position_ms(60_000), 4_000);
-        room.apply_command(&p("bob"), RoomCommand::Play, 10_000)
+        room.apply_control(&p("bob"), ControlCommand::Play, 10_000)
             .unwrap();
         assert_eq!(room.current_position_ms(11_000), 5_000);
     }
@@ -320,22 +325,22 @@ mod tests {
     #[test]
     fn host_only_and_delegated_modes_restrict_control() {
         let mut room = room();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::SetControlMode {
+            ControlCommand::SetControlMode {
                 mode: ControlMode::HostOnly,
             },
             0,
         )
         .unwrap();
         assert_eq!(
-            room.apply_command(&p("amy"), RoomCommand::Play, 0),
+            room.apply_control(&p("amy"), ControlCommand::Play, 0),
             Err(SocialError::PermissionDenied)
         );
         assert_eq!(
-            room.apply_command(
+            room.apply_control(
                 &p("amy"),
-                RoomCommand::SetControlMode {
+                ControlCommand::SetControlMode {
                     mode: ControlMode::Everyone
                 },
                 0
@@ -343,38 +348,38 @@ mod tests {
             Err(SocialError::PermissionDenied)
         );
 
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::SetControlMode {
+            ControlCommand::SetControlMode {
                 mode: ControlMode::Delegated,
             },
             0,
         )
         .unwrap();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::GrantControl {
+            ControlCommand::GrantControl {
                 participant: p("amy"),
             },
             0,
         )
         .unwrap();
         assert!(room
-            .apply_command(
+            .apply_control(
                 &p("amy"),
-                RoomCommand::Enqueue {
+                ControlCommand::Enqueue {
                     track: track("a", 1_000)
                 },
                 0
             )
             .is_ok());
         assert_eq!(
-            room.apply_command(&p("bob"), RoomCommand::Pause, 0),
+            room.apply_control(&p("bob"), ControlCommand::Pause, 0),
             Err(SocialError::PermissionDenied)
         );
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::RevokeControl {
+            ControlCommand::RevokeControl {
                 participant: p("amy"),
             },
             0,
@@ -387,12 +392,14 @@ mod tests {
     fn rejected_commands_do_not_change_the_version() {
         let mut room = room();
         room.control_mode = ControlMode::HostOnly;
-        let before = room.version;
-        assert!(room.apply_command(&p("amy"), RoomCommand::Play, 0).is_err());
+        let before = room.revision;
         assert!(room
-            .apply_command(&p("stranger"), RoomCommand::Play, 0)
+            .apply_control(&p("amy"), ControlCommand::Play, 0)
             .is_err());
-        assert_eq!(room.version, before);
+        assert!(room
+            .apply_control(&p("stranger"), ControlCommand::Play, 0)
+            .is_err());
+        assert_eq!(room.revision, before);
     }
 
     #[test]
@@ -404,9 +411,9 @@ mod tests {
             feedback: 0.4,
             mix: 0.5,
         };
-        room.apply_command(
+        room.apply_control(
             &p("bob"),
-            RoomCommand::AddMyEffect {
+            ControlCommand::AddMyEffect {
                 effect: echo.clone(),
             },
             0,
@@ -414,9 +421,9 @@ mod tests {
         .unwrap();
         assert_eq!(room.participant_effects[&p("bob")].effects, vec![echo]);
         assert_eq!(
-            room.apply_command(
+            room.apply_control(
                 &p("bob"),
-                RoomCommand::AddGlobalEffect {
+                ControlCommand::AddGlobalEffect {
                     effect: LiveEffect::PitchShift { semitones: 2.0 }
                 },
                 0
@@ -429,10 +436,14 @@ mod tests {
             mix: 0.5,
         };
         assert_eq!(
-            room.apply_command(&p("bob"), RoomCommand::AddMyEffect { effect: invalid }, 0),
+            room.apply_control(
+                &p("bob"),
+                ControlCommand::AddMyEffect { effect: invalid },
+                0
+            ),
             Err(SocialError::InvalidEffect)
         );
-        room.apply_command(&p("bob"), RoomCommand::ClearMyEffects, 0)
+        room.apply_control(&p("bob"), ControlCommand::ClearMyEffects, 0)
             .unwrap();
         assert!(!room.participant_effects.contains_key(&p("bob")));
     }
@@ -440,29 +451,29 @@ mod tests {
     #[test]
     fn queue_advances_on_skip_and_when_the_track_finishes() {
         let mut room = room();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::Enqueue {
+            ControlCommand::Enqueue {
                 track: track("a", 10_000),
             },
             0,
         )
         .unwrap();
-        room.apply_command(
+        room.apply_control(
             &p("amy"),
-            RoomCommand::Enqueue {
+            ControlCommand::Enqueue {
                 track: track("b", 20_000),
             },
             0,
         )
         .unwrap();
-        room.apply_command(&p("host"), RoomCommand::Play, 0)
+        room.apply_control(&p("host"), ControlCommand::Play, 0)
             .unwrap();
         assert!(!room.advance_if_finished(5_000));
         assert!(room.advance_if_finished(10_000));
         assert_eq!(room.current_track.as_ref().unwrap().id, "b".into());
         assert_eq!(room.current_position_ms(10_000), 0);
-        room.apply_command(&p("bob"), RoomCommand::SkipToNext, 12_000)
+        room.apply_control(&p("bob"), ControlCommand::SkipToNext, 12_000)
             .unwrap();
         assert!(room.current_track.is_none());
         assert!(!room.is_playing);
@@ -471,17 +482,17 @@ mod tests {
     #[test]
     fn seek_is_clamped_and_leaving_removes_control_rights() {
         let mut room = room();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::Enqueue {
+            ControlCommand::Enqueue {
                 track: track("a", 10_000),
             },
             0,
         )
         .unwrap();
-        room.apply_command(
+        room.apply_control(
             &p("amy"),
-            RoomCommand::Seek {
+            ControlCommand::Seek {
                 position_ms: 99_000,
             },
             0,
@@ -496,15 +507,15 @@ mod tests {
     #[test]
     fn drift_correction_tolerates_small_nudges_medium_and_seeks_large() {
         let mut room = room();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::Enqueue {
+            ControlCommand::Enqueue {
                 track: track("a", 600_000),
             },
             0,
         )
         .unwrap();
-        room.apply_command(&p("host"), RoomCommand::Play, 0)
+        room.apply_control(&p("host"), ControlCommand::Play, 0)
             .unwrap();
         let now = 10_000;
         assert_eq!(room.correct_drift(10_050, now), DriftAction::InSync);
@@ -522,17 +533,17 @@ mod tests {
     #[test]
     fn paused_rooms_snap_listeners_to_the_paused_position() {
         let mut room = room();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::Enqueue {
+            ControlCommand::Enqueue {
                 track: track("a", 600_000),
             },
             0,
         )
         .unwrap();
-        room.apply_command(
+        room.apply_control(
             &p("host"),
-            RoomCommand::Seek {
+            ControlCommand::Seek {
                 position_ms: 30_000,
             },
             0,

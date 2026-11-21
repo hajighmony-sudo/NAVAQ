@@ -39,12 +39,20 @@ pub struct HapticPattern {
 
 impl HapticPattern {
     pub fn is_valid(&self) -> bool {
-        !self.name.is_empty() && !self.pulses.is_empty() && self.pulses.iter().all(|p| p.is_valid())
+        !self.name.trim().is_empty()
+            && self.name.len() <= 64
+            && !self.pulses.is_empty()
+            && self.pulses.len() <= 64
+            && self.pulses.iter().all(|p| p.is_valid())
     }
 
     /// Total length of the pattern including delays.
     pub fn total_duration_ms(&self) -> u32 {
-        self.pulses.iter().map(|p| p.delay_ms + p.duration_ms).sum()
+        self.pulses.iter().fold(0u32, |total, pulse| {
+            total
+                .saturating_add(pulse.delay_ms)
+                .saturating_add(pulse.duration_ms)
+        })
     }
 }
 
@@ -93,7 +101,35 @@ impl Default for HapticSettings {
 impl HapticSettings {
     pub fn is_valid(&self) -> bool {
         (0.0..=1.0).contains(&self.master_intensity)
-            && self.custom_patterns.iter().all(|(_, p)| p.is_valid())
+            && self.active_triggers.len() <= 16
+            && self.custom_patterns.len() <= 16
+            && self
+                .custom_patterns
+                .iter()
+                .all(|(_, p)| p.name.len() <= 64 && p.pulses.len() <= 64 && p.is_valid())
+    }
+
+    /// Return the active pattern with intensity scaled for the current device.
+    pub fn pulses_for(&self, trigger: HapticTrigger) -> Vec<HapticPulse> {
+        if !self.is_valid()
+            || !self.enabled
+            || !self.active_triggers.contains(&trigger)
+            || self.master_intensity <= 0.0
+        {
+            return Vec::new();
+        }
+        let pattern = self.pattern_for(trigger);
+        if !pattern.is_valid() {
+            return Vec::new();
+        }
+        pattern
+            .pulses
+            .into_iter()
+            .map(|mut pulse| {
+                pulse.intensity = (pulse.intensity * self.master_intensity).clamp(0.0, 1.0);
+                pulse
+            })
+            .collect()
     }
 
     /// Built-in sensible defaults for common triggers.
@@ -195,6 +231,36 @@ mod tests {
             assert!(p.is_valid(), "{:?} invalid", t);
             assert!(p.total_duration_ms() > 0);
         }
+    }
+
+    #[test]
+    fn disabled_or_inactive_trigger_emits_no_haptics_and_enabled_scales_intensity() {
+        let mut settings = HapticSettings::default();
+        assert!(settings.pulses_for(HapticTrigger::BassHit).is_empty());
+        settings.enabled = true;
+        settings.master_intensity = 0.5;
+        let pulses = settings.pulses_for(HapticTrigger::BassHit);
+        assert_eq!(pulses.len(), 1);
+        assert!((pulses[0].intensity - 0.45).abs() < 1e-6);
+        assert!(settings.pulses_for(HapticTrigger::HiHat).is_empty());
+    }
+    #[test]
+    fn invalid_or_oversized_custom_patterns_are_rejected() {
+        let mut settings = HapticSettings::default();
+        settings.custom_patterns.push((
+            HapticTrigger::BassHit,
+            HapticPattern {
+                name: "x".repeat(65),
+                pulses: vec![HapticPulse {
+                    intensity: 1.0,
+                    duration_ms: 10,
+                    sharpness: 0.5,
+                    delay_ms: 0,
+                }],
+            },
+        ));
+        assert!(!settings.is_valid());
+        assert!(settings.pulses_for(HapticTrigger::BassHit).is_empty());
     }
 
     #[test]

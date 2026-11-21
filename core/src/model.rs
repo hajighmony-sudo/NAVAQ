@@ -1,4 +1,6 @@
 use crate::equalizer::EqualizerSettings;
+use crate::haptic::HapticSettings;
+use crate::spatial::SpatialSettings;
 use serde::{Deserialize, Serialize};
 
 use thiserror::Error;
@@ -29,6 +31,28 @@ pub struct Track {
     pub album: Option<String>,
     pub duration_ms: Option<u64>,
     pub source: AudioSource,
+}
+
+impl Track {
+    /// Validate untrusted track metadata before it enters the playback queue.
+    pub fn is_valid(&self) -> bool {
+        let source_is_valid = match &self.source {
+            AudioSource::LocalFile(value)
+            | AudioSource::RemoteUrl(value)
+            | AudioSource::ContentUri(value) => !value.trim().is_empty() && value.len() <= 4096,
+        };
+        !self.id.0.trim().is_empty()
+            && self.id.0.len() <= 256
+            && !self.title.trim().is_empty()
+            && self.title.len() <= 512
+            && self
+                .artist
+                .as_ref()
+                .map_or(true, |value| value.len() <= 256)
+            && self.album.as_ref().map_or(true, |value| value.len() <= 256)
+            && self.duration_ms.map_or(true, |duration| duration > 0)
+            && source_is_valid
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -86,6 +110,12 @@ pub struct PlaybackState {
     /// Active A-B loop; cleared whenever the current track changes.
     #[serde(default)]
     pub loop_region: Option<LoopRegion>,
+    /// Advanced haptic feedback configuration.
+    #[serde(default)]
+    pub haptic: HapticSettings,
+    /// Personalized spatial / room simulation settings.
+    #[serde(default)]
+    pub spatial: SpatialSettings,
 }
 
 impl Default for PlaybackState {
@@ -105,6 +135,8 @@ impl Default for PlaybackState {
             consume: false,
             single: false,
             loop_region: None,
+            haptic: HapticSettings::default(),
+            spatial: SpatialSettings::default(),
         }
     }
 }
@@ -150,6 +182,10 @@ pub enum PlayerCommand {
     Reshuffle {
         seed: u64,
     },
+    /// Advanced haptic feedback settings.
+    SetHaptic(HapticSettings),
+    /// Personalized spatial audio / room simulation settings.
+    SetSpatial(SpatialSettings),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -163,6 +199,8 @@ pub enum BackendAction {
     SetSpeed(f32),
     SetEqualizer(EqualizerSettings),
     SetCrossfade(u32),
+    SetHaptic(HapticSettings),
+    SetSpatial(SpatialSettings),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -196,6 +234,9 @@ pub enum BackendEvent {
     },
 }
 
+// Keep state snapshots inline to preserve the simple public event API; these events
+// are emitted at state transitions rather than on every audio sample.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlayerEvent {
     StateChanged(PlaybackState),
@@ -219,6 +260,8 @@ pub enum PlayerError {
     InvalidVolume,
     #[error("speed must be a finite value between 0.25 and 4.0")]
     InvalidSpeed,
+    #[error("track metadata or source is invalid")]
+    InvalidTrack,
     #[error("track was not found in the playback queue")]
     TrackNotFound,
     #[error("playback queue is empty")]
@@ -235,4 +278,8 @@ pub enum PlayerError {
     InvalidCrossfade,
     #[error("loop region must start before it ends and fit inside the current track")]
     InvalidLoopRegion,
+    #[error("haptic settings or patterns are invalid")]
+    InvalidHaptic,
+    #[error("spatial audio / room settings are invalid")]
+    InvalidSpatial,
 }
