@@ -310,13 +310,22 @@ class NavaqPlaybackService : MediaSessionService() {
 
     private fun publishAvaResult(message: String, responseMode: AvaResponseMode? = null) {
         val settings = AvaCommandInterpreter(this).currentSettings()
-        val result = Intent(ACTION_AVA_RESULT)
-            .setPackage(packageName)
-            .putExtra(EXTRA_AVA_RESULT, message)
-        sendBroadcast(result)
-        if ((responseMode ?: settings.responseMode) == AvaResponseMode.VOICE) {
-            val output = avaSpeechOutput ?: AvaSpeechOutput(this).also { avaSpeechOutput = it }
-            output.speak(message, settings)
+        when (responseMode ?: settings.responseMode) {
+            AvaResponseMode.SILENT -> Unit
+            AvaResponseMode.VISUAL -> {
+                val result = Intent(ACTION_AVA_RESULT)
+                    .setPackage(packageName)
+                    .putExtra(EXTRA_AVA_RESULT, message)
+                sendBroadcast(result)
+            }
+            AvaResponseMode.VOICE -> {
+                val result = Intent(ACTION_AVA_RESULT)
+                    .setPackage(packageName)
+                    .putExtra(EXTRA_AVA_RESULT, message)
+                sendBroadcast(result)
+                val output = avaSpeechOutput ?: AvaSpeechOutput(this).also { avaSpeechOutput = it }
+                output.speak(message, settings)
+            }
         }
     }
 
