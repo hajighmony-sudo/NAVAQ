@@ -10,8 +10,6 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.provider.MediaStore
-import android.view.Gravity
 import android.view.View
 import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
@@ -131,7 +129,6 @@ class DiscoverActivity : Activity() {
         status.text = "Searching audio…"
         executor.execute {
             try {
-                val encoded = URLEncoder.encode(query, Charsets.UTF_8.name())
                 val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
                     URLEncoder.encode("filetype:audio $query", Charsets.UTF_8.name()) +
                     "&gsrnamespace=6&gsrlimit=25&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json"
@@ -298,7 +295,16 @@ class DiscoverActivity : Activity() {
                     DownloadManager.STATUS_PENDING -> "Waiting in queue"
                     else -> "Download status unavailable"
                 }
-                card.addView(label(statusLabel, 12, MUTED, false).apply {
+                val downloaded = it.getLong(it.getColumnIndexOrThrow(
+                    DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
+                ))
+                val total = it.getLong(it.getColumnIndexOrThrow(
+                    DownloadManager.COLUMN_TOTAL_SIZE_BYTES
+                ))
+                val progressLabel = if (total > 0L) {
+                    " • ${downloaded * 100L / total}%"
+                } else ""
+                card.addView(label(statusLabel + progressLabel, 12, MUTED, false).apply {
                     setPadding(0, dp(6), 0, dp(8))
                 })
                 val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -315,7 +321,12 @@ class DiscoverActivity : Activity() {
                         }
                     }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) })
                 }
-                actions.addView(actionButton("Remove") {
+                actions.addView(actionButton(
+                    if (statusCode == DownloadManager.STATUS_RUNNING ||
+                        statusCode == DownloadManager.STATUS_PENDING ||
+                        statusCode == DownloadManager.STATUS_PAUSED
+                    ) "Cancel" else "Remove"
+                ) {
                     downloadManager.remove(id)
                     forgetDownload(id)
                     refreshLibrary()
@@ -362,9 +373,10 @@ class DiscoverActivity : Activity() {
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                     .setAllowedOverMetered(true)
                     .setAllowedOverRoaming(false)
-                    .setDestinationInExternalPublicDir(
+                    .setDestinationInExternalFilesDir(
+                        this,
                         Environment.DIRECTORY_MUSIC,
-                        "NAVAQ/${safeFileName(suggestedName)}"
+                        "NAVAQ/${uniqueFileName(suggestedName)}"
                     )
                 val id = downloadManager.enqueue(request)
                 rememberDownload(id)
@@ -404,6 +416,14 @@ class DiscoverActivity : Activity() {
             .trim().take(90).trim('.')
         val name = cleaned.ifBlank { "navaq-audio" }
         return if (name.contains('.')) name else "$name.${extensionForMime(guessMime(value))}"
+    }
+
+    private fun uniqueFileName(value: String): String {
+        val safe = safeFileName(value)
+        val dot = safe.lastIndexOf('.')
+        val suffix = "-${System.currentTimeMillis()}"
+        return if (dot > 0) safe.substring(0, dot) + suffix + safe.substring(dot)
+        else safe + suffix
     }
 
     private fun guessMime(url: String): String {
