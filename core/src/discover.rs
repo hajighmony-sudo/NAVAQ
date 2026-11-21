@@ -134,6 +134,8 @@ pub enum DiscoverError {
     ProviderNotFound,
     #[error("search pages do not belong to the same query and page index")]
     MismatchedPage,
+    #[error("the search session has no more pages")]
+    SearchExhausted,
 }
 
 #[cfg(test)]
