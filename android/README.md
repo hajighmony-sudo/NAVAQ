@@ -10,8 +10,9 @@ This module is the native Android playback host for the Rust workspace.
   Bluetooth/headset controls, and compatible Android media clients.
 - Android audio-focus integration through ExoPlayer's audio attributes.
 - Pause-on-headphones-disconnect behavior through Media3's noisy-audio handling.
-- A Media3 PCM audio processor that observes decoded 16-bit or float PCM and
-  detects generic energy onsets without changing the audio samples.
+- A Media3 PCM audio processor that routes decoded 16-bit or float PCM through
+  the Rust stateful DSP pipeline (gain, parametric EQ, optional echo and peak
+  ceiling), then detects generic energy onsets from the processed signal.
 - Optional beat haptics dispatched from the audio-processing path to Android's
   vibrator on the main thread. Haptics are disabled by default; the preference is
   persisted locally and can be changed by the in-app service API or the explicit
@@ -33,12 +34,14 @@ The Rust crate remains the owner of queue and playback-domain decisions. This
 module owns Android-only responsibilities: decoding/output, MediaSession,
 foreground-service lifetime, audio focus, and OS media controls.
 
-The Media3 service is the first native platform layer. The Rust command/event bridge is present for playback-domain events. The beat
-analyzer currently runs in the Android Media3 PCM path (rather than calling the
-Rust analyzer through JNI), so the detector and haptic dispatch are connected
-without copying PCM across JNI. The analyzer reports generic energy transients;
-it does not classify kick, snare, hi-hat, or vocals. The equalizer/echo DSP chain
-in Rust is still not inserted into Media3's output path.
+The Media3 service is the first native platform layer. The Rust command/event bridge is present for playback-domain events. The Media3 processor owns a format-specific Rust PCM pipeline through JNI.
+PCM is copied into a bounded per-buffer float array for processing, then written
+back to Media3's output buffer; the pipeline instance persists across buffers so
+filter and delay state remains continuous. Core `SetEqualizer` actions are
+forwarded into that pipeline. The onset detector remains in Kotlin and reports
+generic energy transients; it does not classify kick, snare, hi-hat, or vocals.
+Echo currently uses the Rust pipeline defaults and is not yet exposed through
+the Android settings surface.
 
 
 ## Music Island and OEM media surfaces
