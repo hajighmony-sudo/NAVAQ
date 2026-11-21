@@ -162,7 +162,8 @@ class AvaSpeechInput(
                 if (count <= 0) {
                     if (
                         count == AudioRecord.ERROR_INVALID_OPERATION ||
-                        count == AudioRecord.ERROR_BAD_VALUE
+                        count == AudioRecord.ERROR_BAD_VALUE ||
+                        count == AudioRecord.ERROR_DEAD_OBJECT
                     ) {
                         throw IllegalStateException("Microphone capture failed ($count)")
                     }
@@ -227,8 +228,6 @@ class AvaSpeechInput(
             if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 recorder.stop()
             }
-            postListening(session, false)
-
             val stream = recognizer.createStream()
             try {
                 if (language.isEmpty()) {
