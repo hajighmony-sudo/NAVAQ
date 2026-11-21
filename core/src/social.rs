@@ -482,15 +482,43 @@ mod tests {
                 &guest,
                 revision,
                 RoomCommand::SetPlayback {
-                    position_ms: 2_000,
+                    position_ms: 999_999,
                     is_playing: true,
                 },
             )
             .unwrap();
         assert!(next > revision);
+        assert_eq!(room.position_ms, 180_000);
         assert_eq!(
             room.apply_command(&guest, revision, RoomCommand::ClearLocalEffects),
             Err(SocialError::RevisionConflict { current: next })
+        );
+    }
+
+    #[test]
+    fn room_cannot_start_without_a_track_and_rejects_invalid_track() {
+        let mut room = SharedRoom::new("r".into(), "host".into());
+        let host = ParticipantId::from("host");
+        assert_eq!(
+            room.apply_command(
+                &host,
+                room.revision,
+                RoomCommand::SetPlayback {
+                    position_ms: 100,
+                    is_playing: true,
+                },
+            ),
+            Err(SocialError::NoTrack)
+        );
+        let mut invalid = sample_track();
+        invalid.title.clear();
+        assert_eq!(
+            room.apply_command(
+                &host,
+                room.revision,
+                RoomCommand::SetTrack(Some(invalid)),
+            ),
+            Err(SocialError::InvalidTrack)
         );
     }
 
