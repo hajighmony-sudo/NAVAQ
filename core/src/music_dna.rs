@@ -89,10 +89,19 @@ impl TasteProfile {
         let mut right = other.clone();
         left.normalize();
         right.normalize();
+        let has_artist_data = !left.artists.is_empty() && !right.artists.is_empty();
+        let has_genre_data = !left.genres.is_empty() && !right.genres.is_empty();
         let artist_sim = cosine(&left.artists, &right.artists);
         let genre_sim = cosine(&left.genres, &right.genres);
-        // Weighted blend; genres often more stable for matching.
-        let mut score = 0.45 * artist_sim + 0.55 * genre_sim;
+
+        // Do not penalize a profile simply because one feature family is absent.
+        // When both are available, genres carry slightly more weight.
+        let mut score = match (has_artist_data, has_genre_data) {
+            (true, true) => 0.45 * artist_sim + 0.55 * genre_sim,
+            (true, false) => artist_sim,
+            (false, true) => genre_sim,
+            (false, false) => 0.0,
+        };
 
         // Soft tempo agreement.
         if let (Some(a), Some(b)) = (left.avg_tempo, right.avg_tempo) {
