@@ -84,3 +84,17 @@ custom UI into every OEM's island. Therefore NAVAQ uses the documented Android
 media-session/notification route rather than brittle hidden APIs or overlay
 permissions. Exact appearance depends on the OEM, OS release, device model,
 and user settings.
+
+
+## AVA voice assistant
+
+AVA is an optional, isolated Android voice-assistant adapter that uses the existing Rust `PlayerCore` and Media3 player. It does not create a second audio engine.
+
+- `AvaVoiceController` is the Activity-facing entry point. Request `RECORD_AUDIO` using the Activity Result API, then call `startListening()` from a visible user action; call `release()` from the Activity lifecycle.
+- `AvaSettingsFragment` can be embedded in the host settings navigation. It persists preferences in `navaq_ava_preferences`, shared with `AvaSettingsStore`.
+- The default profile is both music sources, adaptive processing, automatic language, and visual-only responses. Silent mode suppresses both speech and result broadcasts; Voice mode is opt-in.
+- Device audio is discovered read-only through MediaStore. The app must request `AvaPermissions.requiredAudioPermission()` at runtime before device-library access.
+- The in-app library integration is an explicit adapter: register `AvaInAppCatalog.register(AvaInAppMusicProvider { query -> ... })` during host application startup. Convert existing NAVAQ library records into `AvaCatalogTrack` values with a playable `content_uri` or `local_file` source. The core repository currently has no Android application/library owner to register automatically.
+- Adaptive speech recognition uses Android's on-device recognizer when offline and the installed system recognizer when online. Availability and Persian language-model support depend on the device's installed recognition service/model. AVA reports a clear error rather than silently pretending offline recognition exists.
+- The online AI route is an extension point in the Rust decision contract; no remote model endpoint or API credential is configured in this repository yet. Basic deterministic music commands remain local.
+- Wake-word activation is intentionally not enabled by this initial adapter. Push-to-talk is the supported activation flow; Android background microphone restrictions and battery policies require a separate, explicitly user-enabled foreground/wake-word implementation and device testing.
