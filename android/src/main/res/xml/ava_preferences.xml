@@ -17,15 +17,6 @@
             app:useSimpleSummaryProvider="true" />
 
         <ListPreference
-            app:key="ai_mode"
-            app:title="AI engine"
-            app:summary="Choose offline, online, or adaptive processing"
-            app:entries="@array/ava_ai_mode_labels"
-            app:entryValues="@array/ava_ai_mode_values"
-            app:defaultValue="adaptive"
-            app:useSimpleSummaryProvider="true" />
-
-        <ListPreference
             app:key="response_mode"
             app:title="Assistant response"
             app:summary="AVA can stay silent, show visual status, or speak"
