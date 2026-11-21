@@ -465,6 +465,20 @@ mod tests {
     }
 
     #[test]
+    fn participants_can_contribute_and_remove_room_wide_effects() {
+        let mut room = SharedRoom::new("r".into(), "host".into());
+        room.join("guest".into()).unwrap();
+        let guest = ParticipantId::from("guest");
+        room.apply_command(
+            &guest,
+            room.revision,
+            RoomCommand::SetSharedEffect(LiveEffect::Echo { delay_ms: 250, feedback: 0.2, mix: 0.3 }),
+        ).unwrap();
+        assert_eq!(room.shared_effects.get(&guest).unwrap().effects.len(), 1);
+        room.leave(&guest).unwrap();
+        assert!(!room.shared_effects.contains_key(&guest));
+    }
+    #[test]
     fn duplicate_join_does_not_consume_room_capacity() {
         let mut room = SharedRoom::new("r".into(), "host".into());
         room.max_participants = 2;
