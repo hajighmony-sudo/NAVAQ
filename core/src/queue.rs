@@ -485,6 +485,34 @@ mod tests {
     }
 
     #[test]
+    fn invalid_track_metadata_is_rejected_without_mutating_queue() {
+        let mut queue = PlaybackQueue::new();
+        queue.enqueue(track("valid")).unwrap();
+        let mut invalid = track("invalid");
+        invalid.title = "   ".into();
+        assert_eq!(queue.enqueue(invalid.clone()), Err(PlayerError::InvalidTrack));
+        assert_eq!(queue.enqueue_next(invalid), Err(PlayerError::InvalidTrack));
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.current().unwrap().id, TrackId::from("valid"));
+    }
+
+    #[test]
+    fn snapshot_restore_rejects_invalid_track_metadata() {
+        let mut invalid = track("bad");
+        invalid.source = AudioSource::LocalFile("".into());
+        let snapshot = PlaybackQueueSnapshot {
+            tracks: vec![invalid],
+            order: vec![0],
+            cursor: Some(0),
+            shuffle_enabled: false,
+        };
+        assert_eq!(
+            PlaybackQueue::from_snapshot(snapshot).unwrap_err(),
+            QueueSnapshotError::InvalidTrack
+        );
+    }
+
+    #[test]
     fn duplicate_ids_are_rejected_without_changing_the_queue() {
         let mut queue = PlaybackQueue::new();
         queue.replace(vec![track("a"), track("b")], 0).unwrap();
