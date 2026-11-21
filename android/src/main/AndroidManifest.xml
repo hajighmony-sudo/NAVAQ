@@ -14,6 +14,11 @@
         android:label="NAVAQ"
         android:supportsRtl="true">
         <activity
+            android:name=".discover.DiscoverActivity"
+            android:exported="false"
+            android:label="NAVAQ Discover"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
             android:name=".ava.AvaSettingsActivity"
             android:exported="false"
             android:label="AVA settings"
