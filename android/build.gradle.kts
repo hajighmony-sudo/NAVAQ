@@ -16,6 +16,18 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
+    // Produce one APK per CPU architecture instead of a universal APK.
+    // This prevents Android phones from downloading the emulator's x86_64
+    // native libraries alongside the arm64-v8a libraries.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
