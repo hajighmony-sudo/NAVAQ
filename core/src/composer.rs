@@ -95,9 +95,11 @@ impl Composition {
             && !self.tracks.is_empty()
             && self.tracks.len() <= 64
             && self.tracks.iter().all(InstrumentTrack::is_valid)
-            && self.tracks.iter().flat_map(|t| &t.notes).all(|note| {
-                note.end_beat() <= self.total_beats() + 1.0e-4
-            })
+            && self
+                .tracks
+                .iter()
+                .flat_map(|t| &t.notes)
+                .all(|note| note.end_beat() <= self.total_beats() + 1.0e-4)
     }
 
     /// Arrangement length in quarter-note beats.
@@ -189,7 +191,10 @@ mod tests {
     fn track_management_checks_ids_and_limits() {
         let mut arrangement = composition();
         let duplicate = arrangement.tracks[0].clone();
-        assert_eq!(arrangement.add_track(duplicate), Err(ComposerError::DuplicateTrack));
+        assert_eq!(
+            arrangement.add_track(duplicate),
+            Err(ComposerError::DuplicateTrack)
+        );
         assert!(arrangement.remove_track("piano").is_some());
         assert!(arrangement.tracks.is_empty());
     }
