@@ -229,14 +229,34 @@ pub struct TasteCandidate {
 }
 
 /// Rank only opted-in profiles with enough listening history to avoid weak matches.
-pub fn rank_opted_in_matches(target: &TasteProfile, candidates: &[TasteCandidate], min_score: f32, min_sample_size: u32) -> Vec<MatchResult> {
-    if !target.is_valid() || !min_score.is_finite() { return Vec::new(); }
-    let mut results: Vec<_> = candidates.iter()
-        .filter(|candidate| candidate.discovery_enabled && candidate.profile.sample_size >= min_sample_size && candidate.profile.is_valid())
-        .map(|candidate| MatchResult { participant_id: candidate.participant_id.clone(), score: target.similarity(&candidate.profile) })
+pub fn rank_opted_in_matches(
+    target: &TasteProfile,
+    candidates: &[TasteCandidate],
+    min_score: f32,
+    min_sample_size: u32,
+) -> Vec<MatchResult> {
+    if !target.is_valid() || !min_score.is_finite() {
+        return Vec::new();
+    }
+    let mut results: Vec<_> = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.discovery_enabled
+                && candidate.profile.sample_size >= min_sample_size
+                && candidate.profile.is_valid()
+        })
+        .map(|candidate| MatchResult {
+            participant_id: candidate.participant_id.clone(),
+            score: target.similarity(&candidate.profile),
+        })
         .filter(|result| result.score >= min_score.clamp(0.0, 1.0))
         .collect();
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.participant_id.cmp(&b.participant_id)));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.participant_id.cmp(&b.participant_id))
+    });
     results
 }
 /// Rank candidates by similarity to a target profile.
@@ -283,9 +303,25 @@ mod tests {
         profile.genres.insert("Jazz".into(), 1.0);
         profile.sample_size = 25;
         let candidates = vec![
-            TasteCandidate { participant_id: "visible".into(), profile: profile.clone(), discovery_enabled: true },
-            TasteCandidate { participant_id: "private".into(), profile: profile.clone(), discovery_enabled: false },
-            TasteCandidate { participant_id: "new".into(), profile: { let mut p = profile.clone(); p.sample_size = 1; p }, discovery_enabled: true },
+            TasteCandidate {
+                participant_id: "visible".into(),
+                profile: profile.clone(),
+                discovery_enabled: true,
+            },
+            TasteCandidate {
+                participant_id: "private".into(),
+                profile: profile.clone(),
+                discovery_enabled: false,
+            },
+            TasteCandidate {
+                participant_id: "new".into(),
+                profile: {
+                    let mut p = profile.clone();
+                    p.sample_size = 1;
+                    p
+                },
+                discovery_enabled: true,
+            },
         ];
         let ranked = rank_opted_in_matches(&profile, &candidates, 0.5, 10);
         assert_eq!(ranked.len(), 1);
