@@ -116,6 +116,12 @@ pub enum DiscoverError {
     InvalidResult,
     #[error("search provider is invalid")]
     InvalidProvider,
+    #[error("search provider is already registered")]
+    DuplicateProvider,
+    #[error("search provider was not found")]
+    ProviderNotFound,
+    #[error("search pages do not belong to the same query and page index")]
+    MismatchedPage,
 }
 
 #[cfg(test)]
