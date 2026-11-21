@@ -7,6 +7,7 @@ pub mod audio_session;
 pub mod backend;
 pub mod bookmarks;
 pub mod creative;
+pub mod cue;
 pub mod dsp;
 pub mod engine;
 pub mod equalizer;
@@ -24,9 +25,11 @@ pub mod queue;
 pub mod ratings;
 pub mod replaygain;
 pub mod runtime;
+pub mod scrobble;
 pub mod sleep_timer;
 pub mod social;
 pub mod spatial;
+pub mod text;
 
 #[cfg(target_os = "android")]
 mod android_jni;
@@ -35,9 +38,10 @@ pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
 pub use creative::{
-    CreativeError, CreativeJob, CreativeRequest, CreativeResult, CreativeStore, InstrumentalRequest,
-    JobId, JobStatus, LyricToMelodyRequest, StemKind,
+    CreativeError, CreativeJob, CreativeRequest, CreativeResult, CreativeStore,
+    InstrumentalRequest, JobId, JobStatus, LyricToMelodyRequest, StemKind,
 };
+pub use cue::{parse_cue, CueSheet, CueTrack};
 pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor};
 pub use engine::PlayerCore;
 pub use equalizer::{EqualizerBand, EqualizerPreset, EqualizerSettings};
@@ -60,6 +64,7 @@ pub use replaygain::{
     effective_volume, linear_gain, ReplayGainMode, ReplayGainSettings, ReplayGainTags,
 };
 pub use runtime::{PlayerRuntime, RuntimeError};
+pub use scrobble::ScrobbleTracker;
 pub use sleep_timer::SleepTimer;
 pub use social::{
     EffectStack, LiveEffect, ParticipantId, RoomId, RoomStore, SharedRoom, SocialError,
@@ -67,3 +72,4 @@ pub use social::{
 pub use spatial::{
     Absorption, RoomDimensions, SpatialError, SpatialSettings, SpeakerLayout, SpeakerPosition,
 };
+pub use text::{fuzzy_score, normalize_for_search};

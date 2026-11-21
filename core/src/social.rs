@@ -5,7 +5,7 @@
 //! reverb, vocal overlay or custom FX. The core owns only the logical
 //! room state; networking, audio mixing and presence are host responsibilities.
 
-use crate::model::{Track, TrackId};
+use crate::model::Track;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -49,9 +49,7 @@ pub enum LiveEffect {
         mix: f32,
     },
     /// Pitch shift in semitones.
-    PitchShift {
-        semitones: f32,
-    },
+    PitchShift { semitones: f32 },
     /// Temporary vocal overlay (karaoke-style or party vocal).
     VocalOverlay {
         /// Relative volume of the added vocal stem.
@@ -297,10 +295,7 @@ mod tests {
     #[test]
     fn create_join_leave_and_effects() {
         let mut store = RoomStore::new();
-        let room = store
-            .create("room1".into(), "host".into())
-            .unwrap()
-            .clone();
+        let room = store.create("room1".into(), "host".into()).unwrap().clone();
         assert_eq!(room.participant_count(), 1);
 
         let room = store.get_mut(&"room1".into()).unwrap();
@@ -314,11 +309,8 @@ mod tests {
             mix: 0.3,
         })
         .unwrap();
-        room.apply_participant_effect(
-            &"user2".into(),
-            LiveEffect::PitchShift { semitones: 2.0 },
-        )
-        .unwrap();
+        room.apply_participant_effect(&"user2".into(), LiveEffect::PitchShift { semitones: 2.0 })
+            .unwrap();
 
         assert_eq!(room.global_effects.effects.len(), 1);
         assert_eq!(

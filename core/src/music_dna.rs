@@ -142,10 +142,7 @@ impl DnaBuilder {
 
     /// Convenience: boost from a UserRatings + PlayHistory pair.
     /// The host must supply artist/genre lookup for each TrackId.
-    pub fn from_history_and_ratings<
-        FArt,
-        FGen,
-    >(
+    pub fn from_history_and_ratings<FArt, FGen>(
         history: &PlayHistory,
         ratings: &UserRatings,
         artist_of: FArt,
@@ -159,7 +156,7 @@ impl DnaBuilder {
 
         // Play counts give base weight.
         for (id, count) in history.most_played(500) {
-            let w = (*count as f32).sqrt(); // dampen extreme repeats
+            let w = (count as f32).sqrt(); // dampen extreme repeats
             if let Some(artist) = artist_of(id) {
                 builder.add_artist(&artist, w);
             }
@@ -266,11 +263,7 @@ mod tests {
         far.genres.insert("Classical".into(), 1.0);
         far.normalize();
 
-        let ranked = rank_matches(
-            &target,
-            &[("u1".into(), close), ("u2".into(), far)],
-            0.0,
-        );
+        let ranked = rank_matches(&target, &[("u1".into(), close), ("u2".into(), far)], 0.0);
         assert_eq!(ranked[0].participant_id, "u1");
         assert!(ranked[0].score > ranked[1].score);
     }

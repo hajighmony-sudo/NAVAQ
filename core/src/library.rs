@@ -2,6 +2,7 @@
 //! Scanning files and storage are host responsibilities; the host feeds tracks in.
 
 use crate::model::{Track, TrackId};
+use crate::text::{fuzzy_score, normalize_for_search};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,22 +87,78 @@ impl Library {
     /// Case-insensitive search over title, artist and album. Every whitespace-separated
     /// word of the query must match somewhere. An empty query matches nothing.
     pub fn search(&self, query: &str) -> Vec<&Track> {
-        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let words: Vec<String> = normalize_for_search(query)
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
         if words.is_empty() {
             return Vec::new();
         }
         self.tracks
             .iter()
             .filter(|track| {
-                let haystack = format!(
+                let haystack = normalize_for_search(&format!(
                     "{} {} {}",
                     track.title,
                     track.artist.as_deref().unwrap_or(""),
                     track.album.as_deref().unwrap_or("")
-                )
-                .to_lowercase();
+                ));
                 words.iter().all(|word| haystack.contains(word))
             })
+            .collect()
+    }
+
+    /// Fuzzy (subsequence) search over title, artist and album, best match first.
+    pub fn search_fuzzy(&self, query: &str) -> Vec<&Track> {
+        let mut scored: Vec<(i32, &Track)> = self
+            .tracks
+            .iter()
+            .filter_map(|track| {
+                let text = format!(
+                    "{} {} {}",
+                    track.title,
+                    track.artist.as_deref().unwrap_or(""),
+                    track.album.as_deref().unwrap_or("")
+                );
+                fuzzy_score(query, &text).map(|score| (score, track))
+            })
+            .collect();
+        scored.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| a.1.title.to_lowercase().cmp(&b.1.title.to_lowercase()))
+                .then_with(|| a.1.id.0.cmp(&b.1.id.0))
+        });
+        scored.into_iter().map(|(_, track)| track).collect()
+    }
+
+    /// Groups of likely duplicate tracks: same normalized title and artist and a duration
+    /// within one second (or both unknown). Groups keep library order; singles are omitted.
+    pub fn find_duplicates(&self) -> Vec<Vec<TrackId>> {
+        let mut groups: Vec<(String, Option<u64>, Vec<TrackId>)> = Vec::new();
+        for track in &self.tracks {
+            let key = format!(
+                "{}\u{1f}{}",
+                normalize_for_search(&track.title),
+                normalize_for_search(track.artist.as_deref().unwrap_or(""))
+            );
+            let seconds = track.duration_ms.map(|ms| ms / 1_000);
+            let existing = groups.iter_mut().find(|(k, s, _)| {
+                *k == key
+                    && match (s, seconds) {
+                        (Some(a), Some(b)) => a.abs_diff(b) <= 1,
+                        (None, None) => true,
+                        _ => false,
+                    }
+            });
+            match existing {
+                Some((_, _, ids)) => ids.push(track.id.clone()),
+                None => groups.push((key, seconds, vec![track.id.clone()])),
+            }
+        }
+        groups
+            .into_iter()
+            .filter(|(_, _, ids)| ids.len() > 1)
+            .map(|(_, _, ids)| ids)
             .collect()
     }
 
@@ -226,5 +283,41 @@ mod tests {
         assert_eq!(albums.len(), 3);
         assert_eq!(albums[0].name, "Alpha Album");
         assert_eq!(lib.artists(), ["Amy", "Zed", "علی"]);
+    }
+
+    #[test]
+    fn search_ignores_persian_arabic_letter_variants() {
+        let lib = Library::from_tracks([t("p", "علی و کتاب", None, None, None)]);
+        assert_eq!(lib.search("علي").len(), 1);
+        assert_eq!(lib.search("كتاب").len(), 1);
+    }
+
+    #[test]
+    fn fuzzy_search_ranks_tighter_matches_first() {
+        let lib = Library::from_tracks([
+            t("1", "r h a p", None, None, None),
+            t("2", "Bohemian Rhapsody", Some("Queen"), None, None),
+            t("3", "Other", None, None, None),
+        ]);
+        let ids: Vec<_> = lib
+            .search_fuzzy("rhap")
+            .iter()
+            .map(|t| t.id.0.clone())
+            .collect();
+        assert_eq!(ids, ["2", "1"]);
+    }
+
+    #[test]
+    fn finds_duplicates_by_title_artist_and_duration() {
+        let lib = Library::from_tracks([
+            t("1", "Song", Some("A"), None, Some(200_000)),
+            t("2", "SONG", Some("a"), None, Some(200_900)),
+            t("3", "Song", Some("A"), None, Some(260_000)),
+            t("4", "Other", None, None, None),
+        ]);
+        assert_eq!(
+            lib.find_duplicates(),
+            vec![vec![TrackId::from("1"), TrackId::from("2")]]
+        );
     }
 }

@@ -205,7 +205,12 @@ pub enum PlayerEvent {
     PlaybackPaused,
     PlaybackStopped,
     PlaybackCompleted,
-    PlaybackError { code: String, message: String },
+    PlaybackError {
+        code: String,
+        message: String,
+    },
+    /// The track was listened to long enough to count as a play (scrobble).
+    ScrobbleReady(TrackId),
 }
 
 #[derive(Debug, Error, PartialEq)]

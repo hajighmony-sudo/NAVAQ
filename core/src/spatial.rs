@@ -84,17 +84,13 @@ pub enum SpeakerLayout {
         surround_right: SpeakerPosition,
     },
     /// Fully custom set of speakers.
-    Custom {
-        speakers: Vec<SpeakerPosition>,
-    },
+    Custom { speakers: Vec<SpeakerPosition> },
 }
 
 impl SpeakerLayout {
     pub fn is_valid(&self) -> bool {
         match self {
-            SpeakerLayout::Stereo { left, right } => {
-                left.x.is_finite() && right.x.is_finite()
-            }
+            SpeakerLayout::Stereo { left, right } => left.x.is_finite() && right.x.is_finite(),
             SpeakerLayout::Surround5_1 { .. } => true,
             SpeakerLayout::Custom { speakers } => !speakers.is_empty() && speakers.len() <= 32,
         }

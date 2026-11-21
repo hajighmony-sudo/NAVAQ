@@ -62,6 +62,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 - `guess_from_filename` — track number, artist and title from file names when tags are missing.
 - `BookmarkStore` — resume positions for long tracks (ignores the first 5 s and the last 10 s).
 - `UserRatings` — favorites and 1-5 ratings, resolvable to tracks for `SetQueue`.
+- `text` — `normalize_for_search` unifies Persian/Arabic letter variants, digits, diacritics and ZWNJ; `fuzzy_score` is an fzf-style subsequence matcher. `Library::search` uses the normalization, `Library::search_fuzzy` ranks fuzzy matches, `Library::find_duplicates` groups likely duplicate tracks.
+- `cue` — `parse_cue` reads CUE sheets (FLAC+CUE albums) into track start/end times.
+- `ScrobbleTracker` — the 30 s / half-track / 4 min listening rule, built into `PlayerCore`: it emits `PlayerEvent::ScrobbleReady(id)` once per qualifying play; seeks and A-B loop jumps are not counted.
 
 ### Exclusive / differentiating modules
 

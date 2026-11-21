@@ -164,7 +164,12 @@ impl CreativeStore {
         Ok(self.jobs.get(&id).unwrap())
     }
 
-    pub fn set_status(&mut self, id: &JobId, status: JobStatus, now_ms: u64) -> Result<(), CreativeError> {
+    pub fn set_status(
+        &mut self,
+        id: &JobId,
+        status: JobStatus,
+        now_ms: u64,
+    ) -> Result<(), CreativeError> {
         let job = self.jobs.get_mut(id).ok_or(CreativeError::JobNotFound)?;
         job.status = status;
         job.updated_at_ms = now_ms;
@@ -252,7 +257,9 @@ mod tests {
         store.submit("job1".into(), req, 1000).unwrap();
         assert_eq!(store.get(&"job1".into()).unwrap().status, JobStatus::Queued);
 
-        store.set_status(&"job1".into(), JobStatus::Running, 1100).unwrap();
+        store
+            .set_status(&"job1".into(), JobStatus::Running, 1100)
+            .unwrap();
 
         let result = CreativeResult {
             job_id: "job1".into(),
@@ -284,7 +291,10 @@ mod tests {
             duration_secs: None,
             also_instrumental: false,
         });
-        assert_eq!(store.submit("x".into(), req, 0), Err(CreativeError::EmptyLyrics));
+        assert_eq!(
+            store.submit("x".into(), req, 0),
+            Err(CreativeError::EmptyLyrics)
+        );
     }
 
     #[test]

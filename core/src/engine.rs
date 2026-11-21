@@ -4,6 +4,7 @@ use crate::model::{
 };
 use crate::persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 use crate::queue::PlaybackQueue;
+use crate::scrobble::ScrobbleTracker;
 
 /// Longest supported crossfade.
 pub const MAX_CROSSFADE_MS: u32 = 12_000;
@@ -21,6 +22,7 @@ pub struct PlayerCore {
     queue: PlaybackQueue,
     /// The track the native backend currently has prepared (and therefore positioned).
     backend_loaded_track: Option<TrackId>,
+    scrobble: ScrobbleTracker,
 }
 
 impl PlayerCore {
@@ -80,6 +82,7 @@ impl PlayerCore {
                     .duration_ms
                     .map_or(position_ms, |duration| position_ms.min(duration));
                 self.state.position_ms = position;
+                self.scrobble.rebase(position);
                 output.backend_actions.push(BackendAction::SeekTo(position));
             }
             PlayerCommand::Next => {
@@ -292,12 +295,22 @@ impl PlayerCore {
                         .state
                         .duration_ms
                         .map_or(position_ms, |duration| position_ms.min(duration));
+                    if self.state.status == PlaybackStatus::Playing
+                        && self
+                            .scrobble
+                            .record_position(self.state.position_ms, self.state.duration_ms)
+                    {
+                        output
+                            .events
+                            .push(PlayerEvent::ScrobbleReady(track_id.clone()));
+                    }
                     // A-B loop: jump back as soon as the end marker is reached.
                     if let Some(region) = self.state.loop_region {
                         if self.state.status == PlaybackStatus::Playing
                             && self.state.position_ms >= region.end_ms
                         {
                             self.state.position_ms = region.start_ms;
+                            self.scrobble.rebase(region.start_ms);
                             output
                                 .backend_actions
                                 .push(BackendAction::SeekTo(region.start_ms));
@@ -351,6 +364,9 @@ impl PlayerCore {
     fn advance(&mut self, from_completion: bool, output: &mut CoreOutput) {
         if self.state.repeat_mode == RepeatMode::One && from_completion {
             self.state.position_ms = 0;
+            if let Some(id) = self.state.current_track.clone() {
+                self.scrobble.start(id, 0);
+            }
             output.backend_actions.push(BackendAction::SeekTo(0));
             output.backend_actions.push(BackendAction::Play);
             self.state.status = PlaybackStatus::Playing;
@@ -392,6 +408,7 @@ impl PlayerCore {
         self.sync_selected_track(track, output, true);
         if already_loaded {
             self.state.position_ms = 0;
+            self.scrobble.start(track.id.clone(), 0);
             output.backend_actions.push(BackendAction::SeekTo(0));
         }
         output.backend_actions.push(BackendAction::Play);
@@ -481,6 +498,7 @@ impl PlayerCore {
             self.state.duration_ms = track.duration_ms;
             self.state.position_ms = 0;
             self.state.is_buffering = false;
+            self.scrobble.start(track.id.clone(), 0);
         }
         self.state.current_track = Some(track.id.clone());
 
@@ -578,11 +596,16 @@ impl PlayerCore {
         }
 
         output.events.push(PlayerEvent::StateChanged(state.clone()));
+        let mut scrobble = ScrobbleTracker::default();
+        if let Some(id) = state.current_track.clone() {
+            scrobble.start(id, state.position_ms);
+        }
         Ok((
             Self {
                 state,
                 queue,
                 backend_loaded_track,
+                scrobble,
             },
             output,
         ))
@@ -1460,5 +1483,54 @@ mod tests {
             PlayerCore::restore(orphaned),
             Err(SnapshotError::CurrentTrackMismatch) | Err(SnapshotError::InvalidPlaybackSettings)
         ));
+    }
+
+    #[test]
+    fn scrobble_event_fires_once_after_half_the_track_is_played() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::SetQueue {
+            tracks: vec![track("one", 100_000)],
+            start_index: 0,
+        })
+        .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        let mut fired = 0;
+        for second in 1..=80 {
+            let output = core.handle_backend_event(BackendEvent::Position {
+                track_id: TrackId::from("one"),
+                position_ms: second * 1_000,
+            });
+            fired += output
+                .events
+                .iter()
+                .filter(
+                    |e| matches!(e, PlayerEvent::ScrobbleReady(id) if id == &TrackId::from("one")),
+                )
+                .count();
+        }
+        assert_eq!(fired, 1);
+    }
+
+    #[test]
+    fn seeking_to_the_middle_does_not_earn_a_scrobble() {
+        let mut core = PlayerCore::new();
+        core.handle(PlayerCommand::SetQueue {
+            tracks: vec![track("one", 100_000)],
+            start_index: 0,
+        })
+        .unwrap();
+        core.handle(PlayerCommand::Play).unwrap();
+        core.handle(PlayerCommand::Seek {
+            position_ms: 90_000,
+        })
+        .unwrap();
+        let output = core.handle_backend_event(BackendEvent::Position {
+            track_id: TrackId::from("one"),
+            position_ms: 91_000,
+        });
+        assert!(!output
+            .events
+            .iter()
+            .any(|e| matches!(e, PlayerEvent::ScrobbleReady(_))));
     }
 }

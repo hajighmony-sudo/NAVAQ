@@ -44,10 +44,7 @@ impl HapticPattern {
 
     /// Total length of the pattern including delays.
     pub fn total_duration_ms(&self) -> u32 {
-        self.pulses
-            .iter()
-            .map(|p| p.delay_ms + p.duration_ms)
-            .sum()
+        self.pulses.iter().map(|p| p.delay_ms + p.duration_ms).sum()
     }
 }
 
@@ -96,10 +93,7 @@ impl Default for HapticSettings {
 impl HapticSettings {
     pub fn is_valid(&self) -> bool {
         (0.0..=1.0).contains(&self.master_intensity)
-            && self
-                .custom_patterns
-                .iter()
-                .all(|(_, p)| p.is_valid())
+            && self.custom_patterns.iter().all(|(_, p)| p.is_valid())
     }
 
     /// Built-in sensible defaults for common triggers.
@@ -215,7 +209,8 @@ mod tests {
                 delay_ms: 0,
             }],
         };
-        s.custom_patterns.push((HapticTrigger::BassHit, custom.clone()));
+        s.custom_patterns
+            .push((HapticTrigger::BassHit, custom.clone()));
         assert_eq!(s.pattern_for(HapticTrigger::BassHit), custom);
     }
 }
