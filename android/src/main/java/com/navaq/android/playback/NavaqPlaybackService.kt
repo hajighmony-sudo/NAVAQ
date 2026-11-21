@@ -102,6 +102,10 @@ class NavaqPlaybackService : MediaSessionService() {
 
         val haptics = NavaqHaptics(this)
         beatHaptics = haptics
+        haptics.setEnabled(
+            getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                .getBoolean(PREFERENCE_BEAT_HAPTICS, false)
+        )
         val onsetProcessor = NavaqBeatAudioProcessor { strength ->
             // Vibrator calls are dispatched away from Media3's audio thread.
             mainHandler.post {
@@ -142,7 +146,18 @@ class NavaqPlaybackService : MediaSessionService() {
      * screen in the app can call this method after explicit user action.
      */
     fun setBeatHapticsEnabled(enabled: Boolean) {
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(PREFERENCE_BEAT_HAPTICS, enabled)
+            .apply()
         beatHaptics?.setEnabled(enabled)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_SET_BEAT_HAPTICS) {
+            setBeatHapticsEnabled(intent.getBooleanExtra(EXTRA_ENABLED, false))
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     fun dispatchCoreCommand(commandJson: String): String {
@@ -242,6 +257,15 @@ class NavaqPlaybackService : MediaSessionService() {
         if (activePlayer == null || !activePlayer.playWhenReady || activePlayer.mediaItemCount == 0) {
             stopSelf()
         }
+    }
+
+    companion object {
+        /** Intent action for a settings UI to change the explicit haptics preference. */
+        const val ACTION_SET_BEAT_HAPTICS =
+            "com.navaq.android.action.SET_BEAT_HAPTICS"
+        const val EXTRA_ENABLED = "com.navaq.android.extra.BEAT_HAPTICS_ENABLED"
+        private const val PREFERENCES_NAME = "navaq_playback_preferences"
+        private const val PREFERENCE_BEAT_HAPTICS = "beat_haptics_enabled"
     }
 
     override fun onDestroy() {
