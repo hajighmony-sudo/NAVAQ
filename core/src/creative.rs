@@ -332,6 +332,28 @@ mod tests {
     }
 
     #[test]
+    fn creative_jobs_reject_invalid_transitions_and_wrong_result_ids() {
+        let mut store = CreativeStore::new();
+        let request = CreativeRequest::LyricToMelody(LyricToMelodyRequest {
+            lyrics: "A short line".into(), style: None, tempo_bpm: None, key: None,
+            duration_secs: None, also_instrumental: false,
+        });
+        store.submit("job".into(), request, 100).unwrap();
+        let result = CreativeResult {
+            job_id: "other".into(), title: "Generated".into(), artist: None,
+            duration_ms: Some(1_000), source: AudioSource::LocalFile("/tmp/out.wav".into()),
+            tags: BTreeMap::new(),
+        };
+        assert_eq!(store.complete(&"job".into(), result, 200), Err(CreativeError::InvalidTransition));
+        store.set_status(&"job".into(), JobStatus::Running, 150).unwrap();
+        let wrong = CreativeResult {
+            job_id: "other".into(), title: "Generated".into(), artist: None,
+            duration_ms: Some(1_000), source: AudioSource::LocalFile("/tmp/out.wav".into()),
+            tags: BTreeMap::new(),
+        };
+        assert_eq!(store.complete(&"job".into(), wrong, 200), Err(CreativeError::ResultJobMismatch));
+    }
+    #[test]
     fn empty_lyrics_rejected() {
         let mut store = CreativeStore::new();
         let req = CreativeRequest::LyricToMelody(LyricToMelodyRequest {
