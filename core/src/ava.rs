@@ -130,9 +130,7 @@ impl AvaCore {
             match settings.ai_mode {
                 AvaAiMode::OfflineOnly => AvaExecutionRoute::OfflineFallback,
                 AvaAiMode::Adaptive if network_available => AvaExecutionRoute::Online,
-                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => {
-                    AvaExecutionRoute::OfflineFallback
-                }
+                AvaAiMode::Adaptive | AvaAiMode::OnlineOnly => AvaExecutionRoute::OfflineFallback,
             }
         };
 
@@ -162,30 +160,45 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
         };
     }
 
-    if contains_any(value, &["آهنگ بعدی", "بعدی", "next song", "next track", "next"]) {
+    if contains_any(
+        value,
+        &["آهنگ بعدی", "بعدی", "next song", "next track", "next"],
+    ) {
         return AvaIntent::Transport {
             command: PlayerCommand::Next,
         };
     }
-    if contains_any(value, &["آهنگ قبلی", "قبلی", "previous song", "previous track", "previous"]) {
+    if contains_any(
+        value,
+        &[
+            "آهنگ قبلی",
+            "قبلی",
+            "previous song",
+            "previous track",
+            "previous",
+        ],
+    ) {
         return AvaIntent::Transport {
             command: PlayerCommand::Previous,
         };
     }
-    if contains_any(
-        value,
-        &["نگه دار", "مکث", "توقف موقت", "pause", "hold on"],
-    ) {
+    if contains_any(value, &["نگه دار", "مکث", "توقف موقت", "pause", "hold on"]) {
         return AvaIntent::Transport {
             command: PlayerCommand::Pause,
         };
     }
-    if contains_any(value, &["ادامه بده", "ادامه", "از سر بگیر", "resume", "continue"]) {
+    if contains_any(
+        value,
+        &["ادامه بده", "ادامه", "از سر بگیر", "resume", "continue"],
+    ) {
         return AvaIntent::Transport {
             command: PlayerCommand::Resume,
         };
     }
-    if contains_any(value, &["متوقف کن", "توقف", "قطع کن", "stop playback", "stop"]) {
+    if contains_any(
+        value,
+        &["متوقف کن", "توقف", "قطع کن", "stop playback", "stop"],
+    ) {
         return AvaIntent::Transport {
             command: PlayerCommand::Stop,
         };
@@ -308,7 +321,8 @@ mod tests {
             }
         );
         assert_eq!(
-            core.interpret("آهنگ hello رو پخش کن", &settings, false).intent,
+            core.interpret("آهنگ hello رو پخش کن", &settings, false)
+                .intent,
             AvaIntent::SearchMusic {
                 query: "hello".to_owned()
             }
