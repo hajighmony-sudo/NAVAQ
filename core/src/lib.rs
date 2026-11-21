@@ -57,7 +57,7 @@ pub use model::{
     AudioSource, BackendAction, BackendEvent, CoreOutput, LoopRegion, PlaybackState,
     PlaybackStatus, PlayerCommand, PlayerError, PlayerEvent, RepeatMode, Track, TrackId,
 };
-pub use music_dna::{rank_matches, DnaBuilder, MatchResult, TasteProfile};
+pub use music_dna::{rank_matches, rank_opted_in_matches, DnaBuilder, MatchResult, TasteCandidate, TasteProfile};
 pub use persistence::{PlayerSnapshot, SnapshotError, PLAYER_SNAPSHOT_VERSION};
 pub use playlist::{Playlist, PlaylistError, PlaylistStore};
 pub use queue::{PlaybackQueue, PlaybackQueueSnapshot, QueueSnapshotError};
