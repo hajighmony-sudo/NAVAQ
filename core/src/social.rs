@@ -84,9 +84,9 @@ impl LiveEffect {
             LiveEffect::PitchShift { semitones } => (-24.0..=24.0).contains(semitones),
             LiveEffect::VocalOverlay { volume, source } => {
                 (0.0..=2.0).contains(volume)
-                    && source
-                        .as_ref()
-                        .map_or(true, |value| !value.trim().is_empty() && value.len() <= 2048)
+                    && source.as_ref().map_or(true, |value| {
+                        !value.trim().is_empty() && value.len() <= 2048
+                    })
             }
             LiveEffect::Custom { name, params } => {
                 !name.trim().is_empty()
@@ -198,8 +198,8 @@ pub fn calculate_room_sync(
             position_ms: expected_position,
         });
     }
-    let correction = (drift as f32 / policy.hard_drift_ms as f32)
-        * policy.max_rate_adjustment;
+    let correction =
+        (drift as f32 / policy.hard_drift_ms as f32) * policy.max_rate_adjustment;
     let speed = (current_speed + correction).clamp(0.25, 4.0);
     Ok(RoomSyncDecision::AdjustRate { speed })
 }
@@ -350,7 +350,10 @@ impl SharedRoom {
                 self.revision = self.revision.saturating_add(1);
             }
             RoomCommand::SetSharedEffect(effect) => {
-                self.shared_effects.entry(actor.clone()).or_default().push(effect)?;
+                self.shared_effects
+                    .entry(actor.clone())
+                    .or_default()
+                    .push(effect)?;
                 self.revision = self.revision.saturating_add(1);
             }
             RoomCommand::ClearSharedEffects => {
