@@ -40,6 +40,7 @@ class NavaqPlaybackService : MediaSessionService() {
     private var beatHaptics: NavaqHaptics? = null
     private var beatProcessor: NavaqBeatAudioProcessor? = null
     private var avaSpeechOutput: AvaSpeechOutput? = null
+    private var pendingAvaTracks: List<com.navaq.android.ava.AvaCatalogTrack>? = null
 
     private val positionReporter = object : Runnable {
         override fun run() {
@@ -166,6 +167,16 @@ class NavaqPlaybackService : MediaSessionService() {
                 val transcript = intent.getStringExtra(EXTRA_AVA_TRANSCRIPT).orEmpty()
                 if (transcript.isNotBlank()) executeAvaTranscript(transcript)
             }
+            ACTION_CONFIRM_AVA_PLAYBACK -> {
+                val accepted = intent.getBooleanExtra(EXTRA_AVA_ACCEPT, false)
+                val pending = pendingAvaTracks
+                pendingAvaTracks = null
+                if (accepted && !pending.isNullOrEmpty()) {
+                    publishAvaResult(startAvaTracks(pending))
+                } else {
+                    publishAvaResult("Music change cancelled.")
+                }
+            }
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -262,6 +273,20 @@ class NavaqPlaybackService : MediaSessionService() {
     }
 
     private fun playAvaTracks(tracks: List<com.navaq.android.ava.AvaCatalogTrack>): String {
+        if (tracks.isEmpty()) return "No playable tracks were found."
+        val settings = AvaCommandInterpreter(this).currentSettings()
+        if (settings.confirmMusicBeforePlayback && (player?.mediaItemCount ?: 0) > 0) {
+            pendingAvaTracks = tracks
+            val result = Intent(ACTION_AVA_CONFIRMATION_REQUIRED)
+                .setPackage(packageName)
+                .putExtra(EXTRA_AVA_CONFIRMATION_TEXT, "AVA found ${tracks.size} matching track(s). Confirm replacing the current queue.")
+            sendBroadcast(result)
+            return "Please confirm the music change in the app."
+        }
+        return startAvaTracks(tracks)
+    }
+
+    private fun startAvaTracks(tracks: List<com.navaq.android.ava.AvaCatalogTrack>): String {
         if (tracks.isEmpty()) return "No playable tracks were found."
         val serializedTracks = JSONArray()
         tracks.forEach { serializedTracks.put(it.toCoreJson()) }
@@ -408,6 +433,10 @@ class NavaqPlaybackService : MediaSessionService() {
         const val EXTRA_AVA_TRANSCRIPT = "com.navaq.android.extra.AVA_TRANSCRIPT"
         const val ACTION_AVA_RESULT = "com.navaq.android.action.AVA_RESULT"
         const val EXTRA_AVA_RESULT = "com.navaq.android.extra.AVA_RESULT_TEXT"
+        const val ACTION_CONFIRM_AVA_PLAYBACK = "com.navaq.android.action.CONFIRM_AVA_PLAYBACK"
+        const val EXTRA_AVA_ACCEPT = "com.navaq.android.extra.AVA_ACCEPT"
+        const val ACTION_AVA_CONFIRMATION_REQUIRED = "com.navaq.android.action.AVA_CONFIRMATION_REQUIRED"
+        const val EXTRA_AVA_CONFIRMATION_TEXT = "com.navaq.android.extra.AVA_CONFIRMATION_TEXT"
         private const val MAX_AVA_SEARCH_RESULTS = 30
         private const val PREFERENCES_NAME = "navaq_playback_preferences"
         private const val PREFERENCE_BEAT_HAPTICS = "beat_haptics_enabled"
@@ -416,6 +445,7 @@ class NavaqPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         mainHandler.removeCallbacks(positionReporter)
         player?.removeListener(playerListener)
+        pendingAvaTracks = null
         avaSpeechOutput?.release()
         avaSpeechOutput = null
         beatHaptics?.release()
