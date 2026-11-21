@@ -13,6 +13,7 @@ pub struct DownloadSummary {
     pub failed: usize,
     pub cancelled: usize,
     pub received_bytes: u64,
+    pub known_size_received_bytes: u64,
     pub expected_bytes: u64,
     pub tasks_with_known_size: usize,
 }
@@ -26,7 +27,7 @@ impl DownloadSummary {
         if self.tasks_with_known_size == 0 || self.expected_bytes == 0 {
             return None;
         }
-        Some(((self.received_bytes.min(self.expected_bytes) as f64
+        Some(((self.known_size_received_bytes.min(self.expected_bytes) as f64
             / self.expected_bytes as f64) * 100.0) as f32)
     }
 }
@@ -64,6 +65,8 @@ impl DownloadManagerExt for DownloadManager {
             summary.total += 1;
             summary.received_bytes = summary.received_bytes.saturating_add(task.received_bytes);
             if let Some(total) = task.expected_bytes {
+                summary.known_size_received_bytes = summary.known_size_received_bytes
+                    .saturating_add(task.received_bytes.min(total));
                 summary.expected_bytes = summary.expected_bytes.saturating_add(total);
                 summary.tasks_with_known_size += 1;
             }
