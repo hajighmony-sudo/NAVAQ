@@ -139,7 +139,11 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeValid
         Ok(value) => value.into(),
         Err(_) => return 0,
     };
-    if validate_http_url(&input).is_ok() { 1 } else { 0 }
+    if validate_http_url(&input).is_ok() {
+        1
+    } else {
+        0
+    }
 }
 
 type SharedPcmPipeline = Mutex<PcmAudioPipeline>;
