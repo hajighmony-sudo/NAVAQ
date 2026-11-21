@@ -41,6 +41,7 @@ impl NoteEvent {
             && self.duration_beats.is_finite()
             && self.duration_beats > 0.0
             && self.duration_beats <= 64.0
+            && (1..=127).contains(&self.velocity)
     }
 
     pub fn end_beat(&self) -> f32 {
