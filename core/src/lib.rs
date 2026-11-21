@@ -36,7 +36,10 @@ pub mod text;
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub use audio_pipeline::{EchoSettings, PcmAudioPipeline, PcmFormat, PcmPipelineError, PcmPipelineSettings, PcmProcessStats};
+pub use audio_pipeline::{
+    EchoSettings, PcmAudioPipeline, PcmFormat, PcmPipelineError, PcmPipelineSettings,
+    PcmProcessStats,
+};
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
