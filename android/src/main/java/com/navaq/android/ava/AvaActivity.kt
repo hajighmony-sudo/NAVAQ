@@ -37,6 +37,7 @@ class AvaActivity : Activity() {
     private lateinit var stopButton: Button
     private lateinit var controller: AvaVoiceController
     private var receiverRegistered = false
+    private var userStopRequested = false
 
     private val resultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -78,14 +79,20 @@ class AvaActivity : Activity() {
                         statusText.text = "Listening… speak one command"
                         stopButton.isEnabled = true
                     } else {
-                        if (statusText.text.startsWith("Listening")) {
-                            statusText.text = "Recognizing speech locally…"
-                        }
                         stopButton.isEnabled = false
+                        if (userStopRequested) {
+                            userStopRequested = false
+                            statusText.text = "Listening stopped."
+                            listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
+                        } else {
+                            if (statusText.text.startsWith("Listening")) {
+                                statusText.text = "Recognizing speech locally…"
+                            }
+                            // Keep the mic button disabled during Whisper decoding.
+                            // A transcript or an error re-enables it.
+                            listenButton.isEnabled = false
+                        }
                     }
-                    // Keep the mic button disabled during Whisper decoding. It is
-                    // re-enabled when a transcript or an error is delivered.
-                    listenButton.isEnabled = false
                 }
             },
             onError = { error ->
@@ -196,6 +203,7 @@ class AvaActivity : Activity() {
             requestPermissionsAndListen()
         }
         stopButton = button("Stop listening", 0xFF343F56.toInt()) {
+            userStopRequested = true
             controller.stopListening()
             statusText.text = "Listening stopped."
             stopButton.isEnabled = false
