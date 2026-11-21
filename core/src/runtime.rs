@@ -224,7 +224,8 @@ impl<B: AudioBackend> PlayerRuntime<B> {
                     other => other,
                 })
                 .collect(),
-            events: Vec::new(),
+            // Ducking is a backend-volume concern; it must never suppress domain events.
+            events: output.events.clone(),
         }
     }
 
