@@ -188,11 +188,10 @@ impl SpatialSettings {
         if !self.room.is_valid() || !self.absorption.is_valid() {
             return 0.0;
         }
-        let area = 2.0
-            * (w * d * self.absorption.floor
-                + w * d * self.absorption.ceiling
-                + w * h * self.absorption.walls
-                + d * h * self.absorption.walls);
+        let area = w * d * self.absorption.floor
+            + w * d * self.absorption.ceiling
+            + 2.0 * w * h * self.absorption.walls
+            + 2.0 * d * h * self.absorption.walls;
         if area <= f32::EPSILON {
             0.0
         } else {
