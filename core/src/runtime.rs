@@ -449,6 +449,22 @@ mod tests {
     }
 
     #[test]
+    fn ducking_preserves_domain_events() {
+        let runtime = PlayerRuntime::with_audio_session(
+            FakeBackend::default(),
+            AudioSessionPolicy::new(0.5),
+        );
+        let output = CoreOutput {
+            backend_actions: vec![BackendAction::SetVolume(0.8)],
+            events: vec![PlayerEvent::PlaybackStarted],
+        };
+
+        let adjusted = runtime.apply_ducking(&output);
+        assert_eq!(adjusted.backend_actions, vec![BackendAction::SetVolume(0.4)]);
+        assert_eq!(adjusted.events, vec![PlayerEvent::PlaybackStarted]);
+    }
+
+    #[test]
     fn ducking_scales_native_volume_without_changing_user_volume() {
         let mut runtime =
             PlayerRuntime::with_audio_session(FakeBackend::default(), AudioSessionPolicy::new(0.5));
