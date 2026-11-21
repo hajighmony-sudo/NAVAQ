@@ -168,7 +168,9 @@ pub struct EchoProcessor {
 
 impl EchoProcessor {
     pub fn new(sample_rate: u32, channels: u16, delay_ms: u32, feedback: f32, mix: f32) -> Result<Self, DspError> {
-        if sample_rate == 0 || channels == 0 { return Err(DspError::InvalidFormat); }
+        if sample_rate == 0 || sample_rate > 384_000 || channels == 0 || channels > 8 {
+            return Err(DspError::InvalidFormat);
+        }
         if delay_ms == 0 || delay_ms > 2000 || !feedback.is_finite() || !(0.0..=0.95).contains(&feedback)
             || !mix.is_finite() || !(0.0..=1.0).contains(&mix) {
             return Err(DspError::InvalidEffectSettings);
@@ -290,7 +292,10 @@ mod tests {
         let mut second = [0.0, 0.0];
         echo.process_interleaved(&mut first).unwrap();
         echo.process_interleaved(&mut second).unwrap();
-        assert!((second[0] - 0.5).abs() < 1e-6);
+        assert!((second[0] - 1.0).abs() < 1e-6);
+        let mut third = [0.0, 0.0];
+        echo.process_interleaved(&mut third).unwrap();
+        assert!((third[0] - 0.5).abs() < 1e-6);
     }
 
     #[test]
