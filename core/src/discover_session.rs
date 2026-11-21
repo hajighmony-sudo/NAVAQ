@@ -209,7 +209,8 @@ mod tests {
 
     #[test]
     fn session_rejects_out_of_order_pages_and_restarts_cleanly() {
-        let mut session = DiscoverSession::new(DiscoverSearchRequest::new("ambient").unwrap()).unwrap();
+        let mut session =
+            DiscoverSession::new(DiscoverSearchRequest::new("ambient").unwrap()).unwrap();
         assert_eq!(
             session.apply_page(page(1, &["https://cdn.example/a"], false)),
             Err(DiscoverError::MismatchedPage)
@@ -243,7 +244,8 @@ mod tests {
 
     #[test]
     fn failure_history_is_bounded() {
-        let mut session = DiscoverSession::new(DiscoverSearchRequest::new("ambient").unwrap()).unwrap();
+        let mut session =
+            DiscoverSession::new(DiscoverSearchRequest::new("ambient").unwrap()).unwrap();
         for i in 0..(MAX_PROVIDER_FAILURES + 5) {
             session.record_failure(DiscoverProviderFailure::new("web", format!("error {i}")));
         }
