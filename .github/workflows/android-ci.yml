@@ -65,7 +65,7 @@ jobs:
           test -n "$JNI_DIR"
           mkdir -p "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/src/main/jniLibs"
           cp -R "$JNI_DIR/." "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/src/main/jniLibs/"
-          gradle -p "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar" :sherpa_onnx:assembleRelease
+          bash "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/gradlew" -p "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar" :sherpa_onnx:assembleRelease
           mkdir -p android/libs
           cp "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/build/outputs/aar/sherpa_onnx-release.aar" android/libs/sherpa-onnx-release.aar
       - name: Assemble debug APK
