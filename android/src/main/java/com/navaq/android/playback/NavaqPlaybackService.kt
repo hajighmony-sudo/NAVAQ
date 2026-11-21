@@ -170,11 +170,15 @@ class NavaqPlaybackService : MediaSessionService() {
                 uri.scheme in setOf("content", "file", "https", "http", "android.resource")
             }
 
-        // MediaSession metadata is the interoperability contract used by Android
-        // System UI and OEM media surfaces (including HyperOS media island and
-        // Samsung's media controls/Now Bar where supported by device settings).
+        // Publish complete, normalized metadata through the standard Android
+        // MediaSession contract. System UI and OEM surfaces (including Xiaomi
+        // HyperOS media surfaces and Samsung Now Bar on supported builds) consume
+        // this session; their exact presentation remains controlled by the OS.
+        val displayTitle = title ?: track.optString("id").takeIf { it.isNotBlank() && it != "null" }
         val metadataBuilder = MediaMetadata.Builder()
-            .setTitle(title)
+            .setTitle(displayTitle)
+            .setDisplayTitle(displayTitle)
+            .setSubtitle(artist ?: album)
             .setArtist(artist)
             .setAlbumTitle(album)
             .setIsPlayable(true)
