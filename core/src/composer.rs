@@ -125,12 +125,93 @@ impl Composition {
         Ok(())
     }
 
+    /// Export this arrangement as a Standard MIDI File (format 1).
+    pub fn to_midi_bytes(&self) -> Result<Vec<u8>, ComposerError> {
+        if !self.is_valid() { return Err(ComposerError::InvalidTrack); }
+        if self.tracks.len() > 15 { return Err(ComposerError::TooManyMidiTracks); }
+        let mut conductor = Vec::new();
+        let micros_per_beat = (60_000_000.0 / self.tempo_bpm).round() as u32;
+        conductor.extend_from_slice(&[0x00, 0xFF, 0x51, 0x03, ((micros_per_beat >> 16) & 0xFF) as u8, ((micros_per_beat >> 8) & 0xFF) as u8, (micros_per_beat & 0xFF) as u8]);
+        let denominator_power = self.denominator.trailing_zeros() as u8;
+        conductor.extend_from_slice(&[0x00, 0xFF, 0x58, 0x04, self.numerator, denominator_power, 24, 8]);
+        conductor.extend_from_slice(&[0x00, 0xFF, 0x2F, 0x00]);
+        let mut chunks = Vec::with_capacity(self.tracks.len() + 1);
+        chunks.push(midi_track_chunk(conductor));
+        for (index, track) in self.tracks.iter().enumerate() {
+            let channel = if track.instrument == Instrument::Drums { 9 } else if index >= 9 { index as u8 + 1 } else { index as u8 };
+            let mut events: Vec<(u32, u8, [u8; 3], usize)> = Vec::new();
+            events.push((0, 0, [0xC0 | channel, track.instrument.program(), 0], 2));
+            events.push((0, 1, [0xB0 | channel, 7, (track.volume * 127.0).round() as u8], 3));
+            events.push((0, 2, [0xB0 | channel, 10, ((track.pan + 1.0) * 63.5).round() as u8], 3));
+            if !track.muted {
+                for note in &track.notes {
+                    let start = (note.start_beat * 480.0).round() as u32;
+                    let end = (note.end_beat() * 480.0).round() as u32;
+                    events.push((end, 0, [0x80 | channel, note.pitch, 0], 3));
+                    events.push((start, 1, [0x90 | channel, note.pitch, note.velocity], 3));
+                }
+            }
+            events.sort_by_key(|event| (event.0, event.1));
+            let mut data = Vec::new();
+            let mut previous_tick = 0u32;
+            for (tick, _, bytes, length) in events {
+                push_variable_length(&mut data, tick.saturating_sub(previous_tick));
+                data.extend_from_slice(&bytes[..length]);
+                previous_tick = tick;
+            }
+            data.extend_from_slice(&[0x00, 0xFF, 0x2F, 0x00]);
+            chunks.push(midi_track_chunk(data));
+        }
+        let mut output = Vec::new();
+        output.extend_from_slice(b"MThd");
+        output.extend_from_slice(&6u32.to_be_bytes());
+        output.extend_from_slice(&1u16.to_be_bytes());
+        output.extend_from_slice(&(chunks.len() as u16).to_be_bytes());
+        output.extend_from_slice(&480u16.to_be_bytes());
+        for chunk in chunks { output.extend_from_slice(&chunk); }
+        Ok(output)
+    }
     pub fn remove_track(&mut self, id: &str) -> Option<InstrumentTrack> {
         let index = self.tracks.iter().position(|track| track.id == id)?;
         Some(self.tracks.remove(index))
     }
 }
 
+fn midi_track_chunk(data: Vec<u8>) -> Vec<u8> {
+    let mut chunk = Vec::with_capacity(data.len() + 8);
+    chunk.extend_from_slice(b"MTrk");
+    chunk.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    chunk.extend_from_slice(&data);
+    chunk
+}
+
+fn push_variable_length(output: &mut Vec<u8>, mut value: u32) {
+    let mut buffer = [0u8; 4];
+    let mut index = 3;
+    buffer[index] = (value & 0x7F) as u8;
+    while { value >>= 7; value != 0 } {
+        index -= 1;
+        buffer[index] = ((value & 0x7F) as u8) | 0x80;
+    }
+    output.extend_from_slice(&buffer[index..]);
+}
+
+impl Instrument {
+    fn program(self) -> u8 {
+        match self {
+            Instrument::Piano => 0,
+            Instrument::ElectricPiano => 4,
+            Instrument::SynthLead => 80,
+            Instrument::SynthPad => 89,
+            Instrument::Bass => 38,
+            Instrument::Drums => 0,
+            Instrument::Strings => 48,
+            Instrument::Guitar => 24,
+            Instrument::Pluck => 10,
+            Instrument::Flute => 73,
+        }
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ComposerError {
     #[error("instrument track is invalid")]
@@ -139,6 +220,8 @@ pub enum ComposerError {
     DuplicateTrack,
     #[error("composition has reached the track limit")]
     TooManyTracks,
+    #[error("MIDI export supports at most 15 instrument tracks")]
+    TooManyMidiTracks,
 }
 
 #[cfg(test)]
@@ -185,6 +268,15 @@ mod tests {
         assert!(!arrangement.is_valid());
         arrangement.tracks[0].notes[0].start_beat = 32.0;
         assert!(!arrangement.is_valid());
+    }
+
+    #[test]
+    fn exports_a_standard_midi_file() {
+        let bytes = composition().to_midi_bytes().unwrap();
+        assert_eq!(&bytes[..4], b"MThd");
+        assert_eq!(&bytes[8..10], &[0, 1]);
+        assert_eq!(&bytes[10..12], &[0, 2]);
+        assert!(bytes.windows(4).any(|window| window == b"MTrk"));
     }
 
     #[test]
