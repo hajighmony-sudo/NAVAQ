@@ -302,8 +302,10 @@ mod tests {
 
     #[test]
     fn rejects_invalid_settings_and_misaligned_pcm() {
-        let mut invalid = PcmPipelineSettings::default();
-        invalid.master_gain = f32::NAN;
+        let invalid = PcmPipelineSettings {
+            master_gain: f32::NAN,
+            ..PcmPipelineSettings::default()
+        };
         assert_eq!(
             PcmAudioPipeline::new(format(), invalid).unwrap_err(),
             PcmPipelineError::InvalidSettings
