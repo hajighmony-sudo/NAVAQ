@@ -375,6 +375,29 @@ mod tests {
         assert_eq!(store.complete(&"job".into(), wrong, 200), Err(CreativeError::ResultJobMismatch));
     }
     #[test]
+    fn instrumental_rejects_duplicate_stems_and_blank_source_ids() {
+        let mut store = CreativeStore::new();
+        let duplicate = CreativeRequest::Instrumental(InstrumentalRequest {
+            source_track_id: "track".into(),
+            stems: vec![StemKind::Vocals, StemKind::Vocals],
+            produce_instrumental_mix: false,
+        });
+        assert_eq!(
+            store.submit("dup".into(), duplicate, 0),
+            Err(CreativeError::InvalidRequest)
+        );
+        let blank = CreativeRequest::Instrumental(InstrumentalRequest {
+            source_track_id: "".into(),
+            stems: vec![StemKind::Drums],
+            produce_instrumental_mix: false,
+        });
+        assert_eq!(
+            store.submit("blank".into(), blank, 0),
+            Err(CreativeError::InvalidRequest)
+        );
+    }
+
+    #[test]
     fn empty_lyrics_rejected() {
         let mut store = CreativeStore::new();
         let req = CreativeRequest::LyricToMelody(LyricToMelodyRequest {
