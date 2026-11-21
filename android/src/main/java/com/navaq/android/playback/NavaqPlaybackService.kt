@@ -263,8 +263,7 @@ class NavaqPlaybackService : MediaSessionService() {
             }
             "unknown" -> {
                 when (decision.optString("route")) {
-                    "online" -> "An online AI provider is not configured yet. Basic music commands are ready."
-                    else -> "I couldn't recognize that command. Try a music or playback command."
+                    else -> "I couldn't recognize that command. AVA currently understands local music and playback commands."
                 }
             }
             else -> "AVA does not support this command yet."
