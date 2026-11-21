@@ -34,6 +34,11 @@ impl PlayerCore {
         &self.state
     }
 
+    /// Identifier of the currently selected track, if any.
+    pub fn current_track_id(&self) -> Option<&TrackId> {
+        self.state.current_track.as_ref()
+    }
+
     pub fn queue(&self) -> &PlaybackQueue {
         &self.queue
     }
