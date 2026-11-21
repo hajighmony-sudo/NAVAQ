@@ -187,7 +187,7 @@ impl EchoProcessor {
             return Err(DspError::InvalidEffectSettings);
         }
         let channels = channels as usize;
-        let delay_frames = ((sample_rate as u64 * delay_ms as u64 + 999) / 1000) as usize;
+        let delay_frames = (sample_rate as u64 * delay_ms as u64).div_ceil(1000) as usize;
         Ok(Self {
             channels,
             delay_frames,
