@@ -201,8 +201,7 @@ pub fn calculate_room_sync(
             position_ms: expected_position,
         });
     }
-    let correction =
-        (drift as f32 / policy.hard_drift_ms as f32) * policy.max_rate_adjustment;
+    let correction = (drift as f32 / policy.hard_drift_ms as f32) * policy.max_rate_adjustment;
     let speed = (current_speed + correction).clamp(0.25, 4.0);
     Ok(RoomSyncDecision::AdjustRate { speed })
 }
@@ -622,11 +621,7 @@ mod tests {
         let mut invalid = sample_track();
         invalid.title.clear();
         assert_eq!(
-            room.apply_command(
-                &host,
-                room.revision,
-                RoomCommand::SetTrack(Some(invalid)),
-            ),
+            room.apply_command(&host, room.revision, RoomCommand::SetTrack(Some(invalid)),),
             Err(SocialError::InvalidTrack)
         );
     }
