@@ -45,7 +45,10 @@ impl Track {
             && self.id.0.len() <= 256
             && !self.title.trim().is_empty()
             && self.title.len() <= 512
-            && self.artist.as_ref().map_or(true, |value| value.len() <= 256)
+            && self
+                .artist
+                .as_ref()
+                .map_or(true, |value| value.len() <= 256)
             && self.album.as_ref().map_or(true, |value| value.len() <= 256)
             && self.duration_ms.map_or(true, |duration| duration > 0)
             && source_is_valid
