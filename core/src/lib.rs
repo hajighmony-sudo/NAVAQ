@@ -71,8 +71,7 @@ pub use runtime::{PlayerRuntime, RuntimeError};
 pub use scrobble::ScrobbleTracker;
 pub use sleep_timer::SleepTimer;
 pub use social::{
-    EffectStack, LiveEffect, ParticipantId, RoomCommand, RoomId, RoomStore, SharedRoom,
-    SocialError,
+    EffectStack, LiveEffect, ParticipantId, RoomCommand, RoomId, RoomStore, SharedRoom, SocialError,
 };
 pub use spatial::{
     Absorption, RoomDimensions, SpatialError, SpatialSettings, SpeakerLayout, SpeakerPosition,
