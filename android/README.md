@@ -13,8 +13,9 @@ This module is the native Android playback host for the Rust workspace.
 - A Media3 PCM audio processor that observes decoded 16-bit or float PCM and
   detects generic energy onsets without changing the audio samples.
 - Optional beat haptics dispatched from the audio-processing path to Android's
-  vibrator on the main thread. Haptics are disabled by default and are enabled
-  only through an explicit call to `NavaqPlaybackService.setBeatHapticsEnabled(true)`.
+  vibrator on the main thread. Haptics are disabled by default; the preference is
+  persisted locally and can be changed by the in-app service API or the explicit
+  `ACTION_SET_BEAT_HAPTICS` service action with `EXTRA_ENABLED`.
 
 ## Build
 
