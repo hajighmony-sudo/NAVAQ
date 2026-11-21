@@ -225,7 +225,10 @@ impl CreativeStore {
         if job.status != JobStatus::Running {
             return Err(CreativeError::InvalidTransition);
         }
-        if !result.clone().into_track("creative-result".into()).is_valid()
+        if !result
+            .clone()
+            .into_track("creative-result".into())
+            .is_valid()
             || result.tags.len() > 64
             || result
                 .tags
@@ -408,7 +411,9 @@ mod tests {
             duration_secs: None,
             also_instrumental: false,
         });
-        store.submit("job-invalid-source".into(), request, 10).unwrap();
+        store
+            .submit("job-invalid-source".into(), request, 10)
+            .unwrap();
         store
             .set_status(&"job-invalid-source".into(), JobStatus::Running, 20)
             .unwrap();
