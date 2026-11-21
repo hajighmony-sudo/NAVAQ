@@ -309,8 +309,7 @@ mod tests {
             PcmPipelineError::InvalidSettings
         );
 
-        let mut pipeline =
-            PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
+        let mut pipeline = PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
         assert_eq!(
             pipeline.process_interleaved(&mut [0.0]),
             Err(PcmPipelineError::Dsp(DspError::MisalignedBuffer))
@@ -319,8 +318,7 @@ mod tests {
 
     #[test]
     fn settings_update_is_applied_and_preserves_pipeline_format() {
-        let mut pipeline =
-            PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
+        let mut pipeline = PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
         let settings = PcmPipelineSettings {
             master_gain: 0.25,
             ..PcmPipelineSettings::default()
