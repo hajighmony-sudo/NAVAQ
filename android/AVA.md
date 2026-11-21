@@ -8,6 +8,7 @@ and Rust `PlayerCore`; it does not create a second player.
 - Bilingual deterministic command parsing in Rust (Persian and English).
 - Fully local, deterministic Persian/English command interpretation; no cloud AI route or AI-provider credentials.
 - Persistent settings shared by `AvaSettingsStore` and `AvaSettingsFragment`.
+- Persian (`fa-IR`) is the first-run/default recognition language. English and automatic Persian/English detection remain selectable.
 - Read-only device music discovery through Android MediaStore.
 - An adapter contract for the existing NAVAQ in-app music catalog.
 - Commands are submitted to the existing MediaSession playback service.
@@ -32,7 +33,7 @@ Available settings:
 - AVA enabled/disabled
 - Music source: both, device, or in-app
 - Response: visual, silent, or voice
-- Language: automatic, Persian, or English
+- Language: Persian by default, English, or automatic Persian/English detection
 - Confirm before replacing the current queue
 
 ## Connect the in-app music library
@@ -90,16 +91,19 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
   attach the fragment to. The fragment is reusable, but the host app must add it
   to its settings navigation.
 - The in-app provider must be registered by the real NAVAQ library owner.
-- AVA does not use an online AI engine. Recognized text is interpreted by the local Rust command parser; unsupported requests receive a local explanation rather than being sent to a cloud model.
+- AVA does not use an online AI engine. Recognized text is interpreted by the
+  local Rust command parser; unsupported requests receive a local explanation
+  rather than being sent to a cloud model.
 - Offline speech uses Sherpa-ONNX and the multilingual Whisper tiny INT8 model.
   The model is installed once from the AVA screen or settings page (approximately
   116 MB) and then runs from app-private storage without network access. The
   first-time download is required before the offline microphone recognizer can start.
 - Automatic language detection is constrained to Persian and English; users can
-  also pin either language in settings. The recognizer captures one utterance at
-  a time, preserves a short audio pre-roll, and stops on a silence interval or
-  after its maximum capture window. The same Whisper model instance is reused
-  for successive utterances instead of being loaded for every command.
+  also pin either language in settings. Persian is selected on a fresh install.
+  The recognizer captures one utterance at a time, preserves a short audio pre-roll,
+  and stops on a silence interval or after its maximum capture window. The same
+  Whisper model instance is reused for successive utterances instead of being
+  loaded for every command.
 - Optional wake-phrase mode recognizes “هی آوا”, “Hey Ava”, “Okay Ava”, or
   “AVA” locally, but only inside a user-started foreground listening session.
   It is not a low-power system-wide hotword service; AVA stops listening when
@@ -110,7 +114,6 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
   or while the playback service is already active, to respect Android background
   service-start restrictions.
 
-
 ## Optional offline speech model
 
 AVA's multilingual Whisper tiny INT8 speech model is an optional app-private download,
@@ -119,3 +122,14 @@ and English speech recognition. The settings page reports the installed model si
 allows the model files to be removed to reclaim storage. Removing this model does not
 remove AVA or change other NAVAQ features; offline speech recognition remains unavailable
 until the model is downloaded again. Speech recognition stays on-device after installation.
+
+## Language defaults and package size
+
+Persian (`fa-IR`) is the default language for new installations and for accounts
+without a saved language preference. Existing explicit language choices are preserved.
+The currently used Whisper model is multilingual, so the same optional model download
+provides both Persian and English; there is no separate Persian model package.
+The speech model remains an optional download and is not preloaded into the APK.
+The Sherpa-ONNX native runtime is still packaged with the Android app at this stage,
+so the optional model download reduces initial model storage but does not yet remove
+the runtime libraries from the APK.
