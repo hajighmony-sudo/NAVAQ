@@ -311,6 +311,20 @@ mod tests {
     }
 
     #[test]
+    fn rejects_duplicate_track_ids_and_multiple_drum_tracks() {
+        let mut arrangement = composition();
+        arrangement.tracks.push(arrangement.tracks[0].clone());
+        assert!(!arrangement.is_valid());
+
+        let mut arrangement = composition();
+        arrangement.tracks[0].instrument = Instrument::Drums;
+        let mut second = arrangement.tracks[0].clone();
+        second.id = "drums-2".into();
+        arrangement.tracks.push(second);
+        assert!(!arrangement.is_valid());
+    }
+
+    #[test]
     fn exports_a_standard_midi_file() {
         let bytes = composition().to_midi_bytes().unwrap();
         assert_eq!(&bytes[..4], b"MThd");
