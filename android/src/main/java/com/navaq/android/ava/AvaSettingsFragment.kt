@@ -2,6 +2,7 @@ package com.navaq.android.ava
 
 import android.os.Bundle
 import androidx.preference.PreferenceFragmentCompat
+import com.navaq.android.R
 
 /**
  * Embeddable AVA settings page for the host app's existing settings navigation.
