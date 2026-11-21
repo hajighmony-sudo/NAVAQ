@@ -126,7 +126,7 @@ impl EffectStack {
 
 /// Revision-checked commands accepted by a shared room.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "command", rename_all = "snake_case")]
+#[serde(tag = "command", content = "payload", rename_all = "snake_case")]
 pub enum RoomCommand {
     SetTrack(Option<Track>),
     SetPlayback { position_ms: u64, is_playing: bool },
