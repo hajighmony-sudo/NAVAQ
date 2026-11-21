@@ -1,7 +1,9 @@
 //! Aggregate download queue operations and stable summary reporting.
 //! The host still performs HTTP transfers and filesystem writes.
 
-use crate::downloads::{DownloadError, DownloadId, DownloadManager, DownloadStatus};
+use crate::downloads::{
+    DownloadError, DownloadId, DownloadManager, DownloadStatus,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DownloadSummary {
@@ -43,6 +45,19 @@ pub trait DownloadManagerExt {
     fn cancel_download(&mut self, id: &DownloadId) -> Result<(), DownloadError>;
     fn retry_download(&mut self, id: &DownloadId) -> Result<(), DownloadError>;
     fn summarize(&self) -> DownloadSummary;
+
+    /// Starts queued tasks until the configured number of concurrent transfers is reached.
+    /// Returned ids are deterministic because the manager stores tasks in key order.
+    fn start_available(&mut self, max_parallel: usize) -> Vec<DownloadId>;
+
+    /// Pauses every currently downloading task and returns the number changed.
+    fn pause_all(&mut self) -> usize;
+
+    /// Cancels queued, downloading and paused tasks and returns the number changed.
+    fn cancel_active(&mut self) -> usize;
+
+    /// Resets all failed tasks for another attempt and returns the number changed.
+    fn retry_failed(&mut self) -> usize;
 }
 
 impl DownloadManagerExt for DownloadManager {
@@ -88,6 +103,80 @@ impl DownloadManagerExt for DownloadManager {
             }
         }
         summary
+    }
+
+    fn start_available(&mut self, max_parallel: usize) -> Vec<DownloadId> {
+        let active = self
+            .tasks()
+            .filter(|task| task.status == DownloadStatus::Downloading)
+            .count();
+        let slots = max_parallel.saturating_sub(active);
+        if slots == 0 {
+            return Vec::new();
+        }
+        let queued: Vec<DownloadId> = self
+            .tasks()
+            .filter(|task| task.status == DownloadStatus::Queued)
+            .take(slots)
+            .map(|task| task.id.clone())
+            .collect();
+        let mut started = Vec::with_capacity(queued.len());
+        for id in queued {
+            if self.get_mut(&id).is_some_and(|task| task.start().is_ok()) {
+                started.push(id);
+            }
+        }
+        started
+    }
+
+    fn pause_all(&mut self) -> usize {
+        let ids: Vec<DownloadId> = self
+            .tasks()
+            .filter(|task| task.status == DownloadStatus::Downloading)
+            .map(|task| task.id.clone())
+            .collect();
+        let mut changed = 0;
+        for id in ids {
+            if self.get_mut(&id).is_some_and(|task| task.pause().is_ok()) {
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    fn cancel_active(&mut self) -> usize {
+        let ids: Vec<DownloadId> = self
+            .tasks()
+            .filter(|task| {
+                matches!(
+                    task.status,
+                    DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
+                )
+            })
+            .map(|task| task.id.clone())
+            .collect();
+        let mut changed = 0;
+        for id in ids {
+            if self.get_mut(&id).is_some_and(|task| task.cancel().is_ok()) {
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    fn retry_failed(&mut self) -> usize {
+        let ids: Vec<DownloadId> = self
+            .tasks()
+            .filter(|task| task.status == DownloadStatus::Failed)
+            .map(|task| task.id.clone())
+            .collect();
+        let mut changed = 0;
+        for id in ids {
+            if self.get_mut(&id).is_some_and(|task| task.retry().is_ok()) {
+                changed += 1;
+            }
+        }
+        changed
     }
 }
 
@@ -137,5 +226,42 @@ mod tests {
             manager.pause_download(&"missing".into()),
             Err(DownloadError::TaskNotFound)
         );
+    }
+
+    #[test]
+    fn scheduler_respects_parallel_limit_and_starts_deterministically() {
+        let mut manager = DownloadManager::new();
+        manager.enqueue(request("c")).unwrap();
+        manager.enqueue(request("a")).unwrap();
+        manager.enqueue(request("b")).unwrap();
+        let started = manager.start_available(2);
+        assert_eq!(started, vec![DownloadId("a".into()), DownloadId("b".into())]);
+        assert_eq!(manager.summarize().downloading, 2);
+        assert_eq!(manager.summarize().queued, 1);
+        assert!(manager.start_available(2).is_empty());
+        assert_eq!(manager.start_available(3), vec![DownloadId("c".into())]);
+    }
+
+    #[test]
+    fn bulk_controls_only_change_matching_states() {
+        let mut manager = DownloadManager::new();
+        manager.enqueue(request("one")).unwrap();
+        manager.enqueue(request("two")).unwrap();
+        manager.start_available(2);
+        assert_eq!(manager.pause_all(), 2);
+        assert_eq!(manager.summarize().paused, 2);
+        assert_eq!(manager.cancel_active(), 2);
+        assert_eq!(manager.summarize().cancelled, 2);
+    }
+
+    #[test]
+    fn retry_failed_resets_only_failed_tasks() {
+        let mut manager = DownloadManager::new();
+        manager.enqueue(request("one")).unwrap();
+        manager.get_mut(&"one".into()).unwrap().start().unwrap();
+        manager.get_mut(&"one".into()).unwrap().fail("offline").unwrap();
+        assert_eq!(manager.retry_failed(), 1);
+        assert_eq!(manager.summarize().queued, 1);
+        assert_eq!(manager.summarize().failed, 0);
     }
 }
