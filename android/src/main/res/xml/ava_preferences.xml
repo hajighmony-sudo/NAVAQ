@@ -26,6 +26,15 @@
             app:useSimpleSummaryProvider="true" />
 
         <ListPreference
+            app:key="activation_mode"
+            app:title="Voice activation"
+            app:summary="Choose manual continuous listening or a wake phrase while AVA is open"
+            app:entries="@array/ava_activation_labels"
+            app:entryValues="@array/ava_activation_values"
+            app:defaultValue="push_to_talk"
+            app:useSimpleSummaryProvider="true" />
+
+        <ListPreference
             app:key="language"
             app:title="Language"
             app:summary="Choose Persian, English, or automatic language selection"
