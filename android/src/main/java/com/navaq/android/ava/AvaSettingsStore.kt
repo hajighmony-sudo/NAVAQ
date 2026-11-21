@@ -27,15 +27,15 @@ enum class AvaActivationMode(val wireValue: String) {
 }
 
 /**
- * Persisted AVA preferences. The UI can bind its settings controls to this
- * store without coupling AVA to any existing NAVAQ feature.
+ * Persisted AVA preferences. Persian is the first-run language; users can
+ * explicitly switch to English or automatic Persian/English detection.
  */
 data class AvaSettings(
     val enabled: Boolean = true,
     val musicSources: AvaMusicSources = AvaMusicSources.BOTH,
     // AVA stays visual-only until the user explicitly selects Voice.
     val responseMode: AvaResponseMode = AvaResponseMode.VISUAL,
-    val language: AvaLanguage = AvaLanguage.AUTO,
+    val language: AvaLanguage = AvaLanguage.PERSIAN,
     // Wake-word activation is an opt-in setting; push-to-talk is the default.
     val activationMode: AvaActivationMode = AvaActivationMode.PUSH_TO_TALK,
     val confirmMusicBeforePlayback: Boolean = false
@@ -43,7 +43,9 @@ data class AvaSettings(
     fun speechLanguageTag(): String = when (language) {
         AvaLanguage.PERSIAN -> "fa-IR"
         AvaLanguage.ENGLISH -> "en-US"
-        AvaLanguage.AUTO -> java.util.Locale.getDefault().toLanguageTag()
+        // Keep automatic mode deterministic and bilingual rather than relying
+        // on the phone's system locale, which may be unrelated to the speaker.
+        AvaLanguage.AUTO -> ""
     }
 
     fun preferOfflineSpeech(): Boolean = true
@@ -68,7 +70,7 @@ class AvaSettingsStore(context: Context) {
         enabled = preferences.getBoolean(KEY_ENABLED, true),
         musicSources = enumValue(preferences.getString(KEY_MUSIC_SOURCES, null), AvaMusicSources.BOTH),
         responseMode = enumValue(preferences.getString(KEY_RESPONSE_MODE, null), AvaResponseMode.VISUAL),
-        language = enumValue(preferences.getString(KEY_LANGUAGE, null), AvaLanguage.AUTO),
+        language = enumValue(preferences.getString(KEY_LANGUAGE, null), AvaLanguage.PERSIAN),
         activationMode = enumValue(
             preferences.getString(KEY_ACTIVATION_MODE, null),
             AvaActivationMode.PUSH_TO_TALK
