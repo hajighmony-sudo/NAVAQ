@@ -266,8 +266,7 @@ mod tests {
 
     #[test]
     fn peak_ceiling_prevents_over_range_samples() {
-        let mut pipeline =
-            PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
+        let mut pipeline = PcmAudioPipeline::new(format(), PcmPipelineSettings::default()).unwrap();
         let mut pcm = [2.0, -1.5, 0.5, -0.5];
         let stats = pipeline.process_interleaved(&mut pcm).unwrap();
         assert_eq!(pcm, [1.0, -1.0, 0.5, -0.5]);
