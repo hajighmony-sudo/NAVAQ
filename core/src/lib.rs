@@ -15,6 +15,7 @@ pub mod creative;
 pub mod cue;
 pub mod discover;
 pub mod discover_catalog;
+pub mod discover_session;
 pub mod download_queue;
 pub mod downloads;
 pub mod dsp;
@@ -76,6 +77,9 @@ pub use discover::{
     DiscoverError, DiscoverProvider, DiscoverResult, DiscoverSearchPage, DiscoverSearchRequest,
 };
 pub use discover_catalog::{merge_discover_pages, DiscoverProviderRegistry};
+pub use discover_session::{
+    plan_provider_searches, DiscoverProviderFailure, DiscoverProviderSearch, DiscoverSession,
+};
 pub use download_queue::{DownloadManagerExt, DownloadSummary};
 pub use downloads::{
     validate_http_url, DownloadError, DownloadId, DownloadManager, DownloadRequest, DownloadStatus,
