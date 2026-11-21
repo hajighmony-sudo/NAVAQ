@@ -6,6 +6,7 @@
 pub mod audio_session;
 pub mod backend;
 pub mod bookmarks;
+pub mod composer;
 pub mod creative;
 pub mod cue;
 pub mod dsp;
@@ -37,6 +38,7 @@ mod android_jni;
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
+pub use composer::{Composition, ComposerError, Instrument, InstrumentTrack, NoteEvent};
 pub use creative::{
     CreativeError, CreativeJob, CreativeRequest, CreativeResult, CreativeStore,
     InstrumentalRequest, JobId, JobStatus, LyricToMelodyRequest, StemKind,
