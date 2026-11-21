@@ -1,5 +1,6 @@
 use crate::audio_pipeline::{PcmAudioPipeline, PcmFormat, PcmPipelineSettings};
 use crate::ava::{AvaCore, AvaSettings};
+use crate::downloads::validate_http_url;
 use crate::equalizer::EqualizerSettings;
 use crate::{BackendEvent, PlayerCommand, PlayerCore};
 use jni::objects::{JClass, JFloatArray, JString};
@@ -126,6 +127,19 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeInter
     let response = serde_json::to_string(&decision)
         .unwrap_or_else(|error| serde_json::json!({"error":error.to_string()}).to_string());
     json_string(&mut env, response)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeValidateDownloadUrl(
+    mut env: JNIEnv,
+    _class: JClass,
+    url: JString,
+) -> jboolean {
+    let input: String = match env.get_string(&url) {
+        Ok(value) => value.into(),
+        Err(_) => return 0,
+    };
+    if validate_http_url(&input).is_ok() { 1 } else { 0 }
 }
 
 type SharedPcmPipeline = Mutex<PcmAudioPipeline>;
