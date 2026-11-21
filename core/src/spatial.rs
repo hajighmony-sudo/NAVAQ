@@ -113,6 +113,46 @@ impl SpeakerLayout {
     }
 }
 
+/// Kind of furnishing; each adds sound absorption to the room.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FurnitureKind {
+    Sofa,
+    Armchair,
+    Bed,
+    Curtains,
+    Carpet,
+    Bookshelf,
+    Desk,
+    /// Anything else, given as its absorption in metric sabins (m² of perfect absorber).
+    Custom {
+        sabins: f32,
+    },
+}
+
+impl FurnitureKind {
+    /// Approximate absorption of one item in metric sabins (m²).
+    pub fn sabins(&self) -> f32 {
+        match self {
+            FurnitureKind::Sofa => 1.5,
+            FurnitureKind::Armchair => 0.9,
+            FurnitureKind::Bed => 1.8,
+            FurnitureKind::Curtains => 1.2,
+            FurnitureKind::Carpet => 2.0,
+            FurnitureKind::Bookshelf => 0.5,
+            FurnitureKind::Desk => 0.3,
+            FurnitureKind::Custom { sabins } => *sabins,
+        }
+    }
+}
+
+/// A group of identical furnishings in the room.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct FurnitureItem {
+    pub kind: FurnitureKind,
+    pub count: u32,
+}
+
 /// Complete spatial audio configuration for the current user.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpatialSettings {
@@ -126,6 +166,9 @@ pub struct SpatialSettings {
     pub hrtf_profile: Option<String>,
     /// Extra reverb wet level 0.0..=1.0 for the spatializer.
     pub reverb_mix: f32,
+    /// Furnishings that absorb sound (empty = bare room).
+    #[serde(default)]
+    pub furniture: Vec<FurnitureItem>,
 }
 
 impl Default for SpatialSettings {
@@ -146,6 +189,7 @@ impl Default for SpatialSettings {
             },
             hrtf_profile: None,
             reverb_mix: 0.25,
+            furniture: Vec::new(),
         }
     }
 }
@@ -156,6 +200,12 @@ impl SpatialSettings {
             && self.absorption.is_valid()
             && self.layout.is_valid()
             && (0.0..=1.0).contains(&self.reverb_mix)
+            && self.furniture.len() <= 64
+            && self.furniture.iter().all(|item| {
+                item.count <= 100
+                    && item.kind.sabins().is_finite()
+                    && (0.0..=50.0).contains(&item.kind.sabins())
+            })
             && self.listener.x.is_finite()
             && self.listener.y.is_finite()
             && self.listener.z.is_finite()
@@ -166,6 +216,8 @@ impl SpatialSettings {
 pub enum SpatialError {
     #[error("invalid spatial settings")]
     Invalid,
+    #[error("the listener or a speaker is outside the room")]
+    OutsideRoom,
 }
 
 #[cfg(test)]

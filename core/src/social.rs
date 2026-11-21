@@ -6,6 +6,7 @@
 //! room state; networking, audio mixing and presence are host responsibilities.
 
 use crate::model::Track;
+use crate::room_control::ControlMode;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -134,6 +135,21 @@ pub struct SharedRoom {
     pub is_public: bool,
     /// Optional human-readable name.
     pub name: Option<String>,
+    /// Who may control playback and the shared queue.
+    #[serde(default)]
+    pub control_mode: ControlMode,
+    /// Participants allowed to control playback when `control_mode` is `Delegated`.
+    #[serde(default)]
+    pub controllers: BTreeSet<ParticipantId>,
+    /// Incremented by every accepted command; clients use it to detect missed updates.
+    #[serde(default)]
+    pub version: u64,
+    /// Host clock time at which `position_ms` was valid while playing (`None` = not anchored).
+    #[serde(default)]
+    pub anchor_at_ms: Option<u64>,
+    /// Upcoming tracks shared by everyone in the room.
+    #[serde(default)]
+    pub queue: Vec<Track>,
 }
 
 impl SharedRoom {
@@ -152,6 +168,11 @@ impl SharedRoom {
             max_participants: 0,
             is_public: false,
             name: None,
+            control_mode: ControlMode::default(),
+            controllers: BTreeSet::new(),
+            version: 0,
+            anchor_at_ms: None,
+            queue: Vec::new(),
         }
     }
 
@@ -168,6 +189,7 @@ impl SharedRoom {
             return Err(SocialError::NotInRoom);
         }
         self.participant_effects.remove(participant);
+        self.controllers.remove(participant);
         // If the host left, promote the next participant (or close).
         if &self.host == participant {
             if let Some(next) = self.participants.iter().next().cloned() {
@@ -185,6 +207,7 @@ impl SharedRoom {
     pub fn sync_position(&mut self, position_ms: u64, is_playing: bool) {
         self.position_ms = position_ms;
         self.is_playing = is_playing;
+        self.anchor_at_ms = None;
     }
 
     pub fn apply_global_effect(&mut self, effect: LiveEffect) -> Result<(), SocialError> {
@@ -274,6 +297,8 @@ pub enum SocialError {
     InvalidEffect,
     #[error("room not found")]
     RoomNotFound,
+    #[error("participant is not allowed to do this in the room")]
+    PermissionDenied,
 }
 
 #[cfg(test)]
