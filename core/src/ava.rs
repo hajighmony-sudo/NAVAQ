@@ -448,25 +448,25 @@ mod tests {
         assert_eq!(
             core.interpret("shuffle on", &settings, false).intent,
             AvaIntent::Transport {
-                command: PlayerCommand::SetShuffle(true)
+                command: PlayerCommand::SetShuffle(true),
             }
         );
         assert_eq!(
             core.interpret("repeat all", &settings, false).intent,
             AvaIntent::Transport {
-                command: PlayerCommand::SetRepeatMode(RepeatMode::All)
+                command: PlayerCommand::SetRepeatMode(RepeatMode::All),
             }
         );
         assert_eq!(
             core.interpret("volume 50", &settings, false).intent,
             AvaIntent::Transport {
-                command: PlayerCommand::SetVolume(0.5)
+                command: PlayerCommand::SetVolume(0.5),
             }
         );
         assert_eq!(
             core.interpret("mute", &settings, false).intent,
             AvaIntent::Transport {
-                command: PlayerCommand::SetVolume(0.0)
+                command: PlayerCommand::SetVolume(0.0),
             }
         );
     }
