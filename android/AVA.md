@@ -109,3 +109,13 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
 - The service command client should be called from a visible user interaction,
   or while the playback service is already active, to respect Android background
   service-start restrictions.
+
+
+## Optional offline speech model
+
+AVA's multilingual Whisper tiny INT8 speech model is an optional app-private download,
+not an APK asset. Users can install it from AVA settings when they want offline Persian
+and English speech recognition. The settings page reports the installed model size and
+allows the model files to be removed to reclaim storage. Removing this model does not
+remove AVA or change other NAVAQ features; offline speech recognition remains unavailable
+until the model is downloaded again. Speech recognition stays on-device after installation.
