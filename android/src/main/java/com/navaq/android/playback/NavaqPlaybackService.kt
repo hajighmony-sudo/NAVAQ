@@ -195,8 +195,13 @@ class NavaqPlaybackService : MediaSessionService() {
                             val speed = action.getDouble("SetSpeed").toFloat()
                             player?.setPlaybackSpeed(speed)
                         }
-                        // Equalizer DSP and crossfade rendering require dedicated
-                        // Media3 audio processors; they are not silently simulated here.
+                        action.has("SetEqualizer") -> {
+                            // Rust validates and stores EQ settings; its stateful PCM
+                            // pipeline applies them inside the Media3 audio path.
+                            beatProcessor?.setEqualizerJson(
+                                action.getJSONObject("SetEqualizer").toString()
+                            )
+                        }
                     }
                 }
             }
