@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+    <PreferenceCategory app:title="AVA">
+        <SwitchPreferenceCompat
+            app:key="enabled"
+            app:title="Enable AVA"
+            app:summary="Allow AVA to receive and execute voice commands"
+            app:defaultValue="true" />
+
+        <ListPreference
+            app:key="music_sources"
+            app:title="Music sources"
+            app:summary="Choose where AVA searches for music"
+            app:entries="@array/ava_music_source_labels"
+            app:entryValues="@array/ava_music_source_values"
+            app:defaultValue="both"
+            app:useSimpleSummaryProvider="true" />
+
+        <ListPreference
+            app:key="ai_mode"
+            app:title="AI engine"
+            app:summary="Choose offline, online, or adaptive processing"
+            app:entries="@array/ava_ai_mode_labels"
+            app:entryValues="@array/ava_ai_mode_values"
+            app:defaultValue="adaptive"
+            app:useSimpleSummaryProvider="true" />
+
+        <ListPreference
+            app:key="response_mode"
+            app:title="Assistant response"
+            app:summary="AVA can stay silent, show visual status, or speak"
+            app:entries="@array/ava_response_labels"
+            app:entryValues="@array/ava_response_values"
+            app:defaultValue="visual"
+            app:useSimpleSummaryProvider="true" />
+
+        <ListPreference
+            app:key="language"
+            app:title="Language"
+            app:summary="Choose Persian, English, or automatic language selection"
+            app:entries="@array/ava_language_labels"
+            app:entryValues="@array/ava_language_values"
+            app:defaultValue="auto"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            app:key="confirm_music_before_playback"
+            app:title="Confirm before changing music"
+            app:summary="Ask for confirmation before AVA replaces the current queue"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+</PreferenceScreen>

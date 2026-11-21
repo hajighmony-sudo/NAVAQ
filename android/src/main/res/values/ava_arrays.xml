@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="ava_music_source_labels">
+        <item>Device and NAVAQ library</item>
+        <item>Device music only</item>
+        <item>NAVAQ library only</item>
+    </string-array>
+    <string-array name="ava_music_source_values">
+        <item>both</item>
+        <item>device</item>
+        <item>in_app</item>
+    </string-array>
+    <string-array name="ava_ai_mode_labels">
+        <item>Adaptive (recommended)</item>
+        <item>Offline only</item>
+        <item>Online only</item>
+    </string-array>
+    <string-array name="ava_ai_mode_values">
+        <item>adaptive</item>
+        <item>offline_only</item>
+        <item>online_only</item>
+    </string-array>
+    <string-array name="ava_response_labels">
+        <item>Visual only</item>
+        <item>Silent</item>
+        <item>Voice</item>
+    </string-array>
+    <string-array name="ava_response_values">
+        <item>visual</item>
+        <item>silent</item>
+        <item>voice</item>
+    </string-array>
+    <string-array name="ava_language_labels">
+        <item>Automatic</item>
+        <item>Persian</item>
+        <item>English</item>
+    </string-array>
+    <string-array name="ava_language_values">
+        <item>auto</item>
+        <item>persian</item>
+        <item>english</item>
+    </string-array>
+</resources>

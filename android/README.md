@@ -1,0 +1,100 @@
+# NAVAQ Android platform layer
+
+This module is the native Android playback host for the Rust workspace.
+
+## Included
+
+- AndroidX Media3 ExoPlayer as the device audio renderer.
+- MediaSessionService for background playback.
+- MediaSession transport controls surfaced to the lock screen, notification shade,
+  Bluetooth/headset controls, and compatible Android media clients.
+- Android audio-focus integration through ExoPlayer's audio attributes.
+- Pause-on-headphones-disconnect behavior through Media3's noisy-audio handling.
+- A Media3 PCM audio processor that routes decoded 16-bit or float PCM through
+  the Rust stateful DSP pipeline (gain, parametric EQ, optional echo and peak
+  ceiling), then detects generic energy onsets from the processed signal.
+- Optional beat haptics dispatched from the audio-processing path to Android's
+  vibrator on the main thread. Haptics are disabled by default; the preference is
+  persisted locally and can be changed by the in-app service API or the explicit
+  `ACTION_SET_BEAT_HAPTICS` service action with `EXTRA_ENABLED`.
+
+## Build
+
+Open the repository root in Android Studio, or run:
+
+```sh
+gradle :android:assembleDebug
+```
+
+The Android SDK (API 36) and JDK 17 are required.
+
+## Integration boundary
+
+The Rust crate remains the owner of queue and playback-domain decisions. This
+module owns Android-only responsibilities: decoding/output, MediaSession,
+foreground-service lifetime, audio focus, and OS media controls.
+
+The Media3 service is the first native platform layer. The Rust command/event bridge is present for playback-domain events. The Media3 processor owns a format-specific Rust PCM pipeline through JNI.
+PCM is copied into a bounded per-buffer float array for processing, then written
+back to Media3's output buffer; the pipeline instance persists across buffers so
+filter and delay state remains continuous. Core `SetEqualizer` actions are
+forwarded into that pipeline. The onset detector remains in Kotlin and reports
+generic energy transients; it does not classify kick, snare, hi-hat, or vocals.
+Echo currently uses the Rust pipeline defaults and is not yet exposed through
+the Android settings surface.
+
+
+## Music Island and OEM media surfaces
+
+NAVAQ publishes playback through one AndroidX Media3 `MediaSession`. This is
+the supported integration point for system media controls and OEM media surfaces;
+the app does not draw over the status bar or request the special "display over
+other apps" permission.
+
+- **Xiaomi HyperOS / HyperIsland:** HyperOS documents automatic island exposure
+  for compliant media-style notifications. Media3's `MediaSessionService`
+  publishes the media notification from the active session. Keep playback
+  metadata populated and only publish it while actual user-started playback is
+  active.
+- **Samsung One UI / Now Bar:** the media player surface is controlled by the
+  device's One UI version and the user's Now Bar / Media player settings. NAVAQ
+  exposes the standard active media session and playback metadata; availability
+  and presentation remain controlled by Samsung System UI.
+- **Other Android devices:** the same session provides the standard lock-screen,
+  notification-shade, headset, Bluetooth, and compatible cast/media controls.
+
+The service supplies title, artist, album, and playable state. The Android
+adapter can also read artwork URI keys (`artwork_uri`, `artwork_url`,
+`cover_uri`, or `image_url`) if supplied by a future enriched track payload;
+the current Rust `Track` model does not yet expose artwork metadata, so cover
+art is not claimed as end-to-end complete.
+
+### Device-side checks
+
+1. Start playback from NAVAQ; an idle app must not publish a fake playing item.
+2. On Xiaomi, confirm HyperOS is current and check that system media notifications
+   are enabled for the app/device.
+3. On Samsung, enable the Media player category in the Now Bar settings on
+   supported One UI devices.
+4. Verify pause/resume and track changes from the system surface; they must
+   control the same MediaSession player.
+
+There is no public, universal API that lets a third-party app force its own
+custom UI into every OEM's island. Therefore NAVAQ uses the documented Android
+media-session/notification route rather than brittle hidden APIs or overlay
+permissions. Exact appearance depends on the OEM, OS release, device model,
+and user settings.
+
+
+## AVA voice assistant
+
+AVA is an optional, isolated Android voice-assistant adapter that uses the existing Rust `PlayerCore` and Media3 player. It does not create a second audio engine.
+
+- `AvaVoiceController` is the Activity-facing entry point. Request `RECORD_AUDIO` using the Activity Result API, then call `startListening()` from a visible user action; call `release()` from the Activity lifecycle.
+- `AvaSettingsFragment` can be embedded in the host settings navigation. It persists preferences in `navaq_ava_preferences`, shared with `AvaSettingsStore`.
+- The default profile is both music sources, adaptive processing, automatic language, and visual-only responses. Silent mode suppresses both speech and result broadcasts; Voice mode is opt-in.
+- Device audio is discovered read-only through MediaStore. The app must request `AvaPermissions.requiredAudioPermission()` at runtime before device-library access.
+- The in-app library integration is an explicit adapter: register `AvaInAppCatalog.register(AvaInAppMusicProvider { query -> ... })` during host application startup. Convert existing NAVAQ library records into `AvaCatalogTrack` values with a playable `content_uri` or `local_file` source. The core repository currently has no Android application/library owner to register automatically.
+- Adaptive speech recognition uses Android's on-device recognizer when offline and the installed system recognizer when online. Availability and Persian language-model support depend on the device's installed recognition service/model. AVA reports a clear error rather than silently pretending offline recognition exists.
+- The online AI route is an extension point in the Rust decision contract; no remote model endpoint or API credential is configured in this repository yet. Basic deterministic music commands remain local.
+- Wake-word activation is intentionally not enabled by this initial adapter. Push-to-talk is the supported activation flow; Android background microphone restrictions and battery policies require a separate, explicitly user-enabled foreground/wake-word implementation and device testing.
