@@ -14,6 +14,8 @@ and Rust `PlayerCore`; it does not create a second player.
 - Optional text-to-speech output; Visual is the default and Silent never speaks.
 - Optional confirmation before replacing an existing playback queue.
 - Explicit microphone and audio-library permission helpers.
+- Sherpa-ONNX offline multilingual Whisper tiny INT8 speech recognition for Persian and English.
+- One-time, in-app speech-model installation with progress and app-private model storage.
 
 ## Embed the settings page
 
@@ -68,7 +70,7 @@ A visible screen can start listening after permission is granted:
 ```kotlin
 speechInput.startListening(
     languageTag = settings.speechLanguageTag(),
-    preferOffline = settings.preferOfflineSpeech(networkAvailable)
+    preferOffline = true
 )
 ```
 
@@ -85,11 +87,10 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
   to its settings navigation.
 - The in-app provider must be registered by the real NAVAQ library owner.
 - AVA does not use an online AI engine. Recognized text is interpreted by the local Rust command parser; unsupported requests receive a local explanation rather than being sent to a cloud model.
-- Offline speech uses Android's on-device recognizer when the OS exposes one.
-  If it is unavailable, AVA reports that limitation rather than silently
-  switching to a network recognizer. A bundled Sherpa-ONNX Persian/English
-  model is still required for consistent offline speech recognition across
-  Android 11+ devices and is not yet packaged.
+- Offline speech uses Sherpa-ONNX and the multilingual Whisper tiny INT8 model.
+  The model is installed once from the AVA settings page (approximately 116 MB)
+  and then runs from app-private storage without network access. The first-time
+  download is required before the offline microphone recognizer can start.
 - Wake-word activation is not exposed in this settings screen because no
   wake-word engine is integrated. Push-to-talk is the supported activation path.
 - Android 11+ background microphone behavior is permission- and OS-policy-bound.
