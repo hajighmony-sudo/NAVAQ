@@ -98,9 +98,12 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
 - Automatic language detection is constrained to Persian and English; users can
   also pin either language in settings. The recognizer captures one utterance at
   a time, preserves a short audio pre-roll, and stops on a silence interval or
-  after its maximum capture window.
-- Wake-word activation is not exposed in this settings screen because no
-  wake-word engine is integrated. Push-to-talk is the supported activation path.
+  after its maximum capture window. The same Whisper model instance is reused
+  for successive utterances instead of being loaded for every command.
+- Optional wake-phrase mode recognizes “هی آوا”, “Hey Ava”, “Okay Ava”, or
+  “AVA” locally, but only inside a user-started foreground listening session.
+  It is not a low-power system-wide hotword service; AVA stops listening when
+  the user presses Stop or leaves the Activity.
 - Android 11+ background microphone behavior is permission- and OS-policy-bound.
   AVA does not attempt hidden, permanent microphone capture.
 - The service command client should be called from a visible user interaction,
