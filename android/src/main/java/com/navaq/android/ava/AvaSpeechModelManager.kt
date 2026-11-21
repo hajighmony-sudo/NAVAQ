@@ -27,6 +27,22 @@ class AvaSpeechModelManager(context: Context) {
         File(modelDirectory, name).let { it.isFile && it.length() > MIN_FILE_BYTES[name]!! }
     }
 
+    /** Total size of the installed model files, excluding temporary download data. */
+    fun installedSizeBytes(): Long = if (isInstalled()) {
+        REQUIRED_FILES.sumOf { File(modelDirectory, it).length() }
+    } else {
+        0L
+    }
+
+    /**
+     * Removes only AVA's optional offline speech model.
+     * The rest of NAVAQ and AVA's non-speech features are untouched.
+     */
+    fun deleteModel(): Boolean {
+        if (isInstalling.get()) return false
+        return modelDirectory.deleteRecursively()
+    }
+
     fun modelPath(name: String): String {
         require(name in REQUIRED_FILES) { "Unknown AVA model file" }
         return File(modelDirectory, name).absolutePath
