@@ -225,12 +225,7 @@ impl CreativeStore {
         if job.status != JobStatus::Running {
             return Err(CreativeError::InvalidTransition);
         }
-        if result.title.trim().is_empty()
-            || result.title.len() > 512
-            || result
-                .artist
-                .as_ref()
-                .map_or(false, |artist| artist.len() > 256)
+        if !result.clone().into_track("creative-result".into()).is_valid()
             || result.tags.len() > 64
             || result
                 .tags
