@@ -314,11 +314,11 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
 fn parse_volume(value: &str) -> Option<f32> {
     let value = value
         .strip_prefix("set volume ")
+        .or_else(|| value.strip_prefix("volume to "))
         .or_else(|| value.strip_prefix("volume "))
-        .or_else(|| value.strip_prefix("صدا "))
         .or_else(|| value.strip_prefix("بلندی صدا "))
         .or_else(|| value.strip_prefix("صدای "))
-        .or_else(|| value.strip_prefix("volume to "))?
+        .or_else(|| value.strip_prefix("صدا "))?
         .trim()
         .trim_end_matches('%')
         .trim_end_matches("percent")
