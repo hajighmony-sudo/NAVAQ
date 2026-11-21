@@ -454,12 +454,9 @@ mod tests {
             source_name: "Search".into(),
             media_type: Some("audio/mpeg".into()),
         };
-        let request = DownloadRequest::from_discover_result(
-            "download-1",
-            &result,
-            Some("track.mp3".into()),
-        )
-        .unwrap();
+        let request =
+            DownloadRequest::from_discover_result("download-1", &result, Some("track.mp3".into()))
+                .unwrap();
         assert_eq!(request.url, result.url);
         assert_eq!(request.file_name.as_deref(), Some("track.mp3"));
 
