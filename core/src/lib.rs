@@ -73,8 +73,8 @@ pub use discover::{
 pub use discover_catalog::{merge_discover_pages, DiscoverProviderRegistry};
 pub use download_queue::{DownloadManagerExt, DownloadSummary};
 pub use downloads::{
-    validate_http_url, DownloadError, DownloadId, DownloadManager, DownloadRequest,
-    DownloadStatus, DownloadTask,
+    validate_http_url, DownloadError, DownloadId, DownloadManager, DownloadRequest, DownloadStatus,
+    DownloadTask,
 };
 pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor, EchoProcessor};
 pub use engine::PlayerCore;
