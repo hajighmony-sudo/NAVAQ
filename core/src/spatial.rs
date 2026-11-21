@@ -108,14 +108,20 @@ impl SpeakerLayout {
                 center,
                 surround_left,
                 surround_right,
-            } => [front_left, front_right, center, surround_left, surround_right]
-                .iter()
-                .all(|p| p.is_valid()),
+            } => [
+                front_left,
+                front_right,
+                center,
+                surround_left,
+                surround_right,
+            ]
+            .iter()
+            .all(|p| p.is_valid()),
             SpeakerLayout::Custom { speakers } => {
                 !speakers.is_empty()
                     && speakers.len() <= 32
                     && speakers.iter().all(|p| p.is_valid())
-            },
+            }
         }
     }
 
