@@ -1,8 +1,6 @@
 package com.navaq.android.ava
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import androidx.annotation.MainThread
 
 /**
@@ -65,5 +63,4 @@ class AvaVoiceController(
 
     @MainThread
     fun release() = stopListening()
-
 }
