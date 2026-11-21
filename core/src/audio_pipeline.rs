@@ -73,6 +73,8 @@ pub struct PcmProcessStats {
     pub peak: f32,
     /// Root-mean-square level after processing.
     pub rms: f32,
+    /// Number of non-finite input samples replaced with silence before DSP.
+    pub sanitized_samples: usize,
     /// Number of samples reduced by the configured peak ceiling.
     pub limited_samples: usize,
 }
@@ -187,6 +189,15 @@ impl PcmAudioPipeline {
             return Err(PcmPipelineError::Dsp(DspError::MisalignedBuffer));
         }
 
+        // Sanitize before stateful filters: NaN values can poison filter history.
+        let mut sanitized_samples = 0;
+        for sample in samples.iter_mut() {
+            if !sample.is_finite() {
+                *sample = 0.0;
+                sanitized_samples += 1;
+            }
+        }
+
         self.equalizer.process_interleaved(samples)?;
         if let Some(echo) = &mut self.echo {
             echo.process_interleaved(samples)?;
@@ -198,15 +209,14 @@ impl PcmAudioPipeline {
         let ceiling = self.settings.peak_ceiling;
 
         for sample in samples.iter_mut() {
-            let finite = if sample.is_finite() { *sample } else { 0.0 };
             let output = if let Some(limit) = ceiling {
-                let limited = finite.clamp(-limit, limit);
-                if limited != finite {
+                let limited = sample.clamp(-limit, limit);
+                if limited != *sample {
                     limited_samples += 1;
                 }
                 limited
             } else {
-                finite
+                *sample
             };
             *sample = output;
             peak = peak.max(output.abs());
@@ -222,6 +232,7 @@ impl PcmAudioPipeline {
         Ok(PcmProcessStats {
             peak,
             rms,
+            sanitized_samples,
             limited_samples,
         })
     }
@@ -316,6 +327,27 @@ mod tests {
             pipeline.process_interleaved(&mut [0.0]),
             Err(PcmPipelineError::Dsp(DspError::MisalignedBuffer))
         );
+    }
+
+    #[test]
+    fn non_finite_input_is_sanitized_before_stateful_dsp() {
+        let settings = PcmPipelineSettings {
+            echo: Some(EchoSettings {
+                delay_ms: 2,
+                feedback: 0.5,
+                mix: 0.5,
+            }),
+            ..PcmPipelineSettings::default()
+        };
+        let mut pipeline = PcmAudioPipeline::new(format(), settings).unwrap();
+        let mut first = [f32::NAN, f32::INFINITY, 0.25, -0.25];
+        let stats = pipeline.process_interleaved(&mut first).unwrap();
+        assert_eq!(stats.sanitized_samples, 2);
+        assert!(first.iter().all(|sample| sample.is_finite()));
+
+        let mut second = [0.0; 4];
+        pipeline.process_interleaved(&mut second).unwrap();
+        assert!(second.iter().all(|sample| sample.is_finite()));
     }
 
     #[test]
