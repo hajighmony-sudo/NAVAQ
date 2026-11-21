@@ -4,6 +4,7 @@
 //! audio itself; a platform renderer can turn the arrangement into PCM or MIDI.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,16 +87,22 @@ pub struct Composition {
 
 impl Composition {
     pub fn is_valid(&self) -> bool {
+        let mut track_ids = HashSet::new();
         !self.title.trim().is_empty()
+            && self.title.len() <= 256
+            && !self.key.trim().is_empty()
+            && self.key.len() <= 32
             && self.tempo_bpm.is_finite()
             && (30.0..=300.0).contains(&self.tempo_bpm)
             && (1..=16).contains(&self.numerator)
             && matches!(self.denominator, 2 | 4 | 8 | 16)
-            && !self.key.trim().is_empty()
             && (1..=512).contains(&self.bars)
             && !self.tracks.is_empty()
             && self.tracks.len() <= 64
-            && self.tracks.iter().all(InstrumentTrack::is_valid)
+            && self.tracks.iter().all(|track| {
+                track.is_valid() && track_ids.insert(track.id.as_str())
+            })
+            && self.tracks.iter().filter(|track| track.instrument == Instrument::Drums).count() <= 1
             && self
                 .tracks
                 .iter()
