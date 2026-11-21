@@ -2,8 +2,8 @@
 //!
 //! This module is intentionally isolated from the existing playback engine. It
 //! interprets short bilingual voice commands and produces a typed intent for an
-//! Android host to resolve and execute. Speech recognition, network AI providers,
-//! and music-library access remain platform adapters.
+//! Android host to resolve and execute. Speech recognition and music-library
+//! access remain platform adapters; command interpretation is fully local.
 
 use crate::model::{PlayerCommand, RepeatMode};
 use crate::text::normalize_for_search;
