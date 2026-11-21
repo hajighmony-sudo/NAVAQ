@@ -6,6 +6,7 @@
 //! or offline tool). Results are returned as ordinary `AudioSource` values
 //! that can be enqueued like any other track.
 
+use crate::composer::Composition;
 use crate::model::{AudioSource, Track, TrackId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -115,6 +116,8 @@ pub struct CreativeJob {
 pub enum CreativeRequest {
     LyricToMelody(LyricToMelodyRequest),
     Instrumental(InstrumentalRequest),
+    /// Render a hand-authored multi-instrument arrangement.
+    ManualComposition(Composition),
 }
 
 /// Store of creative jobs (host drives the actual processing).
@@ -147,6 +150,11 @@ impl CreativeStore {
             CreativeRequest::Instrumental(r) => {
                 if r.stems.is_empty() && !r.produce_instrumental_mix {
                     return Err(CreativeError::NoStemsRequested);
+                }
+            }
+            CreativeRequest::ManualComposition(composition) => {
+                if !composition.is_valid() {
+                    return Err(CreativeError::InvalidComposition);
                 }
             }
         }
@@ -236,6 +244,8 @@ pub enum CreativeError {
     NoStemsRequested,
     #[error("job has already finished")]
     AlreadyFinished,
+    #[error("manual composition is invalid")]
+    InvalidComposition,
 }
 
 #[cfg(test)]
@@ -295,6 +305,22 @@ mod tests {
             store.submit("x".into(), req, 0),
             Err(CreativeError::EmptyLyrics)
         );
+    }
+
+    #[test]
+    fn manual_composition_is_queued_for_rendering() {
+        let mut store = CreativeStore::new();
+        let composition = crate::composer::Composition {
+            title: "Manual beat".into(), tempo_bpm: 100.0, numerator: 4, denominator: 4,
+            key: "C minor".into(), bars: 4,
+            tracks: vec![crate::composer::InstrumentTrack {
+                id: "bass".into(), name: "Bass".into(), instrument: crate::composer::Instrument::Bass,
+                volume: 0.8, pan: 0.0, muted: false,
+                notes: vec![crate::composer::NoteEvent { pitch: 36, start_beat: 0.0, duration_beats: 1.0, velocity: 100 }],
+            }],
+        };
+        store.submit("manual".into(), CreativeRequest::ManualComposition(composition), 10).unwrap();
+        assert_eq!(store.get(&"manual".into()).unwrap().status, JobStatus::Queued);
     }
 
     #[test]
