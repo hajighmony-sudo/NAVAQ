@@ -82,8 +82,20 @@ impl LiveEffect {
                     && (0.0..=1.0).contains(mix)
             }
             LiveEffect::PitchShift { semitones } => (-24.0..=24.0).contains(semitones),
-            LiveEffect::VocalOverlay { volume, .. } => (0.0..=2.0).contains(volume),
-            LiveEffect::Custom { name, .. } => !name.is_empty(),
+            LiveEffect::VocalOverlay { volume, source } => {
+                (0.0..=2.0).contains(volume)
+                    && source
+                        .as_ref()
+                        .map_or(true, |value| !value.trim().is_empty() && value.len() <= 2048)
+            }
+            LiveEffect::Custom { name, params } => {
+                !name.trim().is_empty()
+                    && name.len() <= 64
+                    && params.len() <= 32
+                    && params
+                        .values()
+                        .all(|value| value.is_finite() && value.abs() <= 1000.0)
+            }
         }
     }
 }
@@ -96,7 +108,7 @@ pub struct EffectStack {
 
 impl EffectStack {
     pub fn push(&mut self, effect: LiveEffect) -> Result<(), SocialError> {
-        if !effect.is_valid() {
+        if !effect.is_valid() || self.effects.len() >= 16 {
             return Err(SocialError::InvalidEffect);
         }
         self.effects.push(effect);
