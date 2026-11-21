@@ -266,7 +266,7 @@ fn parse_intent(normalized: &str, original: &str) -> AvaIntent {
 }
 
 fn contains_any(value: &str, candidates: &[&str]) -> bool {
-    candidates.iter().any(|candidate| value == *candidate)
+    candidates.contains(&value)
 }
 
 #[cfg(test)]
