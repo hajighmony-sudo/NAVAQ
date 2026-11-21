@@ -28,8 +28,8 @@ pub struct TasteProfile {
 impl TasteProfile {
     pub fn is_valid(&self) -> bool {
         self.artists.values().chain(self.genres.values()).all(|v| v.is_finite() && *v >= 0.0)
-            && self.avg_tempo.is_none_or(|v| v.is_finite() && (20.0..=300.0).contains(&v))
-            && self.energy.is_none_or(|v| v.is_finite() && (0.0..=1.0).contains(&v))
+            && self.avg_tempo.map_or(true, |v| v.is_finite() && (20.0..=300.0).contains(&v))
+            && self.energy.map_or(true, |v| v.is_finite() && (0.0..=1.0).contains(&v))
     }
 
     pub fn new() -> Self {
@@ -86,7 +86,10 @@ impl TasteProfile {
             let tempo_factor = (1.0 - (diff / 40.0).min(1.0)).max(0.0);
             score = 0.85 * score + 0.15 * tempo_factor;
         }
-
+        if let (Some(a), Some(b)) = (left.energy, right.energy) {
+            let energy_factor = 1.0 - (a - b).abs();
+            score = 0.9 * score + 0.1 * energy_factor;
+        }
         score.clamp(0.0, 1.0)
     }
 }
@@ -208,6 +211,25 @@ pub struct MatchResult {
     pub score: f32,
 }
 
+/// A candidate is discoverable only after explicitly opting in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TasteCandidate {
+    pub participant_id: String,
+    pub profile: TasteProfile,
+    pub discovery_enabled: bool,
+}
+
+/// Rank only opted-in profiles with enough listening history to avoid weak matches.
+pub fn rank_opted_in_matches(target: &TasteProfile, candidates: &[TasteCandidate], min_score: f32, min_sample_size: u32) -> Vec<MatchResult> {
+    if !target.is_valid() || !min_score.is_finite() { return Vec::new(); }
+    let mut results: Vec<_> = candidates.iter()
+        .filter(|candidate| candidate.discovery_enabled && candidate.profile.sample_size >= min_sample_size && candidate.profile.is_valid())
+        .map(|candidate| MatchResult { participant_id: candidate.participant_id.clone(), score: target.similarity(&candidate.profile) })
+        .filter(|result| result.score >= min_score.clamp(0.0, 1.0))
+        .collect();
+    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.participant_id.cmp(&b.participant_id)));
+    results
+}
 /// Rank candidates by similarity to a target profile.
 pub fn rank_matches(
     target: &TasteProfile,
@@ -244,6 +266,21 @@ mod tests {
         assert!((a.similarity(&b) - 1.0).abs() < 1e-5);
         b.genres.insert("bad".into(), f32::NAN);
         assert_eq!(a.similarity(&b), 0.0);
+    }
+
+    #[test]
+    fn opted_in_matching_respects_discovery_and_sample_threshold() {
+        let mut profile = TasteProfile::default();
+        profile.genres.insert("Jazz".into(), 1.0);
+        profile.sample_size = 25;
+        let candidates = vec![
+            TasteCandidate { participant_id: "visible".into(), profile: profile.clone(), discovery_enabled: true },
+            TasteCandidate { participant_id: "private".into(), profile: profile.clone(), discovery_enabled: false },
+            TasteCandidate { participant_id: "new".into(), profile: { let mut p = profile.clone(); p.sample_size = 1; p }, discovery_enabled: true },
+        ];
+        let ranked = rank_opted_in_matches(&profile, &candidates, 0.5, 10);
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].participant_id, "visible");
     }
 
     #[test]
