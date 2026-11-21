@@ -1,6 +1,6 @@
 use crate::audio_pipeline::{PcmAudioPipeline, PcmFormat, PcmPipelineSettings};
-use crate::equalizer::EqualizerSettings;
 use crate::ava::{AvaCore, AvaSettings};
+use crate::equalizer::EqualizerSettings;
 use crate::{BackendEvent, PlayerCommand, PlayerCore};
 use jni::objects::{JClass, JFloatArray, JString};
 use jni::sys::{jboolean, jlong, jstring};
@@ -105,7 +105,6 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeDestr
     }
 }
 
-
 #[no_mangle]
 pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeInterpretAva(
     mut env: JNIEnv,
@@ -122,8 +121,7 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeInter
         Ok(value) => value.into(),
         Err(_) => return json_string(&mut env, r#"{"error":"invalid_settings"}"#.to_owned()),
     };
-    let settings = serde_json::from_str::<AvaSettings>(&settings_input)
-        .unwrap_or_default();
+    let settings = serde_json::from_str::<AvaSettings>(&settings_input).unwrap_or_default();
     let decision = AvaCore::new().interpret(&transcript, &settings, network_available != 0);
     let response = serde_json::to_string(&decision)
         .unwrap_or_else(|error| serde_json::json!({"error":error.to_string()}).to_string());
