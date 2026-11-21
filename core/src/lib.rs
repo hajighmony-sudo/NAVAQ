@@ -38,7 +38,7 @@ mod android_jni;
 pub use audio_session::{AudioFocusChange, AudioSessionAction, AudioSessionPolicy};
 pub use backend::{dispatch_output, AudioBackend, BackendDispatchError, BackendError};
 pub use bookmarks::BookmarkStore;
-pub use composer::{Composition, ComposerError, Instrument, InstrumentTrack, NoteEvent};
+pub use composer::{ComposerError, Composition, Instrument, InstrumentTrack, NoteEvent};
 pub use creative::{
     CreativeError, CreativeJob, CreativeRequest, CreativeResult, CreativeStore,
     InstrumentalRequest, JobId, JobStatus, LyricToMelodyRequest, StemKind,
