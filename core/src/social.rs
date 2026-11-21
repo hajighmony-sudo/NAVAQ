@@ -134,6 +134,8 @@ pub struct SharedRoom {
     pub is_public: bool,
     /// Optional human-readable name.
     pub name: Option<String>,
+    #[serde(default)]
+    pub revision: u64,
 }
 
 impl SharedRoom {
@@ -152,14 +154,17 @@ impl SharedRoom {
             max_participants: 0,
             is_public: false,
             name: None,
+            revision: 0,
         }
     }
 
     pub fn join(&mut self, participant: ParticipantId) -> Result<(), SocialError> {
+        if self.participants.contains(&participant) { return Ok(()); }
         if self.max_participants > 0 && self.participants.len() as u32 >= self.max_participants {
             return Err(SocialError::RoomFull);
         }
         self.participants.insert(participant);
+        self.revision = self.revision.saturating_add(1);
         Ok(())
     }
 
@@ -168,6 +173,7 @@ impl SharedRoom {
             return Err(SocialError::NotInRoom);
         }
         self.participant_effects.remove(participant);
+        self.revision = self.revision.saturating_add(1);
         // If the host left, promote the next participant (or close).
         if &self.host == participant {
             if let Some(next) = self.participants.iter().next().cloned() {
@@ -180,11 +186,13 @@ impl SharedRoom {
     pub fn set_track(&mut self, track: Option<Track>) {
         self.current_track = track;
         self.position_ms = 0;
+        self.revision = self.revision.saturating_add(1);
     }
 
     pub fn sync_position(&mut self, position_ms: u64, is_playing: bool) {
         self.position_ms = position_ms;
         self.is_playing = is_playing;
+        self.revision = self.revision.saturating_add(1);
     }
 
     pub fn apply_global_effect(&mut self, effect: LiveEffect) -> Result<(), SocialError> {
