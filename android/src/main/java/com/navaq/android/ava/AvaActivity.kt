@@ -76,30 +76,34 @@ class AvaActivity : Activity() {
             onListeningChanged = { listening ->
                 runOnUiThread {
                     if (listening) {
-                        statusText.text = "Listening… speak one command"
+                        statusText.text = "Listening… say a command, then continue naturally"
                         stopButton.isEnabled = true
+                        listenButton.isEnabled = false
+                    } else if (controller.isContinuousListening) {
+                        statusText.text = "Command captured • AVA is ready for the next one"
+                        stopButton.isEnabled = true
+                        listenButton.isEnabled = false
                     } else {
                         stopButton.isEnabled = false
                         if (userStopRequested) {
                             userStopRequested = false
                             statusText.text = "Listening stopped."
-                            listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
-                        } else {
-                            if (statusText.text.startsWith("Listening")) {
-                                statusText.text = "Ready for another command."
-                            }
-                            // Natural completion and errors arrive before this final
-                            // idle callback, so the mic becomes available again here.
-                            listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
                         }
+                        listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
                     }
                 }
             },
             onError = { error ->
                 runOnUiThread {
-                    statusText.text = error.message ?: "AVA could not start speech recognition"
-                    listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
-                    stopButton.isEnabled = false
+                    if (controller.isContinuousListening) {
+                        statusText.text = "Couldn't catch that. AVA is listening again."
+                        listenButton.isEnabled = false
+                        stopButton.isEnabled = true
+                    } else {
+                        statusText.text = error.message ?: "AVA could not start speech recognition"
+                        listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
+                        stopButton.isEnabled = false
+                    }
                 }
             },
             onTranscript = { transcript ->
@@ -176,7 +180,7 @@ class AvaActivity : Activity() {
 
         val statusCard = card()
         statusText = text("Preparing AVA…", 16, Color.WHITE, true)
-        transcriptText = text("Your recognized command will appear here.", 14, 0xFFB9C7DF.toInt(), false)
+        transcriptText = text("Your recognized command will appear here. AVA can keep listening for consecutive commands until you press Stop.", 14, 0xFFB9C7DF.toInt(), false)
         statusCard.addView(statusText)
         statusCard.addView(transcriptText.apply { setPadding(0, dp(12), 0, 0) })
         root.addView(statusCard, verticalParams(bottom = 18))
@@ -304,6 +308,8 @@ class AvaActivity : Activity() {
             stopButton.isEnabled = true
             statusText.text = "Preparing the offline recognizer…"
             controller.startListening()
+            stopButton.isEnabled = true
+            listenButton.isEnabled = false
         } catch (error: Exception) {
             statusText.text = error.message ?: "AVA could not start listening"
             listenButton.isEnabled = AvaSpeechModelManager(this).isInstalled()
