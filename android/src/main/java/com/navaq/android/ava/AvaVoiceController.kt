@@ -30,8 +30,6 @@ class AvaVoiceController(
         }
         stopListening()
 
-        val networkAvailable = isNetworkAvailable()
-        val preferOffline = settings.preferOfflineSpeech(networkAvailable)
         val input = AvaSpeechInput(
             context = appContext,
             onTranscript = { transcript ->
@@ -50,7 +48,7 @@ class AvaVoiceController(
         try {
             input.startListening(
                 languageTag = settings.speechLanguageTag(),
-                preferOffline = preferOffline
+                preferOffline = settings.preferOfflineSpeech()
             )
         } catch (error: Exception) {
             input.release()
@@ -68,12 +66,4 @@ class AvaVoiceController(
     @MainThread
     fun release() = stopListening()
 
-    private fun isNetworkAvailable(): Boolean {
-        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return false
-        val network = manager.activeNetwork ?: return false
-        val capabilities = manager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
 }
