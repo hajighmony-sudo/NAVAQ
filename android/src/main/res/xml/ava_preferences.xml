@@ -37,10 +37,10 @@
         <ListPreference
             app:key="language"
             app:title="Language"
-            app:summary="Choose Persian, English, or automatic language selection"
+            app:summary="Persian is selected by default. English and automatic Persian/English detection are also available."
             app:entries="@array/ava_language_labels"
             app:entryValues="@array/ava_language_values"
-            app:defaultValue="auto"
+            app:defaultValue="persian"
             app:useSimpleSummaryProvider="true" />
 
         <SwitchPreferenceCompat
