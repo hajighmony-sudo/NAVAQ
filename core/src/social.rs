@@ -177,6 +177,9 @@ pub enum RoomSyncDecision {
 }
 
 /// Estimate host position after one-way latency and choose a gentle correction or seek.
+/// `current_speed` is the listener's nominal user-selected speed; `InSync` means
+/// the host should restore that nominal speed if a previous correction was active.
+/// Call while the host is playing; paused-room transport should be mirrored directly.
 pub fn calculate_room_sync(
     local_position_ms: u64,
     host_position_ms: u64,
