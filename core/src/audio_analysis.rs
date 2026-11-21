@@ -78,8 +78,8 @@ impl AudioOnsetAnalyzer {
         if !settings.is_valid() {
             return Err(AudioAnalysisError::InvalidSettings);
         }
-        let frame_samples = ((sample_rate as u64 * settings.frame_ms as u64) / 1_000)
-            .max(1) as usize
+        let frame_samples = ((sample_rate as u64 * settings.frame_ms as u64) / 1_000).max(1)
+            as usize
             * channels as usize;
         Ok(Self {
             sample_rate,
@@ -121,8 +121,7 @@ impl AudioOnsetAnalyzer {
             let rms = (square_sum / frame.len() as f64).sqrt() as f32;
             let frame_count = (self.frame_samples / self.channels) as u64;
             self.processed_frames = self.processed_frames.saturating_add(frame_count);
-            let position_ms = self.processed_frames.saturating_mul(1_000)
-                / self.sample_rate as u64;
+            let position_ms = self.processed_frames.saturating_mul(1_000) / self.sample_rate as u64;
 
             let floor = self.noise_floor.unwrap_or(rms.max(0.0001));
             let strength = rms / floor.max(0.0001);
@@ -187,12 +186,8 @@ mod tests {
             AudioOnsetAnalyzer::new(48_000, 2, settings).err(),
             Some(AudioAnalysisError::InvalidSettings)
         );
-        let mut analyzer = AudioOnsetAnalyzer::new(
-            48_000,
-            2,
-            AudioAnalysisSettings::default(),
-        )
-        .unwrap();
+        let mut analyzer =
+            AudioOnsetAnalyzer::new(48_000, 2, AudioAnalysisSettings::default()).unwrap();
         assert!(analyzer.process(&[0.1]).is_empty());
     }
 
