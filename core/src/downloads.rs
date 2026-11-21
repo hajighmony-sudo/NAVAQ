@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv6Addr};
 use thiserror::Error;
 
 const MAX_URL_BYTES: usize = 8_192;
