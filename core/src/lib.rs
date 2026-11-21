@@ -3,6 +3,7 @@
 //! This crate deliberately contains no UI or platform audio implementation.
 //! Native Android and iOS adapters consume its command/event API.
 
+pub mod audio_analysis;
 pub mod audio_pipeline;
 pub mod audio_session;
 pub mod backend;
@@ -36,6 +37,7 @@ pub mod text;
 #[cfg(target_os = "android")]
 mod android_jni;
 
+pub use audio_analysis::{AudioAnalysisError, AudioAnalysisSettings, AudioOnset, AudioOnsetAnalyzer};
 pub use audio_pipeline::{
     EchoSettings, PcmAudioPipeline, PcmFormat, PcmPipelineError, PcmPipelineSettings,
     PcmProcessStats,
