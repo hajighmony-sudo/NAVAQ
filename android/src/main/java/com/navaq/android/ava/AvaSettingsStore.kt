@@ -47,6 +47,18 @@ data class AvaSettings(
     val activationMode: AvaActivationMode = AvaActivationMode.PUSH_TO_TALK,
     val confirmMusicBeforePlayback: Boolean = false
 ) {
+    fun speechLanguageTag(): String = when (language) {
+        AvaLanguage.PERSIAN -> "fa-IR"
+        AvaLanguage.ENGLISH -> "en-US"
+        AvaLanguage.AUTO -> java.util.Locale.getDefault().toLanguageTag()
+    }
+
+    fun preferOfflineSpeech(networkAvailable: Boolean): Boolean = when (aiMode) {
+        AvaAiMode.OFFLINE_ONLY -> true
+        AvaAiMode.ONLINE_ONLY -> false
+        AvaAiMode.ADAPTIVE -> !networkAvailable
+    }
+
     fun toWireJson(): String = JSONObject()
         .put("enabled", enabled)
         .put("music_sources", musicSources.wireValue)
