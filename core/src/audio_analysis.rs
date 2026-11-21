@@ -205,7 +205,7 @@ mod tests {
         )
         .unwrap();
         analyzer.process(&[0.001; 100]);
-        assert_eq!(analyzer.process(&[0.8; 10]).len(), 1);
+        assert_eq!(analyzer.process(&[0.8; 100]).len(), 1);
         assert!(analyzer.process(&[0.001; 100]).is_empty());
         analyzer.reset();
         assert!(analyzer.process(&[0.001; 100]).is_empty());
