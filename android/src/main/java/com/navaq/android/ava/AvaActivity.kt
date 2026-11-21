@@ -21,6 +21,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.navaq.android.playback.NavaqPlaybackService
+import com.navaq.android.discover.DiscoverActivity
 
 /**
  * Small, native AVA host screen. It gives the Android application a real,
@@ -219,6 +220,11 @@ class AvaActivity : Activity() {
         voiceCard.addView(listenButton, verticalParams(top = 14, bottom = 8))
         voiceCard.addView(stopButton)
         root.addView(voiceCard, verticalParams(bottom = 18))
+
+        val discoverButton = button("Open NAVAQ Discover", 0xFF176B72.toInt()) {
+            startActivity(Intent(this, DiscoverActivity::class.java))
+        }
+        root.addView(discoverButton, verticalParams(bottom = 10))
 
         val settingsButton = button("AVA settings", 0xFF253047.toInt()) {
             startActivity(Intent(this, AvaSettingsActivity::class.java))
