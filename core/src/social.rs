@@ -466,7 +466,10 @@ mod tests {
             .apply_command(
                 &guest,
                 revision,
-                RoomCommand::SetPlayback { position_ms: 2_000, is_playing: true },
+                RoomCommand::SetPlayback {
+                    position_ms: 2_000,
+                    is_playing: true,
+                },
             )
             .unwrap();
         assert!(next > revision);
