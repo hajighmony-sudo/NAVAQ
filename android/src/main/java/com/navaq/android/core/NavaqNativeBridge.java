@@ -13,6 +13,13 @@ public final class NavaqNativeBridge {
     public static native String nativeHandleBackendEvent(long handle, String eventJson);
     public static native void nativeDestroy(long handle);
 
+    /** Interpret a bilingual AVA transcript using the Rust domain parser. */
+    public static native String nativeInterpretAva(
+            String transcript,
+            String settingsJson,
+            boolean networkAvailable
+    );
+
     public static native long nativeCreateDsp(int sampleRate, int channels);
     public static native boolean nativeProcessDsp(long handle, float[] samples);
     public static native boolean nativeSetDspEqualizer(long handle, String equalizerJson);
