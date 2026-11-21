@@ -316,7 +316,7 @@ impl SharedRoom {
                 if !self.is_host(actor) {
                     return Err(SocialError::HostOnly);
                 }
-                if track.as_ref().map_or(false, |value| !value.is_valid()) {
+                if track.as_ref().is_some_and(|value| !value.is_valid()) {
                     return Err(SocialError::InvalidTrack);
                 }
                 self.set_track(track);
