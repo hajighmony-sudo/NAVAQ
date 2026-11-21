@@ -57,6 +57,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 - `SleepTimer` — duration or end-of-track, driven by `PlayerRuntime::tick` / `poll_backend`.
 - `PlayHistory` — bounded recent plays and play counts; the host calls `record_play`.
 - `replaygain` — `linear_gain` / `effective_volume` from ReplayGain tags (track/album mode, preamp, clipping guard).
+- `audio_analysis` — streaming PCM energy-onset detector with partial-frame buffering, adaptive noise floor, sensitivity threshold, refractory window and timestamped onset events. It detects generic transients; it does not claim kick/snare/vocal classification.
 - `dsp` — stateful multi-band peaking-EQ and gain processing for interleaved f32 PCM, plus equal-power crossfade mixing; native backends own PCM pipeline integration.
 - `m3u` — parse and write M3U/M3U8 with `#EXTINF`.
 - `guess_from_filename` — track number, artist and title from file names when tags are missing.
@@ -100,7 +101,7 @@ important when planning an end-to-end release:
 | Lyric-to-Melody | Validated job request/result lifecycle and playback-ready result contract | Actual local/cloud generative model, melody/harmony arrangement, rendering, cancellation/progress adapter and consent/cost controls |
 | Instrumental/stem creation | Stem request/result contracts | Actual source-separation model and audio renderer |
 
-The Android haptic adapter accepts only classified events from a trusted host
+The `audio_analysis` module now supplies timestamped generic onset events suitable for a host-controlled beat-reactive path; mapping them to `HapticTrigger::Beat` is possible, but the Android service has not yet wired that dispatch. It does not infer instrument identity or vocal onsets. The Android haptic adapter accepts only classified events from a trusted host
 component. It does not record microphone audio or perform background capture.
 The app must expose a clear user toggle before dispatching events. For shared
 rooms, participant-generated vocal/effect streams must be explicitly enabled
