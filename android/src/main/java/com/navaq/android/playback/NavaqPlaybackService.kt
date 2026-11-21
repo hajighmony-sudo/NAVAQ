@@ -1,5 +1,6 @@
 package com.navaq.android.playback
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
@@ -9,10 +10,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.navaq.android.core.NavaqNativeBridge
+import com.navaq.android.haptics.NavaqBeatAudioProcessor
+import com.navaq.android.haptics.NavaqHaptics
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -27,6 +33,8 @@ class NavaqPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private var nativeHandle: Long = 0L
+    private var beatHaptics: NavaqHaptics? = null
+    private var beatProcessor: NavaqBeatAudioProcessor? = null
 
     private val positionReporter = object : Runnable {
         override fun run() {
@@ -92,7 +100,30 @@ class NavaqPlaybackService : MediaSessionService() {
         super.onCreate()
         nativeHandle = NavaqNativeBridge.nativeCreate()
 
-        val audioPlayer = ExoPlayer.Builder(this)
+        val haptics = NavaqHaptics(this)
+        beatHaptics = haptics
+        val onsetProcessor = NavaqBeatAudioProcessor { strength ->
+            // Vibrator calls are dispatched away from Media3's audio thread.
+            mainHandler.post {
+                haptics.onAudioEvent(NavaqHaptics.Trigger.BEAT, strength)
+            }
+        }
+        beatProcessor = onsetProcessor
+        val renderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParameters: Boolean,
+            ): AudioSink {
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
+                    .setAudioProcessors(arrayOf(onsetProcessor))
+                    .build()
+            }
+        }
+
+        val audioPlayer = ExoPlayer.Builder(this, renderersFactory)
             .build()
             .apply {
                 setHandleAudioBecomingNoisy(true)
@@ -104,6 +135,14 @@ class NavaqPlaybackService : MediaSessionService() {
         player = audioPlayer
         mediaSession = MediaSession.Builder(this, audioPlayer).build()
         mainHandler.post(positionReporter)
+    }
+
+    /**
+     * User preference for beat-reactive haptics. Disabled by default; a settings
+     * screen in the app can call this method after explicit user action.
+     */
+    fun setBeatHapticsEnabled(enabled: Boolean) {
+        beatHaptics?.setEnabled(enabled)
     }
 
     fun dispatchCoreCommand(commandJson: String): String {
@@ -208,6 +247,9 @@ class NavaqPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         mainHandler.removeCallbacks(positionReporter)
         player?.removeListener(playerListener)
+        beatHaptics?.release()
+        beatHaptics = null
+        beatProcessor = null
         mediaSession?.release()
         player?.release()
         mediaSession = null
