@@ -31,6 +31,25 @@ pub struct Track {
     pub source: AudioSource,
 }
 
+impl Track {
+    /// Validate untrusted track metadata before it enters the playback queue.
+    pub fn is_valid(&self) -> bool {
+        let source_is_valid = match &self.source {
+            AudioSource::LocalFile(value)
+            | AudioSource::RemoteUrl(value)
+            | AudioSource::ContentUri(value) => !value.trim().is_empty() && value.len() <= 4096,
+        };
+        !self.id.0.trim().is_empty()
+            && self.id.0.len() <= 256
+            && !self.title.trim().is_empty()
+            && self.title.len() <= 512
+            && self.artist.as_ref().map_or(true, |value| value.len() <= 256)
+            && self.album.as_ref().map_or(true, |value| value.len() <= 256)
+            && self.duration_ms.map_or(true, |duration| duration > 0)
+            && source_is_valid
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PlaybackStatus {
@@ -219,6 +238,8 @@ pub enum PlayerError {
     InvalidVolume,
     #[error("speed must be a finite value between 0.25 and 4.0")]
     InvalidSpeed,
+    #[error("track metadata or source is invalid")]
+    InvalidTrack,
     #[error("track was not found in the playback queue")]
     TrackNotFound,
     #[error("playback queue is empty")]
