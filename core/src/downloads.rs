@@ -276,6 +276,11 @@ pub fn validate_http_url(url: &str) -> Result<(), DownloadError> {
     }
     if let Ok(ip) = host.parse::<IpAddr>() {
         if is_blocked_ip(ip) { return Err(DownloadError::BlockedDestination); }
+    } else if host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        || host.strip_prefix("0x").is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        // Reject non-canonical numeric IPv4 forms (for example 127.1 or 0x7f000001).
+        return Err(DownloadError::BlockedDestination);
     } else if !host.split('.').all(|label| {
         !label.is_empty() && label.len() <= 63
             && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
@@ -298,7 +303,7 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
             v6.is_loopback() || v6.is_unspecified() || v6.is_multicast()
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
                 || (v6.segments()[0] & 0xffc0) == 0xfe80
-                || v6.to_ipv4_mapped().is_some_and(|v4| is_blocked_ip(IpAddr::V4(v4)))
+                || v6.to_ipv4().is_some_and(|v4| is_blocked_ip(IpAddr::V4(v4)))
         }
     }
 }
