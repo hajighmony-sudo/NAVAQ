@@ -1,9 +1,7 @@
 //! Aggregate download queue operations and stable summary reporting.
 //! The host still performs HTTP transfers and filesystem writes.
 
-use crate::downloads::{
-    DownloadError, DownloadId, DownloadManager, DownloadStatus,
-};
+use crate::downloads::{DownloadError, DownloadId, DownloadManager, DownloadStatus};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DownloadSummary {
@@ -235,7 +233,10 @@ mod tests {
         manager.enqueue(request("a")).unwrap();
         manager.enqueue(request("b")).unwrap();
         let started = manager.start_available(2);
-        assert_eq!(started, vec![DownloadId("a".into()), DownloadId("b".into())]);
+        assert_eq!(
+            started,
+            vec![DownloadId("a".into()), DownloadId("b".into())]
+        );
         assert_eq!(manager.summarize().downloading, 2);
         assert_eq!(manager.summarize().queued, 1);
         assert!(manager.start_available(2).is_empty());
@@ -259,7 +260,11 @@ mod tests {
         let mut manager = DownloadManager::new();
         manager.enqueue(request("one")).unwrap();
         manager.get_mut(&"one".into()).unwrap().start().unwrap();
-        manager.get_mut(&"one".into()).unwrap().fail("offline").unwrap();
+        manager
+            .get_mut(&"one".into())
+            .unwrap()
+            .fail("offline")
+            .unwrap();
         assert_eq!(manager.retry_failed(), 1);
         assert_eq!(manager.summarize().queued, 1);
         assert_eq!(manager.summarize().failed, 0);
