@@ -27,9 +27,16 @@ pub struct TasteProfile {
 
 impl TasteProfile {
     pub fn is_valid(&self) -> bool {
-        self.artists.values().chain(self.genres.values()).all(|v| v.is_finite() && *v >= 0.0)
-            && self.avg_tempo.map_or(true, |v| v.is_finite() && (20.0..=300.0).contains(&v))
-            && self.energy.map_or(true, |v| v.is_finite() && (0.0..=1.0).contains(&v))
+        self.artists
+            .values()
+            .chain(self.genres.values())
+            .all(|v| v.is_finite() && *v >= 0.0)
+            && self
+                .avg_tempo
+                .map_or(true, |v| v.is_finite() && (20.0..=300.0).contains(&v))
+            && self
+                .energy
+                .map_or(true, |v| v.is_finite() && (0.0..=1.0).contains(&v))
     }
 
     pub fn new() -> Self {
@@ -70,7 +77,9 @@ impl TasteProfile {
 
     /// Cosine similarity on the combined artist+genre space (0.0..=1.0).
     pub fn similarity(&self, other: &TasteProfile) -> f32 {
-        if !self.is_valid() || !other.is_valid() { return 0.0; }
+        if !self.is_valid() || !other.is_valid() {
+            return 0.0;
+        }
         let mut left = self.clone();
         let mut right = other.clone();
         left.normalize();
