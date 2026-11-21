@@ -26,13 +26,19 @@ pub struct TasteProfile {
 }
 
 impl TasteProfile {
+    pub fn is_valid(&self) -> bool {
+        self.artists.values().chain(self.genres.values()).all(|v| v.is_finite() && *v >= 0.0)
+            && self.avg_tempo.is_none_or(|v| v.is_finite() && (20.0..=300.0).contains(&v))
+            && self.energy.is_none_or(|v| v.is_finite() && (0.0..=1.0).contains(&v))
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Merge another profile with a weight (useful for time-decayed updates).
     pub fn merge(&mut self, other: &TasteProfile, weight: f32) {
-        if weight <= 0.0 {
+        if !weight.is_finite() || weight <= 0.0 || !other.is_valid() {
             return;
         }
         for (k, &v) in &other.artists {
@@ -64,13 +70,18 @@ impl TasteProfile {
 
     /// Cosine similarity on the combined artist+genre space (0.0..=1.0).
     pub fn similarity(&self, other: &TasteProfile) -> f32 {
-        let artist_sim = cosine(&self.artists, &other.artists);
-        let genre_sim = cosine(&self.genres, &other.genres);
+        if !self.is_valid() || !other.is_valid() { return 0.0; }
+        let mut left = self.clone();
+        let mut right = other.clone();
+        left.normalize();
+        right.normalize();
+        let artist_sim = cosine(&left.artists, &right.artists);
+        let genre_sim = cosine(&left.genres, &right.genres);
         // Weighted blend; genres often more stable for matching.
         let mut score = 0.45 * artist_sim + 0.55 * genre_sim;
 
         // Soft tempo agreement.
-        if let (Some(a), Some(b)) = (self.avg_tempo, other.avg_tempo) {
+        if let (Some(a), Some(b)) = (left.avg_tempo, right.avg_tempo) {
             let diff = (a - b).abs();
             let tempo_factor = (1.0 - (diff / 40.0).min(1.0)).max(0.0);
             score = 0.85 * score + 0.15 * tempo_factor;
@@ -113,20 +124,20 @@ impl DnaBuilder {
 
     /// Record an artist listen (weight usually 1.0 or play-count based).
     pub fn add_artist(&mut self, artist: &str, weight: f32) {
-        if weight > 0.0 && !artist.is_empty() {
+        if weight.is_finite() && weight > 0.0 && !artist.trim().is_empty() {
             *self.profile.artists.entry(artist.to_owned()).or_insert(0.0) += weight;
             self.profile.sample_size = self.profile.sample_size.saturating_add(1);
         }
     }
 
     pub fn add_genre(&mut self, genre: &str, weight: f32) {
-        if weight > 0.0 && !genre.is_empty() {
+        if weight.is_finite() && weight > 0.0 && !genre.trim().is_empty() {
             *self.profile.genres.entry(genre.to_owned()).or_insert(0.0) += weight;
         }
     }
 
     pub fn set_tempo(&mut self, bpm: f32) {
-        if bpm.is_finite() && bpm > 0.0 {
+        if bpm.is_finite() && (20.0..=300.0).contains(&bpm) {
             self.profile.avg_tempo = Some(match self.profile.avg_tempo {
                 Some(cur) => (cur + bpm) / 2.0,
                 None => bpm,
@@ -223,6 +234,17 @@ pub fn rank_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn similarity_normalizes_raw_vectors_and_rejects_nan() {
+        let mut a = TasteProfile::default();
+        a.genres.insert("Rock".into(), 10.0);
+        let mut b = TasteProfile::default();
+        b.genres.insert("Rock".into(), 1.0);
+        assert!((a.similarity(&b) - 1.0).abs() < 1e-5);
+        b.genres.insert("bad".into(), f32::NAN);
+        assert_eq!(a.similarity(&b), 0.0);
+    }
 
     #[test]
     fn identical_profiles_score_one() {
