@@ -398,6 +398,35 @@ mod tests {
         );
     }
     #[test]
+    fn completed_creative_job_rejects_invalid_audio_source() {
+        let mut store = CreativeStore::new();
+        let request = CreativeRequest::LyricToMelody(LyricToMelodyRequest {
+            lyrics: "A short line".into(),
+            style: None,
+            tempo_bpm: None,
+            key: None,
+            duration_secs: None,
+            also_instrumental: false,
+        });
+        store.submit("job-invalid-source".into(), request, 10).unwrap();
+        store
+            .set_status(&"job-invalid-source".into(), JobStatus::Running, 20)
+            .unwrap();
+        let result = CreativeResult {
+            job_id: "job-invalid-source".into(),
+            title: "Generated".into(),
+            artist: None,
+            duration_ms: Some(1_000),
+            source: AudioSource::LocalFile(" ".into()),
+            tags: BTreeMap::new(),
+        };
+        assert_eq!(
+            store.complete(&"job-invalid-source".into(), result, 30),
+            Err(CreativeError::InvalidRequest)
+        );
+    }
+
+    #[test]
     fn instrumental_rejects_duplicate_stems_and_blank_source_ids() {
         let mut store = CreativeStore::new();
         let duplicate = CreativeRequest::Instrumental(InstrumentalRequest {
