@@ -44,7 +44,11 @@ impl HapticPattern {
 
     /// Total length of the pattern including delays.
     pub fn total_duration_ms(&self) -> u32 {
-        self.pulses.iter().fold(0u32, |total, pulse| total.saturating_add(pulse.delay_ms).saturating_add(pulse.duration_ms))
+        self.pulses.iter().fold(0u32, |total, pulse| {
+            total
+                .saturating_add(pulse.delay_ms)
+                .saturating_add(pulse.duration_ms)
+        })
     }
 }
 
@@ -98,13 +102,22 @@ impl HapticSettings {
 
     /// Return the active pattern with intensity scaled for the current device.
     pub fn pulses_for(&self, trigger: HapticTrigger) -> Vec<HapticPulse> {
-        if !self.enabled || !self.active_triggers.contains(&trigger) || self.master_intensity <= 0.0 { return Vec::new(); }
+        if !self.enabled || !self.active_triggers.contains(&trigger) || self.master_intensity <= 0.0
+        {
+            return Vec::new();
+        }
         let pattern = self.pattern_for(trigger);
-        if !pattern.is_valid() { return Vec::new(); }
-        pattern.pulses.into_iter().map(|mut pulse| {
-            pulse.intensity = (pulse.intensity * self.master_intensity).clamp(0.0, 1.0);
-            pulse
-        }).collect()
+        if !pattern.is_valid() {
+            return Vec::new();
+        }
+        pattern
+            .pulses
+            .into_iter()
+            .map(|mut pulse| {
+                pulse.intensity = (pulse.intensity * self.master_intensity).clamp(0.0, 1.0);
+                pulse
+            })
+            .collect()
     }
 
     /// Built-in sensible defaults for common triggers.
