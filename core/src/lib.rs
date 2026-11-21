@@ -12,6 +12,8 @@ pub mod composer;
 pub mod composition;
 pub mod creative;
 pub mod cue;
+pub mod discover;
+pub mod downloads;
 pub mod dsp;
 pub mod engine;
 pub mod equalizer;
@@ -63,6 +65,13 @@ pub use creative::{
     InstrumentalRequest, JobId, JobStatus, LyricToMelodyRequest, StemKind,
 };
 pub use cue::{parse_cue, CueSheet, CueTrack};
+pub use discover::{
+    DiscoverError, DiscoverProvider, DiscoverResult, DiscoverSearchPage, DiscoverSearchRequest,
+};
+pub use downloads::{
+    validate_http_url, DownloadError, DownloadId, DownloadManager, DownloadRequest,
+    DownloadStatus, DownloadTask,
+};
 pub use dsp::{mix_equal_power_crossfade, DspError, DspProcessor, EchoProcessor};
 pub use engine::PlayerCore;
 pub use equalizer::{EqualizerBand, EqualizerPreset, EqualizerSettings};
@@ -71,7 +80,6 @@ pub use haptic_analyzer::{schedule_pulses, HapticAnalyzer, HapticEvent, Schedule
 pub use history::PlayHistory;
 pub use library::{AlbumSummary, Library, SortKey};
 pub use lyrics::{LyricLine, Lyrics};
-pub use m3u::M3uEntry;
 pub use matching::{
     build_shared_playlist, shared_artists, shared_genres, suggest_friends, FriendSuggestion,
     PlaylistParticipant,
