@@ -404,23 +404,6 @@ mod tests {
     }
 
     #[test]
-    fn online_only_uses_online_route_when_connected() {
-        let core = AvaCore::new();
-        let settings = AvaSettings {
-            ai_mode: AvaAiMode::OnlineOnly,
-            ..AvaSettings::default()
-        };
-        assert_eq!(
-            core.interpret("یک درخواست پیچیده", &settings, true).route,
-            AvaExecutionRoute::Online
-        );
-        assert_eq!(
-            core.interpret("یک درخواست پیچیده", &settings, false).route,
-            AvaExecutionRoute::OfflineFallback
-        );
-    }
-
-    #[test]
     fn parses_shuffle_repeat_and_volume_controls() {
         let core = AvaCore::new();
         let settings = AvaSettings::default();
@@ -451,12 +434,12 @@ mod tests {
     }
 
     #[test]
-    fn unknown_requests_use_adaptive_online_route_only_when_connected() {
+    fn unknown_requests_never_use_online_ai_route() {
         let core = AvaCore::new();
         let settings = AvaSettings::default();
         assert_eq!(
             core.interpret("یک درخواست پیچیده", &settings, true).route,
-            AvaExecutionRoute::Online
+            AvaExecutionRoute::OfflineFallback
         );
         assert_eq!(
             core.interpret("یک درخواست پیچیده", &settings, false).route,
