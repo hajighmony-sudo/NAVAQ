@@ -29,6 +29,8 @@ pub enum QueueSnapshotError {
     InvalidCursor,
     #[error("queue snapshot contains duplicate track ids")]
     DuplicateTrackId,
+    #[error("queue snapshot contains an invalid track")]
+    InvalidTrack,
 }
 
 impl PlaybackQueue {
@@ -44,6 +46,9 @@ impl PlaybackQueue {
 
     /// Restore a queue after validating its internal index invariants.
     pub fn from_snapshot(snapshot: PlaybackQueueSnapshot) -> Result<Self, QueueSnapshotError> {
+        if !snapshot.tracks.iter().all(Track::is_valid) {
+            return Err(QueueSnapshotError::InvalidTrack);
+        }
         let mut ids = HashSet::new();
         if !snapshot.tracks.iter().all(|track| ids.insert(&track.id)) {
             return Err(QueueSnapshotError::DuplicateTrackId);
@@ -116,6 +121,9 @@ impl PlaybackQueue {
         {
             return Err(PlayerError::InvalidQueueStartIndex);
         }
+        if !tracks.iter().all(Track::is_valid) {
+            return Err(PlayerError::InvalidTrack);
+        }
         let mut ids = HashSet::new();
         if !tracks.iter().all(|track| ids.insert(&track.id)) {
             return Err(PlayerError::DuplicateTrack);
@@ -134,6 +142,9 @@ impl PlaybackQueue {
 
     /// Append a track at the end of the queue and of the playback order.
     pub fn enqueue(&mut self, track: Track) -> Result<(), PlayerError> {
+        if !track.is_valid() {
+            return Err(PlayerError::InvalidTrack);
+        }
         if self.contains(&track.id) {
             return Err(PlayerError::DuplicateTrack);
         }
@@ -149,6 +160,9 @@ impl PlaybackQueue {
 
     /// Insert a track directly after the current one in both queue and playback order.
     pub fn enqueue_next(&mut self, track: Track) -> Result<(), PlayerError> {
+        if !track.is_valid() {
+            return Err(PlayerError::InvalidTrack);
+        }
         if self.contains(&track.id) {
             return Err(PlayerError::DuplicateTrack);
         }
