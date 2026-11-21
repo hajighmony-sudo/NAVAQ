@@ -16,7 +16,8 @@ and Rust `PlayerCore`; it does not create a second player.
 - Explicit microphone and audio-library permission helpers.
 - Sherpa-ONNX offline multilingual Whisper tiny INT8 speech recognition for Persian and English, with automatic language detection restricted to Persian/English.
 - One-time, in-app speech-model installation with progress, free-space validation, archive-size validation, and app-private model storage.
-- Continuous foreground voice sessions: after one explicit Start action, AVA listens for successive short commands and re-arms after each utterance until Stop is pressed or the Activity leaves the foreground.
+- Continuous foreground voice sessions: after one explicit Start action, AVA keeps one microphone/Whisper recognizer session alive, detects successive utterances locally, and reuses the loaded model until Stop is pressed or the Activity leaves the foreground.
+- Optional local wake-phrase gating for “هی آوا”, “Hey Ava”, “Okay Ava”, or “AVA” within the user-started foreground listening session; commands without the wake phrase are not executed in this mode.
 - Optional Persian/English wake-phrase prefixes such as “هی آوا” and “Hey Ava” within an already-started listening session.
 - A launcher Activity for AVA with microphone permission flow, start/stop listening, recognized transcript display, model setup, command-result display, and music-change confirmation.
 
