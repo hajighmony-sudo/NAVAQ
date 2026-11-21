@@ -39,7 +39,11 @@ pub struct HapticPattern {
 
 impl HapticPattern {
     pub fn is_valid(&self) -> bool {
-        !self.name.is_empty() && !self.pulses.is_empty() && self.pulses.iter().all(|p| p.is_valid())
+        !self.name.trim().is_empty()
+            && self.name.len() <= 64
+            && !self.pulses.is_empty()
+            && self.pulses.len() <= 64
+            && self.pulses.iter().all(|p| p.is_valid())
     }
 
     /// Total length of the pattern including delays.
