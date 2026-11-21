@@ -13,6 +13,9 @@ public final class NavaqNativeBridge {
     public static native String nativeHandleBackendEvent(long handle, String eventJson);
     public static native void nativeDestroy(long handle);
 
+    /** Validate direct HTTP(S) download URLs with the Rust core policy. */
+    public static native boolean nativeValidateDownloadUrl(String url);
+
     /** Interpret a bilingual AVA transcript using the Rust domain parser. */
     public static native String nativeInterpretAva(
             String transcript,
