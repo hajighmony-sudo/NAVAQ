@@ -121,6 +121,8 @@ pub enum RoomCommand {
     SetGlobalEffect(LiveEffect),
     SetLocalEffect(LiveEffect),
     ClearLocalEffects,
+    SetSharedEffect(LiveEffect),
+    ClearSharedEffects,
 }
 
 /// Snapshot of a shared room at a moment in time.
@@ -139,6 +141,7 @@ pub struct SharedRoom {
     pub global_effects: EffectStack,
     /// Per-participant private effects (only audible to that user or as they choose).
     pub participant_effects: BTreeMap<ParticipantId, EffectStack>,
+    /// Effects contributed by participants and audible to the whole room.
     /// Maximum number of participants (0 = unlimited).
     pub max_participants: u32,
     /// Room is public and discoverable.
@@ -162,6 +165,7 @@ impl SharedRoom {
             is_playing: false,
             global_effects: EffectStack::default(),
             participant_effects: BTreeMap::new(),
+            shared_effects: BTreeMap::new(),
             max_participants: 0,
             is_public: false,
             name: None,
@@ -186,6 +190,7 @@ impl SharedRoom {
             return Err(SocialError::NotInRoom);
         }
         self.participant_effects.remove(participant);
+        self.shared_effects.remove(participant);
         self.revision = self.revision.saturating_add(1);
         // If the host left, promote the next participant (or close).
         if &self.host == participant {
@@ -251,6 +256,14 @@ impl SharedRoom {
             }
             RoomCommand::ClearLocalEffects => {
                 self.participant_effects.remove(actor);
+                self.revision = self.revision.saturating_add(1);
+            }
+            RoomCommand::SetSharedEffect(effect) => {
+                self.shared_effects.entry(actor.clone()).or_default().push(effect)?;
+                self.revision = self.revision.saturating_add(1);
+            }
+            RoomCommand::ClearSharedEffects => {
+                self.shared_effects.remove(actor);
                 self.revision = self.revision.saturating_add(1);
             }
         }
