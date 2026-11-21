@@ -45,7 +45,7 @@ impl TasteProfile {
 
     /// Merge another profile with a weight (useful for time-decayed updates).
     pub fn merge(&mut self, other: &TasteProfile, weight: f32) {
-        if !weight.is_finite() || weight <= 0.0 || !other.is_valid() {
+        if !self.is_valid() || !weight.is_finite() || weight <= 0.0 || weight > 100.0 || !other.is_valid() {
             return;
         }
         for (k, &v) in &other.artists {
@@ -238,6 +238,7 @@ pub fn rank_opted_in_matches(
     if !target.is_valid() || !min_score.is_finite() {
         return Vec::new();
     }
+    let min_score = min_score.clamp(0.0, 1.0);
     let mut results: Vec<_> = candidates
         .iter()
         .filter(|candidate| {
@@ -265,8 +266,13 @@ pub fn rank_matches(
     candidates: &[(String, TasteProfile)],
     min_score: f32,
 ) -> Vec<MatchResult> {
+    if !target.is_valid() || !min_score.is_finite() {
+        return Vec::new();
+    }
+    let min_score = min_score.clamp(0.0, 1.0);
     let mut results: Vec<_> = candidates
         .iter()
+        .filter(|(_, profile)| profile.is_valid())
         .map(|(id, profile)| MatchResult {
             participant_id: id.clone(),
             score: target.similarity(profile),
