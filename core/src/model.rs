@@ -1,4 +1,6 @@
 use crate::equalizer::EqualizerSettings;
+use crate::haptic::HapticSettings;
+use crate::spatial::SpatialSettings;
 use serde::{Deserialize, Serialize};
 
 use thiserror::Error;
@@ -105,6 +107,12 @@ pub struct PlaybackState {
     /// Active A-B loop; cleared whenever the current track changes.
     #[serde(default)]
     pub loop_region: Option<LoopRegion>,
+    /// Advanced haptic feedback configuration.
+    #[serde(default)]
+    pub haptic: HapticSettings,
+    /// Personalized spatial / room simulation settings.
+    #[serde(default)]
+    pub spatial: SpatialSettings,
 }
 
 impl Default for PlaybackState {
@@ -124,6 +132,8 @@ impl Default for PlaybackState {
             consume: false,
             single: false,
             loop_region: None,
+            haptic: HapticSettings::default(),
+            spatial: SpatialSettings::default(),
         }
     }
 }
@@ -169,6 +179,10 @@ pub enum PlayerCommand {
     Reshuffle {
         seed: u64,
     },
+    /// Advanced haptic feedback settings.
+    SetHaptic(HapticSettings),
+    /// Personalized spatial audio / room simulation settings.
+    SetSpatial(SpatialSettings),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -182,6 +196,8 @@ pub enum BackendAction {
     SetSpeed(f32),
     SetEqualizer(EqualizerSettings),
     SetCrossfade(u32),
+    SetHaptic(HapticSettings),
+    SetSpatial(SpatialSettings),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -256,4 +272,8 @@ pub enum PlayerError {
     InvalidCrossfade,
     #[error("loop region must start before it ends and fit inside the current track")]
     InvalidLoopRegion,
+    #[error("haptic settings or patterns are invalid")]
+    InvalidHaptic,
+    #[error("spatial audio / room settings are invalid")]
+    InvalidSpatial,
 }
