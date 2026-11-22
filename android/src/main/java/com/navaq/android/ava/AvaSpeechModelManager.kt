@@ -37,9 +37,12 @@ class AvaSpeechModelManager(context: Context) {
         0L
     }
 
-    /** Size of a retained, incomplete archive that can be resumed. */
-    fun pendingDownloadSizeBytes(): Long =
-        partialArchiveFile.takeIf { it.isFile }?.length() ?: 0L
+    /** Size of retained download data, including a fully downloaded archive awaiting extraction. */
+    fun pendingDownloadSizeBytes(): Long = when {
+        archiveFile.isFile && archiveFile.length() == EXPECTED_ARCHIVE_BYTES -> archiveFile.length()
+        partialArchiveFile.isFile -> partialArchiveFile.length()
+        else -> 0L
+    }
 
     fun hasPendingDownload(): Boolean = pendingDownloadSizeBytes() > 0L
 
@@ -100,10 +103,15 @@ class AvaSpeechModelManager(context: Context) {
                     return@Thread
                 }
 
-                archive.delete()
+                if (archive.exists() && archive.length() != EXPECTED_ARCHIVE_BYTES) {
+                    archive.delete()
+                }
                 staging.deleteRecursively()
                 check(staging.mkdirs()) { "Could not create AVA model directory" }
 
+                // Keep a fully downloaded archive across retries. If the app is
+                // stopped after download but before extraction, the next attempt
+                // can continue locally without fetching the 116 MB file again.
                 downloadArchive(archive, onProgress)
                 extractModel(archive, staging, onProgress)
                 REQUIRED_FILES.forEach { name ->
@@ -119,7 +127,8 @@ class AvaSpeechModelManager(context: Context) {
                 onProgress(100)
                 onComplete(Result.success(Unit))
             } catch (error: Throwable) {
-                archive.delete()
+                // The final archive has already passed its exact-size check.
+                // Retain it so storage/extraction retries do not need a new download.
                 staging.deleteRecursively()
                 onComplete(Result.failure(error))
             } finally {
