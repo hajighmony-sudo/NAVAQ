@@ -1227,20 +1227,58 @@ class NavaqHomeActivity : Activity() {
 
     private fun dlRow(j: LinkDownloader.Job): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(0, T.dp(10), 0, T.dp(10))
-        addView(label(this@NavaqHomeActivity, j.title.ifBlank { "دانلود" }, 15f, true, T.fg, 1))
-        addView(label(this@NavaqHomeActivity, dlStatus(j), 12f, false, T.fg2).apply { setPadding(0, T.dp(3), 0, T.dp(5)) })
+        glass(0.88f)
+        setPadding(T.dp(13), T.dp(12), T.dp(13), T.dp(12))
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(0, T.dp(5), 0, T.dp(5))
+        }
+        val stateColor = when (j.state) {
+            LinkDownloader.DONE -> T.neonA
+            LinkDownloader.FAILED -> 0xFFFF7373.toInt()
+            LinkDownloader.PAUSED -> T.neonC
+            else -> T.accent
+        }
+        addView(LinearLayout(this@NavaqHomeActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label(this@NavaqHomeActivity, j.title.ifBlank { "دانلود" }, 14.5f, true, T.fg, 1),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            addView(label(this@NavaqHomeActivity, when (j.state) {
+                LinkDownloader.DONE -> "کامل"
+                LinkDownloader.FAILED -> "خطا"
+                LinkDownloader.PAUSED -> "مکث"
+                LinkDownloader.QUEUED -> "صف"
+                else -> "دریافت"
+            }, 10.5f, true, stateColor).apply {
+                setPadding(T.dp(8), T.dp(5), T.dp(8), T.dp(5))
+                background = GradientDrawable().apply {
+                    cornerRadius = T.dpf(30f)
+                    setColor((stateColor and 0x00FFFFFF) or (0x25 shl 24))
+                    setStroke(T.dp(1), (stateColor and 0x00FFFFFF) or (0x70 shl 24))
+                }
+            })
+        })
+        addView(label(this@NavaqHomeActivity, dlStatus(j), 11.5f, false, T.fg2)
+            .apply { setPadding(0, T.dp(7), 0, T.dp(9)) })
         if (j.state == LinkDownloader.RUNNING || j.state == LinkDownloader.PAUSED || j.state == LinkDownloader.QUEUED) {
-            val p = j.percent.toFloat()
+            val p = j.percent.toFloat().coerceIn(0f, 100f)
             addView(LinearLayout(this@NavaqHomeActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                background = GradientDrawable().apply { cornerRadius = T.dpf(3f); setColor(Color.argb(50, 128, 134, 160)) }
+                background = GradientDrawable().apply {
+                    cornerRadius = T.dpf(4f)
+                    setColor(Color.argb(55, 128, 134, 160))
+                }
                 addView(View(this@NavaqHomeActivity).apply {
-                    background = GradientDrawable().apply { cornerRadius = T.dpf(3f); setColor(T.accent) }
-                }, LinearLayout.LayoutParams(0, T.dp(5), p))
-                addView(View(this@NavaqHomeActivity), LinearLayout.LayoutParams(0, T.dp(5), 100f - p))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(T.accent, T.neonB, T.neonA)
+                    ).apply { cornerRadius = T.dpf(4f) }
+                }, LinearLayout.LayoutParams(0, T.dp(5), p.coerceAtLeast(0.1f)))
+                addView(View(this@NavaqHomeActivity), LinearLayout.LayoutParams(0, T.dp(5), (100f - p).coerceAtLeast(0.1f)))
             }, LinearLayout.LayoutParams(-1, -2))
         }
+        contentDescription = "${j.title}، ${dlStatus(j)}. برای مدیریت لمس کنید."
+        isFocusable = true
         pressable { dlActions(j) }
     }
 
