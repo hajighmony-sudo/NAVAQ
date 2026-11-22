@@ -1,11 +1,10 @@
 # NAVAQ
 
-NAVAQ is being developed as a cross-platform music playback core. This repository currently focuses on the platform-independent Rust domain layer; it contains no user interface.
-
+NAVAQ is a music application project with a platform-independent Rust playback/domain core and a native Android host. The Android app includes Media3 playback, AVA voice controls, and the Discover experience described below. 
 ## Workspace
 
 - `core/` — playback state, command/event contracts, queue management, audio-session policy, snapshot recovery, equalizer/crossfade settings, library, playlists, lyrics (LRC), sleep timer, play history, **and exclusive features** (Shared Listening Rooms, Music DNA matching, creative tools, advanced haptics, personalized spatial audio).
-- `android/` — native Android playback host using AndroidX Media3, MediaSessionService, and a JNI bridge to the Rust core.
+- `android/` — native Android app using AndroidX Media3, MediaSessionService, a JNI bridge to Rust, AVA voice controls, and NAVAQ Discover (audio search, in-app browser, direct downloads, and offline download list).
 - The iOS AVFoundation adapter is not yet implemented.
 
 ## Core boundary
@@ -38,7 +37,38 @@ android/scripts/build-rust-android.sh
 gradle :android:assembleDebug
 ```
 
-The Android playback service publishes normalized title, display title, artist, album, and optional artwork URI through Media3 `MediaSession` metadata. Playback state and supported transport controls are exposed by the session and its automatically maintained MediaStyle notification. This is the public Android interoperability path used by compatible OEM media surfaces; Xiaomi HyperOS Super Island and Samsung One UI Now Bar decide whether and how to present a third-party session based on device model, OS version, settings, and OEM policy. NAVAQ does not use private OEM APIs or claim that an island can be forcibly displayed. Actual HyperOS/One UI presentation and artwork loading still require testing on physical supported devices. The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. `NavaqHaptics` provides an opt-in, rate-limited Android vibrator adapter for classified bass/snare/hi-hat/vocal/beat events; it is intentionally disabled by default and awaits event wiring from the audio-analysis pipeline. The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. It also exposes `PcmAudioPipeline` in `core/src/audio_pipeline.rs`, which composes equalizer, ReplayGain/master gain, optional stateful echo, peak limiting, non-finite input sanitization before stateful filters, and PCM meter statistics (including sanitized/limited sample counts) for native decoders. Hosts must feed decoded PCM buffers through this pipeline; it is not automatically inserted into Media3's decoder/output path. These algorithms are ready for a native PCM pipeline, but the Android Media3 service does not yet insert them into its decoding/output path. MediaStore library scanning, durable Android storage wiring, and a user-facing Android interface also remain host-integration tasks.
+The Android playback service publishes normalized title, display title, artist, album, and optional artwork URI through Media3 `MediaSession` metadata. Playback state and supported transport controls are exposed by the session and its automatically maintained MediaStyle notification. This is the public Android interoperability path used by compatible OEM media surfaces; Xiaomi HyperOS Super Island and Samsung One UI Now Bar decide whether and how to present a third-party session based on device model, OS version, settings, and OEM policy. NAVAQ does not use private OEM APIs or claim that an island can be forcibly displayed. Actual HyperOS/One UI presentation and artwork loading still require testing on physical supported devices. The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. `NavaqHaptics` provides an opt-in, rate-limited Android vibrator adapter for classified bass/snare/hi-hat/vocal/beat events; it is intentionally disabled by default and awaits event wiring from the audio-analysis pipeline. The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. It also exposes `PcmAudioPipeline` in `core/src/audio_pipeline.rs`, which composes equalizer, ReplayGain/master gain, optional stateful echo, peak limiting, non-finite input sanitization before stateful filters, and PCM meter statistics (including sanitized/limited sample counts) for native decoders. Hosts must feed decoded PCM buffers through this pipeline; it is not automatically inserted into Media3's decoder/output path. These algorithms are ready for a native PCM pipeline, but the Android Media3 service does not yet insert them into its decoding/output path. Discover and AVA now provide native Android user-facing screens. Discover handles its own direct-download storage in app-specific Music/NAVAQ storage; broader MediaStore scanning/import and user-managed library synchronization remain separate host-integration tasks.
+
+## NAVAQ Discover (Android)
+
+Discover is a native Android feature reachable from the AVA home screen. It is separate from the Media3 playback service and does not replace or modify the existing playback engine.
+
+### What is included
+
+- **Public audio search:** searches Wikimedia Commons for audio files, displays the title, MIME type and available file size, and supports loading subsequent result pages.
+- **In-app browser:** an Android WebView with DuckDuckGo as the default search engine, address/search input, back/forward/reload controls, and HTTP(S)-only top-level navigation.
+- **Direct-link downloads:** accepts a direct HTTP(S) media URL, and also receives downloadable URLs exposed through the WebView download callback. Android DownloadManager performs the transfer and provides system notifications.
+- **Download queue and offline list:** stores DownloadManager IDs in app preferences, shows queued/running/paused/failed/completed states and known progress, allows active tasks to be cancelled and finished entries to be removed, and opens completed files with an Android audio intent.
+- **Rust URL validation:** the Android bridge calls `nativeValidateDownloadUrl`, which delegates URL policy checks to `core/src/downloads.rs`. The Android host also checks the initial DNS result for local/private addresses before enqueueing.
+
+### Build and entry point
+
+Open NAVAQ, then choose **Open NAVAQ Discover** from the AVA home screen. To build the Android app locally:
+
+```sh
+android/scripts/build-rust-android.sh
+gradle :android:assembleDebug
+```
+
+### Important boundaries
+
+- Structured audio search currently uses Wikimedia Commons; the Browser tab is general web browsing/search, not a universal multi-site audio index.
+- A page URL is not necessarily a media file URL. Use the browser's download callback when a site exposes a direct download, or paste a direct media URL into the download field. Discover does not scrape arbitrary pages to extract hidden media URLs.
+- DRM, protected streams, authentication, paywalls, and website access restrictions are not bypassed.
+- Android DownloadManager owns transfer execution, retry policy, and notifications. Discover reports its state and can cancel tasks; it does not yet provide a custom resumable/range-download engine or in-app pause/resume controls.
+- The initial hostname is checked before enqueueing, but DownloadManager follows redirects itself. This client-side check is not a complete server-side SSRF boundary.
+- Files are saved under app-specific external Music/NAVAQ storage. They are available offline while retained by Android, but may be removed when the app is uninstalled. Search and browsing require internet access.
+- The offline list is scoped to downloads started by Discover; it is not a full device-wide MediaStore music scanner.
 
 ## Development
 
@@ -92,7 +122,7 @@ These modules do no I/O. Scanning files, reading tags, networking, AI inference,
 
 Implemented: everything in the modules above plus typed track/source models, playback state, command/event contract, queue operations (move, clear, unique ids, next-track lookup for gapless preloading), repeat/shuffle, native backend contract, asynchronous event runtime, audio-focus handling with ducking, failure recovery, versioned snapshots with safe paused restoration, and unit tests.
 
-Not in the core (platform work): real-time network transport and audio mixing for Shared Rooms; account/authentication, safety/moderation and consent UX; on-device beat/source separation and AI inference; synthesis/rendering of manual arrangements and generated melodies; audio-reactive beat/onset analysis and event wiring (the Android actuator exists, but is not yet connected to the analyzer); full binaural/HRTF rendering; MediaStore scanning, downloads and tag reading; complete Android DSP integration; and the iOS AVFoundation adapter.
+Not in the core (platform work): real-time network transport and audio mixing for Shared Rooms; account/authentication, safety/moderation and consent UX; on-device beat/source separation and AI inference; synthesis/rendering of manual arrangements and generated melodies; audio-reactive beat/onset analysis and event wiring (the Android actuator exists, but is not yet connected to the analyzer); full binaural/HRTF rendering; MediaStore-wide scanning/import and tag reading; complete Android DSP integration; and the iOS AVFoundation adapter. Discover's direct HTTP(S) download queue and app-specific offline list are implemented in the Android host.
 
 
 ### Social, sensory and creative integration status
