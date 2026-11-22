@@ -2,6 +2,7 @@ package com.navaq.android.ava
 
 import android.app.AlertDialog
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
@@ -19,6 +20,18 @@ class AvaSettingsFragment : PreferenceFragmentCompat() {
         preferenceManager.sharedPreferencesMode = android.content.Context.MODE_PRIVATE
         setPreferencesFromResource(R.xml.ava_preferences, rootKey)
         addOfflineSpeechModelPreference()
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        view.setBackgroundColor(android.graphics.Color.rgb(7, 8, 18))
+        view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        view.alpha = 0f
+        view.translationY = resources.displayMetrics.density * 8f
+        view.post {
+            view.animate().alpha(1f).translationY(0f).setDuration(220L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }
     }
 
     private fun addOfflineSpeechModelPreference() {
