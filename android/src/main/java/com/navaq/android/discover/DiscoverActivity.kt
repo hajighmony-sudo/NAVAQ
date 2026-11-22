@@ -47,6 +47,7 @@ class DiscoverActivity : Activity() {
     private lateinit var loadMoreButton: Button
     private var nextSearchOffset = 0
     private var activeSearchQuery = ""
+    private var activeMediaType = "audio"
     private var searchGeneration = 0
     private lateinit var resultsContainer: LinearLayout
     private lateinit var libraryContainer: LinearLayout
@@ -103,7 +104,7 @@ class DiscoverActivity : Activity() {
     private fun showSearch() {
         content.removeAllViews()
         searchInput = EditText(this).apply {
-            hint = "Search public audio on Wikimedia Commons"
+            hint = "Search public audio or video on Wikimedia Commons"
             setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(MUTED)
@@ -111,20 +112,26 @@ class DiscoverActivity : Activity() {
             background = fieldBackground()
         }
         content.addView(searchInput, params(bottom = 8))
-        content.addView(actionButton("Search audio") { searchAudio(searchInput.text.toString()) },
-            params(bottom = 12))
+        val searchActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        searchActions.addView(actionButton("Search audio") {
+            searchMedia(searchInput.text.toString(), "audio")
+        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) })
+        searchActions.addView(actionButton("Search video") {
+            searchMedia(searchInput.text.toString(), "video")
+        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        content.addView(searchActions, params(bottom = 12))
         progress = ProgressBar(this).apply { visibility = View.GONE }
         content.addView(progress, params(bottom = 8))
         resultsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(resultsContainer)
         loadMoreButton = actionButton("Load more results") {
-            searchAudio(activeSearchQuery, append = true)
+            searchMedia(activeSearchQuery, activeMediaType, append = true)
         }.apply { visibility = View.GONE }
         content.addView(loadMoreButton, params(bottom = 8))
-        status.text = "Search uses Wikimedia Commons public audio files. Use Browser for the wider web."
+        status.text = "Search public audio and video with reusable licenses on Wikimedia Commons."
     }
 
-    private fun searchAudio(rawQuery: String, append: Boolean = false) {
+    private fun searchMedia(rawQuery: String, mediaType: String, append: Boolean = false) {
         val query = if (append) activeSearchQuery else rawQuery.trim()
         if (query.isEmpty()) {
             toast("Enter a search term first.")
@@ -136,6 +143,7 @@ class DiscoverActivity : Activity() {
         }
         if (!append) {
             activeSearchQuery = query
+            activeMediaType = mediaType
             nextSearchOffset = 0
             searchGeneration += 1
             resultsContainer.removeAllViews()
@@ -144,11 +152,11 @@ class DiscoverActivity : Activity() {
         val requestOffset = nextSearchOffset
         loadMoreButton.visibility = View.GONE
         progress.visibility = View.VISIBLE
-        status.text = if (append) "Loading more audio…" else "Searching audio…"
+        status.text = if (append) "Loading more $activeMediaType…" else "Searching $activeMediaType…"
         executor.execute {
             try {
                 val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
-                    URLEncoder.encode("filetype:audio $query", Charsets.UTF_8.name()) +
+                    URLEncoder.encode("filetype:$activeMediaType $query", Charsets.UTF_8.name()) +
                     "&gsrnamespace=6&gsrlimit=25&gsroffset=$requestOffset&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json"
                 val connection = URL(endpoint).openConnection()
                 connection.connectTimeout = 12_000
@@ -160,7 +168,7 @@ class DiscoverActivity : Activity() {
                 val continuation = response.optJSONObject("continue")
                 val hasMore = continuation?.has("gsroffset") == true
                 val followingOffset = continuation?.optInt("gsroffset", 0) ?: 0
-                val found = mutableListOf<AudioHit>()
+                val found = mutableListOf<MediaHit>()
                 if (pages != null) {
                     val keys = pages.keys()
                     while (keys.hasNext()) {
@@ -168,8 +176,8 @@ class DiscoverActivity : Activity() {
                         val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
                         val url = info.optString("url")
                         val mime = info.optString("mime")
-                        if (url.startsWith("https://") && mime.startsWith("audio/")) {
-                            found += AudioHit(
+                        if (url.startsWith("https://") && mime.startsWith("$activeMediaType/")) {
+                            found += MediaHit(
                                 title = page.optString("title").removePrefix("File:"),
                                 pageUrl = "https://commons.wikimedia.org/wiki/" +
                                     URLEncoder.encode(page.optString("title").replace(' ', '_'), "UTF-8"),
@@ -185,10 +193,10 @@ class DiscoverActivity : Activity() {
                     progress.visibility = View.GONE
                     if (!append) resultsContainer.removeAllViews()
                     if (found.isEmpty() && !append) {
-                        status.text = "No audio files found. Try another phrase or use Browser."
+                        status.text = "No $activeMediaType files found. Try another phrase."
                     } else {
-                        status.text = if (append) "More results loaded • ${found.size} added" else "${found.size} audio result(s)"
-                        found.forEach { addAudioHit(it) }
+                        status.text = if (append) "More results loaded • ${found.size} added" else "${found.size} $activeMediaType result(s)"
+                        found.forEach { addMediaHit(it) }
                     }
                     nextSearchOffset = followingOffset
                     loadMoreButton.visibility = if (hasMore && followingOffset > requestOffset) View.VISIBLE else View.GONE
@@ -204,7 +212,7 @@ class DiscoverActivity : Activity() {
         }
     }
 
-    private fun addAudioHit(hit: AudioHit) {
+    private fun addMediaHit(hit: MediaHit) {
         val card = card()
         card.addView(label(hit.title, 16, Color.WHITE, true))
         card.addView(label(hit.mime + "  •  " + formatSize(hit.size), 12, MUTED, false)
@@ -242,7 +250,7 @@ class DiscoverActivity : Activity() {
         }, LinearLayout.LayoutParams(0, dp(46), 1f))
         content.addView(controls, params(bottom = 8))
         downloadUrlInput = EditText(this).apply {
-            hint = "Paste a direct HTTP(S) media URL to download"
+            hint = "Paste a direct Wikimedia Commons media URL"
             setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(MUTED)
@@ -250,7 +258,7 @@ class DiscoverActivity : Activity() {
             background = fieldBackground()
         }
         content.addView(downloadUrlInput, params(bottom = 8))
-        content.addView(actionButton("Download direct media URL") {
+        content.addView(actionButton("Download Commons media") {
             enqueueDownload(downloadUrlInput.text.toString(), "web-media")
         }, params(bottom = 8))
         networkPolicyButton = actionButton(networkPolicyLabel()) { toggleNetworkPolicy() }
@@ -426,6 +434,12 @@ class DiscoverActivity : Activity() {
                     return@execute
                 }
                 val host = Uri.parse(url).host ?: throw IllegalArgumentException("Missing host")
+                if (!url.startsWith("https://", ignoreCase = true) ||
+                    !host.equals("upload.wikimedia.org", ignoreCase = true)
+                ) {
+                    runOnUiThread { toast("For safety, downloads are limited to public Wikimedia Commons media files.") }
+                    return@execute
+                }
                 val addresses = InetAddress.getAllByName(host)
                 if (addresses.isEmpty() || addresses.any { isPrivateAddress(it) }) {
                     runOnUiThread { toast("The download host resolves to a local/private address.") }
@@ -622,7 +636,7 @@ class DiscoverActivity : Activity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
-    private data class AudioHit(
+    private data class MediaHit(
         val title: String,
         val pageUrl: String,
         val directUrl: String,
