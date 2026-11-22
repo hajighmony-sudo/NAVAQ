@@ -56,6 +56,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
+    implementation("com.google.guava:guava:33.4.0-android")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation(files("libs/sherpa-onnx-release.aar"))

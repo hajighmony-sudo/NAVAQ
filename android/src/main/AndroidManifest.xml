@@ -24,15 +24,20 @@
             android:label="AVA settings"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <activity
-            android:name=".ava.AvaActivity"
+            android:name=".ui.NavaqHomeActivity"
             android:exported="true"
             android:label="NAVAQ"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            android:theme="@android:style/Theme.Material.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ava.AvaActivity"
+            android:exported="false"
+            android:label="NAVAQ AVA"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <service
             android:name=".playback.NavaqPlaybackService"
             android:exported="true"

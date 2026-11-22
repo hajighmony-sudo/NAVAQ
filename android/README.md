@@ -90,7 +90,8 @@ and user settings.
 
 AVA is an optional, isolated Android voice-assistant adapter that uses the existing Rust `PlayerCore` and Media3 player. It does not create a second audio engine.
 
-- `AvaActivity` is the current launcher entry point. It provides one-time model installation, runtime microphone/audio permission handling, start/stop listening, transcript and command-result display, and explicit confirmation before replacing an active queue. `AvaVoiceController` remains reusable by a future host screen.
+- `ui.NavaqHomeActivity` is the launcher: native glass UI (library, search, mini/full player, theme and interface settings) on top of the Media3 session. `AvaActivity` remains reachable from Settings > Playback.
+- `AvaActivity` provides It provides one-time model installation, runtime microphone/audio permission handling, start/stop listening, transcript and command-result display, and explicit confirmation before replacing an active queue. `AvaVoiceController` remains reusable by a future host screen.
 - `AvaSettingsFragment` can be embedded in the host settings navigation. It persists preferences in `navaq_ava_preferences`, shared with `AvaSettingsStore`.
 - The default profile is both music sources, local command processing, automatic language, and visual-only responses. Silent mode suppresses both speech and result broadcasts; Voice mode is opt-in.
 - Device audio is discovered read-only through MediaStore. The app must request `AvaPermissions.requiredAudioPermission()` at runtime before device-library access.
