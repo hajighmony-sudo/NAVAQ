@@ -101,6 +101,23 @@ AVA is an optional, isolated Android voice-assistant adapter that uses the exist
 - Optional wake-phrase gating accepts “هی آوا”, “Hey Ava”, “Okay Ava”, or “AVA” only while the user-started foreground session is active; it is not a system-wide or background hotword service.
 - Optional “هی آوا” / “Hey Ava” phrases are accepted as command prefixes only while the user-started foreground listening session is active. True always-on wake-word detection is not implemented; AVA stops listening when the user presses Stop or leaves the Activity. Android background microphone restrictions and battery policies make permanent listening a separate, explicit feature.
 
+### AVA Android voice commands in this build
+
+The Android action adapter is intentionally limited to the commands requested for this feature:
+
+| Persian voice command | Android behavior |
+|---|---|
+| «به شماره … زنگ بزن» | Opens the system dialer with the recognized number filled in; the user taps Call |
+| «وای‌فای را باز کن» | Opens Wi-Fi settings |
+| «بلوتوث را باز کن» | Opens Bluetooth settings |
+| «دوربین را باز کن» | Opens the camera app |
+| «پیام‌ها را باز کن» | Opens the default messaging app |
+| «آلارم را باز کن» | Opens the system alarms screen |
+| «تنظیمات باتری را باز کن» | Opens battery settings |
+| «تنظیمات اعلان‌ها را باز کن» | Opens NAVAQ's app notification settings |
+
+Persian digits (۰–۹), Arabic/Persian letter variants, and zero-width non-joiners are normalized before local command matching. Matching and dispatch are on-device; no online AI service is required. The app does not toggle radios silently, send messages, create alarms, or place calls. Android/OEM availability can vary, and the user remains in control of the opened system screen.
+
 ## Android system integrations and smart notifications
 
 NAVAQ keeps Android system actions behind visible, user-initiated intents:
