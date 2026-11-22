@@ -37,6 +37,21 @@ class AvaSpeechModelManager(context: Context) {
         0L
     }
 
+    /** Size of a retained, incomplete archive that can be resumed. */
+    fun pendingDownloadSizeBytes(): Long =
+        partialArchiveFile.takeIf { it.isFile }?.length() ?: 0L
+
+    fun hasPendingDownload(): Boolean = pendingDownloadSizeBytes() > 0L
+
+    /** Removes only the incomplete archive and its resume metadata. */
+    fun deletePendingDownload(): Boolean {
+        if (isInstalling.get()) return false
+        listOf(partialArchiveFile, archiveValidatorFile, archiveFile).forEach { file ->
+            if (file.exists()) file.delete()
+        }
+        return listOf(partialArchiveFile, archiveValidatorFile, archiveFile).none { it.exists() }
+    }
+
     /**
      * Removes only AVA's optional offline speech model.
      * The rest of NAVAQ and AVA's non-speech features are untouched.
