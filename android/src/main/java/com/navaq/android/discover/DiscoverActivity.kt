@@ -158,7 +158,7 @@ class DiscoverActivity : Activity() {
             try {
                 val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
                     URLEncoder.encode("filetype:$requestMediaType $query", Charsets.UTF_8.name()) +
-                    "&gsrnamespace=6&gsrlimit=25&gsroffset=$requestOffset&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json"
+                    "&gsrnamespace=6&gsrlimit=25&gsroffset=$requestOffset&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Cextmetadata&format=json"
                 val connection = URL(endpoint).openConnection()
                 connection.connectTimeout = 12_000
                 connection.readTimeout = 18_000
@@ -178,13 +178,18 @@ class DiscoverActivity : Activity() {
                         val url = info.optString("url")
                         val mime = info.optString("mime")
                         if (url.startsWith("https://") && mime.startsWith("$requestMediaType/")) {
+                            val metadata = info.optJSONObject("extmetadata")
                             found += MediaHit(
                                 title = page.optString("title").removePrefix("File:"),
                                 pageUrl = "https://commons.wikimedia.org/wiki/" +
                                     URLEncoder.encode(page.optString("title").replace(' ', '_'), "UTF-8"),
                                 directUrl = url,
                                 mime = mime,
-                                size = info.optLong("size", -1L)
+                                size = info.optLong("size", -1L),
+                                license = metadata?.optJSONObject("LicenseShortName")?.optString("value")
+                                    ?.let(::plainMetadata).orEmpty(),
+                                creator = metadata?.optJSONObject("Artist")?.optString("value")
+                                    ?.let(::plainMetadata).orEmpty()
                             )
                         }
                     }
@@ -217,7 +222,12 @@ class DiscoverActivity : Activity() {
         val card = card()
         card.addView(label(hit.title, 16, Color.WHITE, true))
         card.addView(label(hit.mime + "  •  " + formatSize(hit.size), 12, MUTED, false)
-            .apply { setPadding(0, dp(6), 0, dp(10)) })
+            .apply { setPadding(0, dp(6), 0, dp(6)) })
+        card.addView(label(
+            "License: " + hit.license.ifBlank { "Check source page before reuse" } +
+                if (hit.creator.isNotBlank()) " • Creator: " + hit.creator else "",
+            11, SUBTLE, false
+        ).apply { setPadding(0, 0, 0, dp(10)) })
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(actionButton("Download") { enqueueDownload(hit.directUrl, hit.title) },
             LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) })
@@ -654,6 +664,14 @@ class DiscoverActivity : Activity() {
         else -> "*/*"
     }
 
+    private fun plainMetadata(value: String): String = value
+        .replace(Regex("<[^>]*>"), " ")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(180)
+
     private fun formatSize(size: Long): String = if (size < 0) "Size unknown"
         else if (size < 1_000_000) "${size / 1_000} KB"
         else "${size / 1_000_000} MB"
@@ -715,7 +733,9 @@ class DiscoverActivity : Activity() {
         val pageUrl: String,
         val directUrl: String,
         val mime: String,
-        val size: Long
+        val size: Long,
+        val license: String,
+        val creator: String
     )
 
     companion object {
