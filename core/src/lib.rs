@@ -45,6 +45,7 @@ pub mod social;
 pub mod spatial;
 pub mod spatial_render;
 pub mod text;
+pub mod ui_settings;
 
 #[cfg(target_os = "android")]
 mod android_jni;
@@ -130,3 +131,7 @@ pub use spatial::{
 };
 pub use spatial_render::{render as render_spatial, SpatialRendering, SpeakerFeed};
 pub use text::{fuzzy_score, normalize_for_search};
+pub use ui_settings::{
+    CoverShape, Density, ListStyle, NavStyle, ThemeMode, UiPreset, UiSettings, UiSettingsError,
+    Wallpaper,
+};

@@ -1,0 +1,504 @@
+<title>NAVAQ Glass Player</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a phone simulator centred on the stage; wallpaper blobs under glass panels, One UI style large title, floating nav, mini-player, full-screen player sheet, stacked settings pages. */
+:root{
+  --bg:#eceff6; --outer:#dde2ee; --fg:#10131c; --fg2:rgba(16,19,28,.62);
+  --glass-rgb:255,255,255; --line:rgba(255,255,255,.7); --shadow:0 10px 34px rgba(30,40,80,.16);
+  --accent:#3e91ff; --accent-fg:#fff; --blur:28px; --ga:.45; --r:24px; --fs:1; --art-r:22%; --rowpad:10px;
+  --h1:212; --h2:268; --h3:172; --sat:85%; --blob:.55;
+  --font:"Vazirmatn",system-ui,"Segoe UI",Tahoma,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#07080d; --outer:#030409; --fg:#f2f4fb; --fg2:rgba(242,244,251,.62);
+  --glass-rgb:24,27,40; --line:rgba(255,255,255,.14); --shadow:0 12px 40px rgba(0,0,0,.45); --blob:.75; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#07080d; --outer:#030409; --fg:#f2f4fb; --fg2:rgba(242,244,251,.62);
+  --glass-rgb:24,27,40; --line:rgba(255,255,255,.14); --shadow:0 12px 40px rgba(0,0,0,.45); --blob:.75; color-scheme:dark}
+html,body{height:100%;margin:0}
+body{background:var(--outer);color:var(--fg);font-family:var(--font);overflow:hidden}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stage{height:100%;display:grid;place-items:center;padding:14px}
+.phone{position:relative;overflow:hidden;width:min(100%,412px);height:min(100%,860px);border-radius:46px;border:1px solid var(--line);
+  box-shadow:0 30px 80px rgba(0,0,0,.35),0 0 0 8px rgba(120,130,160,.12);background:var(--bg);font-size:calc(14px*var(--fs));direction:rtl;isolation:isolate}
+@media (max-width:480px){.stage{padding:0}.phone{width:100%;height:100%;border-radius:0;border:0;box-shadow:none}}
+.glass{background:rgba(var(--glass-rgb),var(--ga));-webkit-backdrop-filter:blur(var(--blur)) saturate(1.7);backdrop-filter:blur(var(--blur)) saturate(1.7);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.phone[data-glow="1"] .glass{box-shadow:var(--shadow),0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent),0 0 26px color-mix(in srgb,var(--accent) 22%,transparent)}
+.wall{position:absolute;inset:0;z-index:-1;overflow:hidden;background:var(--bg)}
+.b{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;filter:blur(52px);opacity:var(--blob);transition:background .8s}
+.b1{top:-14%;right:-22%;background:hsl(var(--h1) var(--sat) 56%);animation:fl1 20s ease-in-out infinite alternate}
+.b2{bottom:6%;left:-30%;background:hsl(var(--h2) var(--sat) 52%);animation:fl2 24s ease-in-out infinite alternate}
+.b3{top:38%;right:-10%;width:50%;background:hsl(var(--h3) var(--sat) 58%);animation:fl1 17s ease-in-out infinite alternate-reverse}
+@keyframes fl1{to{transform:translate(-12%,14%) scale(1.15)}}
+@keyframes fl2{to{transform:translate(16%,-10%) scale(.9)}}
+.phone.noanim *,.phone.noanim *::before{animation:none!important;transition:none!important}
+.sb{position:absolute;top:0;inset-inline:0;height:34px;display:flex;justify-content:space-between;align-items:center;padding:6px 26px 0;font-size:.82em;font-weight:600;z-index:60;pointer-events:none}
+.sb i{position:absolute;left:50%;top:9px;width:11px;height:11px;border-radius:50%;background:#000;transform:translateX(-50%)}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;padding-top:34px}
+.scroll{flex:1;overflow-y:auto;padding:0 16px 176px;scrollbar-width:none}
+.scroll::-webkit-scrollbar{display:none}
+.hd{padding:8px 20px 4px;display:flex;align-items:center;justify-content:space-between;gap:8px;transition:padding .25s}
+.big{font-size:2.35em;font-weight:700;letter-spacing:-.01em;margin:0;transition:font-size .25s}
+.hd.sm .big{font-size:1.25em}
+.ib{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none}
+.ib:hover{background:rgba(var(--glass-rgb),.5)}
+.ib svg,.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:8px 20px 12px;scrollbar-width:none;flex:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{padding:8px 16px;border-radius:999px;white-space:nowrap;font-weight:500;background:rgba(var(--glass-rgb),calc(var(--ga) * .8));border:1px solid var(--line);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.chip.on{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.actrow{display:flex;gap:10px;margin:2px 0 12px}
+.btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:calc(var(--r)*.8);font-weight:600}
+.btn.pri{background:var(--accent);color:var(--accent-fg)}
+.tr{display:flex;align-items:center;gap:12px;padding:var(--rowpad) 6px;border-radius:calc(var(--r)*.7);cursor:pointer;transition:background .2s}
+.tr:hover{background:rgba(var(--glass-rgb),.35)}
+.tr.cur{background:rgba(var(--glass-rgb),.5)}
+.tr.cur .ti b{color:var(--accent)}
+.cv{width:52px;height:52px;flex:none;border-radius:var(--art-r);position:relative;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.cv::after{content:"";position:absolute;inset:0;background:radial-gradient(90% 70% at 25% 15%,rgba(255,255,255,.5),transparent 60%)}
+.cv svg{position:absolute;inset:28%;width:44%;height:44%;fill:none;stroke:rgba(255,255,255,.75);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;z-index:1}
+.ti{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ti b{font-weight:600;font-size:1.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ti span{color:var(--fg2);font-size:.86em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bars{display:flex;gap:2px;align-items:flex-end;height:16px;width:18px}
+.bars i{flex:1;background:var(--accent);border-radius:2px;animation:bar 0.9s ease-in-out infinite alternate}
+.bars i:nth-child(2){animation-delay:-.3s}.bars i:nth-child(3){animation-delay:-.6s}
+.bars.pz i{animation-play-state:paused;height:30%}
+@keyframes bar{from{height:20%}to{height:100%}}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{display:flex;flex-direction:column;gap:8px;cursor:pointer;min-width:0}
+.card .cv{width:100%;height:auto;aspect-ratio:1}
+.card b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card span{color:var(--fg2);font-size:.85em}
+.gen{border-radius:var(--r);padding:18px 14px;font-weight:700;font-size:1.05em;min-height:84px;display:flex;align-items:flex-end;color:#fff;cursor:pointer;position:relative;overflow:hidden}
+.nav{position:absolute;z-index:20;bottom:14px;left:14px;right:14px;height:64px;display:flex;justify-content:space-around;align-items:center;padding:6px}
+.phone[data-nav="docked"] .nav{bottom:0;left:0;right:0;border-radius:var(--r) var(--r) 0 0;height:74px;padding-bottom:12px}
+.nv{flex:1;height:100%;border-radius:calc(var(--r)*.75);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:.78em;color:var(--fg2);transition:background .25s,color .25s}
+.nv.on{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent);font-weight:600}
+.mini{position:absolute;z-index:19;left:14px;right:14px;bottom:90px;height:64px;display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;overflow:hidden}
+.phone[data-nav="docked"] .mini{bottom:84px}
+.mini .cv{width:46px;height:46px}
+.mini .pr{position:absolute;bottom:0;left:0;height:3px;background:var(--accent);width:0;transition:width .25s linear}
+.player{position:absolute;inset:0;z-index:40;transform:translateY(104%);transition:transform .5s cubic-bezier(.2,.85,.2,1);display:flex;flex-direction:column;padding:42px 22px 22px;
+  background:radial-gradient(120% 70% at 50% 0,hsl(var(--ph) 75% 48%/.85),transparent 65%),radial-gradient(90% 60% at 0 100%,hsl(calc(var(--ph) + 70) 70% 45%/.55),transparent 70%),var(--bg)}
+.player.open{transform:none}
+.ptop{display:flex;align-items:center;justify-content:space-between}
+.ptop small{color:var(--fg2);font-weight:500}
+.stagep{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;position:relative}
+.art{width:min(76%,38vh);aspect-ratio:1;transition:transform .6s cubic-bezier(.3,1.4,.4,1),border-radius .4s;transform:scale(.88)}
+.art.pl{transform:scale(1)}
+.art .cv{width:100%;height:100%;box-shadow:0 22px 60px rgba(0,0,0,.45)}
+.art .cv svg{inset:30%;width:40%;height:40%}
+.art.spin .cv{animation:spin 14s linear infinite}
+.art.spin:not(.pl) .cv{animation-play-state:paused}
+@keyframes spin{to{transform:rotate(360deg)}}
+.viz{width:100%;height:56px;display:block}
+.pmeta{display:flex;align-items:center;gap:10px;margin-top:6px}
+.pmeta .ti b{font-size:1.4em}
+.seekw{margin-top:6px}
+.seek{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;direction:ltr;margin:0}
+.seek::-webkit-slider-runnable-track{height:6px;border-radius:6px;background:linear-gradient(90deg,var(--accent) var(--p,0%),rgba(var(--glass-rgb),.55) var(--p,0%))}
+.seek::-moz-range-track{height:6px;border-radius:6px;background:rgba(var(--glass-rgb),.55)}
+.seek::-moz-range-progress{height:6px;border-radius:6px;background:var(--accent)}
+.seek::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;margin-top:-5px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.seek::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+.times{display:flex;justify-content:space-between;color:var(--fg2);font-size:.8em;direction:ltr;font-variant-numeric:tabular-nums}
+.ctl{display:flex;align-items:center;justify-content:space-between;margin:8px 0 4px}
+.ctl .ib{width:48px;height:48px}
+.ctl .ib svg{width:26px;height:26px}
+.ctl .ib.on{color:var(--accent)}
+.playb{width:72px!important;height:72px!important;background:var(--accent);color:var(--accent-fg);box-shadow:0 10px 30px color-mix(in srgb,var(--accent) 55%,transparent)}
+.playb svg{fill:currentColor;stroke:none;width:30px!important;height:30px!important}
+.tools{display:flex;justify-content:space-around;padding:8px;margin-top:6px}
+.tools .ib.on{color:var(--accent)}
+.lyr{width:100%;overflow-y:auto;max-height:100%;text-align:center;padding:10px 4px;scrollbar-width:none}
+.lyr p{margin:0 0 14px;font-size:1.35em;font-weight:600;color:var(--fg2);transition:all .35s}
+.lyr p.on{color:var(--fg);transform:scale(1.06)}
+.qlist{width:100%;overflow-y:auto;max-height:100%;scrollbar-width:none}
+.sheet{position:absolute;inset:auto 10px 10px;z-index:50;padding:18px;transform:translateY(120%);transition:transform .4s cubic-bezier(.2,.85,.2,1)}
+.sheet.open{transform:none}
+.sheet h4{margin:0 0 12px;font-size:1.1em}
+.scrim{position:absolute;inset:0;z-index:45;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .3s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sub{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;padding-top:34px;transform:translateX(-100%);transition:transform .4s cubic-bezier(.2,.85,.2,1);background:color-mix(in srgb,var(--bg) 55%,transparent);-webkit-backdrop-filter:blur(var(--blur));backdrop-filter:blur(var(--blur))}
+.sub.open{transform:none}
+.grp{padding:6px 14px;margin:0 0 14px}
+.gt{margin:16px 6px 8px;color:var(--fg2);font-size:.82em;font-weight:600;letter-spacing:.02em}
+.row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid rgba(128,134,160,.2)}
+.row:last-child{border-bottom:0}
+.row .ti span{white-space:normal}
+.row.col{flex-direction:column;align-items:stretch;gap:10px}
+.rh{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rh output{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+.ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:var(--accent-fg);flex:none}
+.ico svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.sw{width:50px;height:30px;border-radius:30px;background:rgba(128,134,160,.4);position:relative;flex:none;transition:background .25s}
+.sw::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:transform .25s}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"]::after{transform:translateX(-20px)}
+.rg{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;margin:0;direction:ltr}
+.rg::-webkit-slider-runnable-track{height:6px;border-radius:6px;background:linear-gradient(90deg,var(--accent) var(--p,0%),rgba(128,134,160,.35) var(--p,0%))}
+.rg::-moz-range-track{height:6px;border-radius:6px;background:rgba(128,134,160,.35)}
+.rg::-moz-range-progress{height:6px;border-radius:6px;background:var(--accent)}
+.rg::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;margin-top:-7px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.rg::-moz-range-thumb{width:20px;height:20px;border:0;border-radius:50%;background:#fff}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{padding:8px 13px;border-radius:999px;background:rgba(128,134,160,.2);font-size:.92em}
+.seg button.on{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.sws{display:flex;flex-wrap:wrap;gap:10px}
+.sws button{width:36px;height:36px;border-radius:50%;border:3px solid transparent;box-shadow:inset 0 0 0 2px rgba(255,255,255,.55)}
+.sws button.on{border-color:var(--fg)}
+.sws input{width:36px;height:36px;border:0;padding:0;background:none;border-radius:50%}
+.pres{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.pres button{height:78px;border-radius:calc(var(--r)*.7);color:#fff;font-weight:700;display:flex;align-items:flex-end;padding:10px;text-shadow:0 1px 6px rgba(0,0,0,.4);border:2px solid transparent}
+.pres button.on{border-color:var(--fg)}
+.sq{display:flex;align-items:center;gap:8px;padding:10px 14px;margin:6px 16px 8px}
+.sq input{flex:1;background:none;border:0;color:inherit;font:inherit;outline:0;min-width:0}
+.eq{display:flex;justify-content:space-between;gap:4px;direction:ltr}
+.eqc{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.75em;color:var(--fg2);flex:1}
+.vs{position:relative;width:36px;height:140px}
+.vs input{position:absolute;width:140px;height:36px;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-90deg)}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;background:color-mix(in srgb,var(--accent) 24%,transparent);color:var(--accent);font-weight:600;font-size:.85em}
+.toast{position:absolute;z-index:80;top:46px;left:50%;transform:translate(-50%,-30px);opacity:0;padding:10px 18px;border-radius:99px;transition:all .35s;pointer-events:none;white-space:nowrap;font-weight:500}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.empty{text-align:center;color:var(--fg2);padding:40px 10px}
+.back{display:flex;align-items:center;gap:4px}
+.note{color:var(--fg2);font-size:.82em;line-height:1.7;padding:4px 6px 10px}
+@media (prefers-reduced-motion:reduce){.b,.bars i,.art.spin .cv{animation:none!important}}
+</style>
+
+<div class="stage">
+<div class="phone" id="phone" data-nav="floating" aria-label="شبیه‌ساز پخش‌کننده NAVAQ">
+  <div class="wall" aria-hidden="true"><div class="b b1"></div><div class="b b2"></div><div class="b b3"></div></div>
+  <div class="sb"><span>۹:۴۱</span><i></i><span id="batt">۸۷٪</span></div>
+  <div class="screen" id="screen"></div>
+  <div class="mini glass" id="mini"></div>
+  <nav class="nav glass" id="nav" aria-label="ناوبری"></nav>
+  <div class="sub" id="sub"></div>
+  <div class="player" id="player"></div>
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet glass" id="sheet"></div>
+  <div class="toast glass" id="toast" role="status"></div>
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var $=function(s,e){return (e||document).querySelector(s)};
+var fa=function(n){return String(n).replace(/\d/g,function(d){return "۰۱۲۳۴۵۶۷۸۹"[d]})};
+var fmt=function(s){s=Math.max(0,Math.floor(s));return fa(Math.floor(s/60)+":"+String(s%60).padStart(2,"0"))};
+var IC={
+play:'<path d="M7 4.5v15l12-7.5z"/>',pause:'<rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/>',
+next:'<path d="M6 5v14l9-7z" fill="currentColor"/><path d="M18 5v14"/>',prev:'<path d="M18 5v14l-9-7z" fill="currentColor"/><path d="M6 5v14"/>',
+shuffle:'<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',repeat:'<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
+repeat1:'<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/><path d="M11 10l1.5-1v6"/>',
+heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>',
+heartF:'<path fill="currentColor" d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>',
+down:'<path d="M6 9l6 6 6-6"/>',right:'<path d="M9 6l6 6-6 6"/>',left:'<path d="M15 6l-6 6 6 6"/>',
+search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',sliders:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+library:'<path d="M4 5v14M9 5v14M14 6.5l5 12.500"/>',music:'<path d="M9 18V5l11-2v13"/><circle cx="6.500" cy="18" r="2.500"/><circle cx="17.500" cy="16" r="2.500"/>',
+more:'<circle cx="5" cy="12" r="1.500"/><circle cx="12" cy="12" r="1.500"/><circle cx="19" cy="12" r="1.500"/>',
+queue:'<path d="M4 6h12M4 12h12M4 18h8"/><path d="M18 14l4 3-4 3z" fill="currentColor"/>',lyrics:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
+eq:'<path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="12" r="2" fill="currentColor"/>',
+timer:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>',speed:'<path d="M4 18a8 8 0 1 1 16 0M12 18l4-6"/>',
+users:'<circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c0-3.600 3-6 6.500-6s6.500 2.400 6.500 6"/><path d="M16 4.500a3.500 3.500 0 0 1 0 7M18 14c2.200.7 3.500 2.700 3.500 6"/>',
+palette:'<path d="M12 3a9 9 0 1 0 0 18c1.200 0 1.800-.8 1.500-1.800-.4-1.200.3-2.200 1.600-2.200H17a4 4 0 0 0 4-4C21 6.500 17 3 12 3z"/><circle cx="8" cy="11" r="1" fill="currentColor"/><circle cx="12" cy="7.500" r="1" fill="currentColor"/><circle cx="16" cy="11" r="1" fill="currentColor"/>',
+haptic:'<path d="M8 6l-3 6 3 6M16 6l3 6-3 6M12 8v8"/>',room:'<path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/>',
+info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',check:'<path d="M5 12l5 5 9-10"/>',close:'<path d="M6 6l12 12M18 6L6 18"/>',
+reset:'<path d="M3 12a9 9 0 1 0 3-6.700L3 8M3 3v5h5"/>',type:'<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',layout:'<rect x="4" y="4" width="7" height="7" rx="1.500"/><rect x="13" y="4" width="7" height="7" rx="1.500"/><rect x="4" y="13" width="7" height="7" rx="1.500"/><rect x="13" y="13" width="7" height="7" rx="1.500"/>',
+glass:'<path d="M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z"/>',wave:'<path d="M3 12h2M7 8v8M11 4v16M15 8v8M19 10v4"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+disc:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.500"/>',dna:'<path d="M7 3c0 6 10 6 10 12s-10 6-10 6M17 3c0 6-10 6-10 12s10 6 10 6M8 7h8M8 17h8"/>'};
+function ic(n,c){return '<svg viewBox="0 0 24 24" class="'+(c||"ic")+'" aria-hidden="true">'+IC[n]+'</svg>'}
+
+/* ---------- data ---------- */
+var T=[
+["شب‌های روشن","آرین کاوه","ستاره‌شمار","پاپ",214,210],["باران در تهران","نیلوفر رادمهر","ابر و آیینه","لوفای",187,265],
+["کویر","گروه سایه","ریگ روان","راک",242,25],["نسیم صبح","آرین کاوه","ستاره‌شمار","پاپ",198,195],
+["آیینه","مهتاب سلامی","ابر و آیینه","جاز",226,330],["شهر خاموش","گروه سایه","ریگ روان","راک",263,5],
+["رقص نور","دی‌جی پرهام","فرکانس","الکترونیک",205,285],["دریا","مهتاب سلامی","آبی ژرف","کلاسیک",301,185],
+["جاده","نیلوفر رادمهر","ابر و آیینه","لوفای",172,150],["پروانه","آرین کاوه","ستاره‌شمار","پاپ",189,345],
+["ستاره باران","دی‌جی پرهام","فرکانس","الکترونیک",218,240],["زمزمه","مهتاب سلامی","آبی ژرف","کلاسیک",254,60]
+].map(function(a,i){return {id:i,title:a[0],artist:a[1],album:a[2],genre:a[3],dur:a[4],h:a[5]}});
+var LYR=["شب از پنجره آرام می‌آید","ستاره‌ها روی شانه‌ام می‌نشینند","هر نفس آهنگی تازه است","با من بمان تا صبح","صدای باران روی شیشه","قصه‌ای که تمام نمی‌شود","دستت را بده، شهر خوابیده","و ما هنوز بیداریم"];
+var ACC=[["#3e91ff","آبی"],["#8b5cf6","بنفش"],["#ff5d8f","صورتی"],["#ff8a3d","نارنجی"],["#2fd08a","سبز"],["#1ec8d6","فیروزه‌ای"],["#ff4d4d","قرمز"],["#f5b82e","طلایی"]];
+var WALL=[["aurora","شفق",[212,268,172],85],["sunset","غروب",[20,335,48],88],["ocean","اقیانوس",[196,232,160],80],["forest","جنگل",[140,95,182],70],["mono","خاکستری",[220,220,220],4],["album","هم‌رنگ آهنگ",null,80]];
+var PRESETS=[
+ {n:"شفق شیشه‌ای",g:"linear-gradient(135deg,#3e91ff,#8b5cf6)",v:{theme:"dark",accent:"#3e91ff",wall:"aurora",blur:28,glass:22,radius:24,glow:true}},
+ {n:"شکوفه",g:"linear-gradient(135deg,#ff8fb1,#ffc38a)",v:{theme:"light",accent:"#ff5d8f",wall:"sunset",blur:30,glass:50,radius:28,glow:false}},
+ {n:"نیمه‌شب",g:"linear-gradient(135deg,#1b1038,#6d3fd0)",v:{theme:"dark",accent:"#8b5cf6",wall:"ocean",blur:36,glass:30,radius:20,glow:true}},
+ {n:"مینیمال",g:"linear-gradient(135deg,#6b7080,#c9ccd6)",v:{theme:"auto",accent:"#2fd08a",wall:"mono",blur:44,glass:40,radius:12,glow:false}}];
+var EQP={"فلت":[0,0,0,0,0],"باس":[7,5,1,-1,-2],"وکال":[-2,0,4,4,1],"راک":[5,2,-2,3,5],"لوفای":[4,2,-1,-3,-5],"پاپ":[-1,2,4,2,-1]};
+var EQF=["۶۰","۲۳۰","۹۱۰","۳٫۶k","۱۴k"];
+var DEF={theme:"dark",accent:"#3e91ff",wall:"aurora",blur:28,glass:22,radius:24,glow:true,anim:true,viz:true,spin:false,font:100,density:"cozy",art:"rounded",list:"list",nav:"floating",showDur:true,tabArtists:true,tabGenres:true,
+ crossfade:3,gapless:true,rg:"track",speed:1,skipSil:false,fadeIO:true,headset:true,eqOn:true,eq:[2,1,0,2,3],bass:30,virt:20,spatial:true,rw:5,rd:4,rh:2.7,furn:"mid",headtrack:false,
+ haptic:true,hap:60,hapMode:"beat",minLen:30,hideDup:true,sort:"title",rooms:true,ctrl:"everyone",dna:true,dnaShare:true,scrobble:true};
+var S=Object.assign({},DEF,load("nvq-ui-v1"));
+function load(k){try{return JSON.parse(localStorage.getItem(k)||"{}")}catch(e){return {}}}
+function save(){try{localStorage.setItem("nvq-ui-v1",JSON.stringify(S))}catch(e){}}
+
+/* ---------- state ---------- */
+var P={idx:1,pos:62,playing:true,shuffle:false,repeat:"off",fav:{0:1,4:1},order:T.map(function(t){return t.id}),view:"art",open:false,sleepAt:0,sleepEnd:false};
+var UI={screen:"library",tab:"tracks",detail:null,path:[],q:"",sheet:null};
+var $s=$("#screen"),$m=$("#mini"),$n=$("#nav"),$sub=$("#sub"),$p=$("#player"),$sh=$("#sheet"),$sc=$("#scrim"),$ph=$("#phone");
+var cur=function(){return T[P.idx]};
+function cover(t,extra){var h=t.h;return '<div class="cv" style="background:linear-gradient(140deg,hsl('+h+' 78% 58%),hsl('+(h+55)+' 72% 38%))'+(extra||"")+'">'+ic("music")+'</div>'}
+function toast(m){var e=$("#toast");e.textContent=m;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(function(){e.classList.remove("on")},1800)}
+function fgFor(hex){var n=parseInt(hex.slice(1),16),r=n>>16,g=(n>>8)&255,b=n&255;return (0.299*r+0.587*g+0.114*b)>165?"#10131c":"#fff"}
+
+/* ---------- apply settings ---------- */
+function apply(){
+  var r=document.documentElement,st=$ph.style;
+  if(S.theme==="auto")r.removeAttribute("data-theme");else r.setAttribute("data-theme",S.theme);
+  st.setProperty("--accent",S.accent);st.setProperty("--accent-fg",fgFor(S.accent));
+  st.setProperty("--blur",S.blur+"px");st.setProperty("--ga",S.glass/100);st.setProperty("--r",S.radius+"px");st.setProperty("--fs",S.font/100);
+  st.setProperty("--art-r",S.art==="circle"?"50%":S.art==="square"?"6px":"22%");
+  st.setProperty("--rowpad",S.density==="compact"?"5px":S.density==="roomy"?"15px":"10px");
+  $ph.classList.toggle("noanim",!S.anim);$ph.dataset.nav=S.nav;$ph.dataset.glow=S.glow?"1":"0";
+  var w=WALL.filter(function(x){return x[0]===S.wall})[0]||WALL[0],h=w[2]||[cur().h,cur().h+60,cur().h-55];
+  st.setProperty("--h1",h[0]);st.setProperty("--h2",h[1]);st.setProperty("--h3",h[2]);st.setProperty("--sat",w[3]+"%");
+  $ph.style.setProperty("--ph",cur().h);
+}
+
+/* ---------- library ---------- */
+function sorted(list){var l=list.slice();if(S.sort==="title")l.sort(function(a,b){return a.title.localeCompare(b.title,"fa")});else if(S.sort==="artist")l.sort(function(a,b){return a.artist.localeCompare(b.artist,"fa")});else if(S.sort==="dur")l.sort(function(a,b){return b.dur-a.dur});return l.filter(function(t){return t.dur>=S.minLen})}
+function row(t){var on=t.id===P.idx;
+  return '<div class="tr'+(on?" cur":"")+'" data-act="play" data-id="'+t.id+'" role="button" tabindex="0">'+cover(t)+'<div class="ti"><b>'+t.title+'</b><span>'+t.artist+(S.showDur?" · "+fmt(t.dur):"")+'</span></div>'+(on?'<div class="bars'+(P.playing?"":" pz")+'"><i></i><i></i><i></i></div>':"")+
+  '<button class="ib" data-act="fav" data-id="'+t.id+'" aria-label="پسندیدن">'+ic(P.fav[t.id]?"heartF":"heart")+'</button></div>'}
+function cardT(t){return '<div class="card" data-act="play" data-id="'+t.id+'" role="button" tabindex="0">'+cover(t)+'<b>'+t.title+'</b><span>'+t.artist+'</span></div>'}
+function tlist(list){list=sorted(list);if(!list.length)return '<div class="empty">آهنگی پیدا نشد</div>';
+  var h='<div class="actrow"><button class="btn pri" data-act="playall" data-ids="'+list.map(function(t){return t.id}).join(",")+'">'+ic("play")+' پخش همه</button><button class="btn glass" data-act="shufall" data-ids="'+list.map(function(t){return t.id}).join(",")+'">'+ic("shuffle")+' درهم</button></div>';
+  return h+(S.list==="grid"?'<div class="grid">'+list.map(cardT).join("")+'</div>':list.map(row).join(""))}
+function uniq(k){var m={};T.forEach(function(t){(m[t[k]]=m[t[k]]||[]).push(t)});return m}
+function libBody(){
+  if(UI.detail){var d=UI.detail,L=T.filter(function(t){return d.k==="fav"?P.fav[t.id]:d.k==="recent"?t.id%2===1:d.k==="top"?t.dur>220:t[d.k]===d.v});return tlist(L)}
+  var tab=UI.tab,h="",m;
+  if(tab==="tracks")return tlist(T);
+  if(tab==="playlists"){var pl=[["fav","علاقه‌مندی‌ها",null,"#ff5d8f"],["recent","اخیراً پخش‌شده",null,"#3e91ff"],["top","پربازدیدها",null,"#ff8a3d"]];
+    return '<div class="grid">'+pl.map(function(p){return '<div class="gen" data-act="detail" data-k="'+p[0]+'" data-v="" data-title="'+p[1]+'" style="background:linear-gradient(140deg,'+p[3]+',#0006)">'+p[1]+'</div>'}).join("")+'</div><p class="note">پلی‌لیست‌های خودکار از موتور هسته (تاریخچه، امتیاز و Music DNA) ساخته می‌شوند.</p>'}
+  if(tab==="albums"){m=uniq("album");return '<div class="grid">'+Object.keys(m).map(function(k){var t=m[k][0];return '<div class="card" data-act="detail" data-k="album" data-v="'+k+'" data-title="'+k+'" role="button" tabindex="0">'+cover(t)+'<b>'+k+'</b><span>'+t.artist+'</span></div>'}).join("")+'</div>'}
+  if(tab==="artists"){m=uniq("artist");return Object.keys(m).map(function(k){var t=m[k][0];return '<div class="tr" data-act="detail" data-k="artist" data-v="'+k+'" data-title="'+k+'" role="button" tabindex="0">'+cover(t,";border-radius:50%")+'<div class="ti"><b>'+k+'</b><span>'+fa(m[k].length)+' آهنگ</span></div>'+ic("left")+'</div>'}).join("")}
+  m=uniq("genre");return '<div class="grid">'+Object.keys(m).map(function(k){var t=m[k][0];return '<div class="gen" data-act="detail" data-k="genre" data-v="'+k+'" data-title="'+k+'" style="background:linear-gradient(140deg,hsl('+t.h+' 75% 52%),hsl('+(t.h+50)+' 70% 34%))">'+k+'</div>'}).join("")+'</div>'}
+function renderLibrary(){
+  var tabs=[["playlists","پلی‌لیست‌ها"],["tracks","آهنگ‌ها"],["albums","آلبوم‌ها"]];
+  if(S.tabArtists)tabs.push(["artists","هنرمندان"]);if(S.tabGenres)tabs.push(["genres","ژانرها"]);
+  if(!tabs.some(function(t){return t[0]===UI.tab}))UI.tab="tracks";
+  var head=UI.detail?'<div class="hd"><button class="ib back" data-act="back" aria-label="بازگشت">'+ic("right")+'</button><h1 class="big" style="font-size:1.4em;flex:1">'+UI.detail.title+'</h1></div>':
+   '<div class="hd" id="hd"><h1 class="big">موسیقی</h1><div><button class="ib" data-act="go" data-v="search" aria-label="جستجو">'+ic("search")+'</button><button class="ib" data-act="go" data-v="settings" aria-label="تنظیمات">'+ic("sliders")+'</button></div></div>'+
+   '<div class="chips" role="tablist">'+tabs.map(function(t){return '<button class="chip'+(UI.tab===t[0]?" on":"")+'" data-act="tab" data-v="'+t[0]+'" role="tab">'+t[1]+'</button>'}).join("")+'</div>';
+  $s.innerHTML=head+'<div class="scroll" id="sc">'+libBody()+'</div>';bindHd();
+}
+function bindHd(){var sc=$("#sc"),hd=$("#hd");if(!sc||!hd)return;sc.addEventListener("scroll",function(){hd.classList.toggle("sm",sc.scrollTop>24)})}
+function renderSearch(){
+  var q=UI.q.trim(),L=q?T.filter(function(t){return (t.title+t.artist+t.album+t.genre).indexOf(q)>-1}):[];
+  $s.innerHTML='<div class="hd"><h1 class="big">جستجو</h1></div><div class="sq glass">'+ic("search")+'<input id="qi" type="search" placeholder="آهنگ، هنرمند یا آلبوم" value="'+q.replace(/"/g,"")+'" autocomplete="off"></div><div class="scroll" id="sc"><div id="res">'+
+   (q?(L.length?L.map(row).join(""):'<div class="empty">نتیجه‌ای برای «'+q.replace(/</g,"")+'» پیدا نشد</div>'):'<div class="gt">جستجوی پیشنهادی</div><div class="seg">'+["لوفای","راک","آرین کاوه","دریا","کلاسیک"].map(function(x){return '<button data-act="q" data-v="'+x+'">'+x+'</button>'}).join("")+'</div>')+'</div></div>';
+  var i=$("#qi");i.addEventListener("input",function(){UI.q=i.value;var q2=UI.q.trim(),L2=q2?T.filter(function(t){return (t.title+t.artist+t.album+t.genre).indexOf(q2)>-1}):[];
+    $("#res").innerHTML=q2?(L2.length?L2.map(row).join(""):'<div class="empty">نتیجه‌ای پیدا نشد</div>'):""});
+}
+
+/* ---------- nav & mini ---------- */
+function renderNav(){var it=[["library","کتابخانه","library"],["search","جستجو","search"],["settings","تنظیمات","sliders"]];
+  $n.innerHTML=it.map(function(x){return '<button class="nv'+(UI.screen===x[0]?" on":"")+'" data-act="go" data-v="'+x[0]+'">'+ic(x[2])+'<span>'+x[1]+'</span></button>'}).join("")}
+function renderMini(){var t=cur();
+  $m.innerHTML=cover(t)+'<div class="ti"><b>'+t.title+'</b><span>'+t.artist+(P.sleepAt?" · ⏾ "+fa(Math.max(0,Math.ceil((P.sleepAt-Date.now())/60000)))+" دقیقه":"")+'</span></div><button class="ib" data-act="toggle" aria-label="پخش یا توقف">'+ic(P.playing?"pause":"play")+'</button><button class="ib" data-act="next" aria-label="بعدی">'+ic("next")+'</button><div class="pr" id="mpr"></div>';
+  $m.setAttribute("role","button");$m.setAttribute("tabindex","0");updateProg()}
+
+/* ---------- player ---------- */
+function renderPlayer(){var t=cur(),f=P.fav[t.id];
+  var body="";
+  if(P.view==="art")body='<div class="art'+(P.playing?" pl":"")+(S.spin&&S.art==="circle"?" spin":"")+'">'+cover(t)+'</div>'+(S.viz?'<canvas class="viz" id="viz" width="360" height="56"></canvas>':"");
+  else if(P.view==="lyrics")body='<div class="lyr" id="lyr">'+LYR.map(function(l,i){return '<p data-i="'+i+'">'+l+'</p>'}).join("")+'</div>';
+  else body='<div class="qlist">'+P.order.map(function(id,i){var q=T[id];return '<div class="tr'+(id===P.idx?" cur":"")+'" data-act="play" data-id="'+id+'">'+cover(q)+'<div class="ti"><b>'+q.title+'</b><span>'+q.artist+'</span></div><span class="pill">'+fa(i+1)+'</span></div>'}).join("")+'</div>';
+  $p.innerHTML='<div class="ptop"><button class="ib" data-act="close" aria-label="بستن">'+ic("down")+'</button><small>در حال پخش · شبیه‌ساز</small><button class="ib" data-act="sheet" data-v="eq" aria-label="اکولایزر">'+ic("eq")+'</button></div>'+
+   '<div class="stagep">'+body+'</div>'+
+   '<div class="pmeta"><div class="ti"><b>'+t.title+'</b><span>'+t.artist+' · '+t.album+'</span></div><button class="ib" data-act="fav" data-id="'+t.id+'" aria-label="پسندیدن">'+ic(f?"heartF":"heart")+'</button></div>'+
+   '<div class="seekw"><input class="seek" id="seek" type="range" min="0" max="'+t.dur+'" step="1" value="'+Math.floor(P.pos)+'" aria-label="جایگاه پخش"><div class="times"><span id="tc">'+fmt(P.pos)+'</span><span>'+fmt(t.dur)+'</span></div></div>'+
+   '<div class="ctl"><button class="ib'+(P.shuffle?" on":"")+'" data-act="shuffle" aria-label="درهم">'+ic("shuffle")+'</button><button class="ib" data-act="prev" aria-label="قبلی">'+ic("prev")+'</button><button class="ib playb" data-act="toggle" aria-label="پخش یا توقف">'+ic(P.playing?"pause":"play")+'</button><button class="ib" data-act="next" aria-label="بعدی">'+ic("next")+'</button><button class="ib'+(P.repeat!=="off"?" on":"")+'" data-act="repeat" aria-label="تکرار">'+ic(P.repeat==="one"?"repeat1":"repeat")+'</button></div>'+
+   '<div class="tools glass"><button class="ib'+(P.view==="lyrics"?" on":"")+'" data-act="view" data-v="lyrics" aria-label="متن">'+ic("lyrics")+'</button><button class="ib" data-act="sheet" data-v="speed" aria-label="سرعت">'+ic("speed")+'</button><button class="ib'+(P.sleepAt?" on":"")+'" data-act="sheet" data-v="sleep" aria-label="خواب">'+ic("timer")+'</button><button class="ib" data-act="sheet" data-v="room" aria-label="اتاق مشترک">'+ic("users")+'</button><button class="ib'+(P.view==="queue"?" on":"")+'" data-act="view" data-v="queue" aria-label="صف">'+ic("queue")+'</button></div>';
+  var sk=$("#seek");if(sk){sk.addEventListener("input",function(){P.pos=+sk.value;updateProg()})}
+  apply();updateProg();
+}
+function updateProg(){var t=cur(),p=t.dur?P.pos/t.dur*100:0;
+  var sk=$("#seek");if(sk){sk.value=Math.floor(P.pos);sk.style.setProperty("--p",p+"%")}
+  var tc=$("#tc");if(tc)tc.textContent=fmt(P.pos);var mp=$("#mpr");if(mp)mp.style.width=p+"%";
+  var ly=$("#lyr");if(ly){var a=Math.min(LYR.length-1,Math.floor(P.pos/t.dur*LYR.length));[].forEach.call(ly.children,function(e,i){e.classList.toggle("on",i===a)});var on=ly.children[a];if(on&&updateProg.l!==a){updateProg.l=a;ly.scrollTo({top:on.offsetTop-ly.clientHeight/2+on.clientHeight/2,behavior:S.anim?"smooth":"auto"})}}
+}
+/* ---------- sheets ---------- */
+function eqHTML(){return '<div class="seg" style="margin-bottom:12px">'+Object.keys(EQP).map(function(k){return '<button data-act="eqp" data-v="'+k+'" class="'+(S.eq.join()===EQP[k].join()?"on":"")+'">'+k+'</button>'}).join("")+'</div><div class="eq">'+EQF.map(function(f,i){return '<div class="eqc"><span id="eqv'+i+'">'+fa(S.eq[i])+'</span><div class="vs"><input class="rg" type="range" min="-12" max="12" step="1" value="'+S.eq[i]+'" data-eq="'+i+'" style="--p:'+((S.eq[i]+12)/24*100)+'%" aria-label="باند '+f+'"></div><span>'+f+'</span></div>'}).join("")+'</div>'}
+function openSheet(k){UI.sheet=k;var h="";
+  if(k==="eq")h='<h4>اکولایزر</h4>'+eqHTML();
+  else if(k==="speed")h='<h4>سرعت پخش</h4><div class="seg">'+[0.5,0.75,1,1.25,1.5,2].map(function(v){return '<button data-act="spd" data-v="'+v+'" class="'+(S.speed===v?"on":"")+'">'+fa(v)+'×</button>'}).join("")+'</div>';
+  else if(k==="sleep")h='<h4>تایمر خواب</h4><div class="seg">'+[15,30,45,60].map(function(v){return '<button data-act="sleep" data-v="'+v+'">'+fa(v)+' دقیقه</button>'}).join("")+'<button data-act="sleep" data-v="end">پایان آهنگ</button><button data-act="sleep" data-v="0">خاموش</button></div>';
+  else if(k==="room")h='<h4>اتاق شنیدن مشترک</h4><div class="row"><div class="ti"><b>اتاق «شب‌نشینی»</b><span>۳ نفر آنلاین · همه می‌توانند کنترل کنند</span></div><span class="pill">'+(S.ctrl==="everyone"?"همه":S.ctrl==="host"?"میزبان":"مجاز")+'</span></div><div class="row"><div class="ti"><b>افکت زنده</b><span>اکو و وکال را روی اتاق اضافه کنید</span></div></div><div class="seg"><button data-act="fx" data-v="اکو">اکو</button><button data-act="fx" data-v="ریورب">ریورب</button><button data-act="fx" data-v="وکال">وکال</button><button data-act="fx" data-v="باس‌بوست">باس‌بوست</button></div>';
+  $sh.innerHTML=h;$sh.classList.add("open");$sc.classList.add("on")}
+function closeSheet(){UI.sheet=null;$sh.classList.remove("open");$sc.classList.remove("on")}
+
+/* ---------- settings ---------- */
+function rt60(){var V=S.rw*S.rd*S.rh,A=2*(S.rw*S.rd)*0.12+2*(S.rw+S.rd)*S.rh*0.1,f={none:0,few:1.5,mid:4,many:8}[S.furn];A+=f+0.01;return 0.161*V/A}
+var PAGES={
+ root:{t:"تنظیمات",items:[
+  {t:"nav",to:"look",ic:"palette",l:"تم و رنگ",d:"حالت روشن/تاریک، رنگ تأکید، تصویر زمینه، قالب‌های آماده"},
+  {t:"nav",to:"glass",ic:"glass",l:"شیشه و جلوه‌ها",d:"محو‌شدگی، شفافیت، گردی گوشه‌ها، انیمیشن و ویژوالایزر"},
+  {t:"nav",to:"layout",ic:"layout",l:"چیدمان و رابط",d:"اندازه متن، تراکم، شکل کاور، نوار ناوبری، تب‌ها"},
+  {t:"nav",to:"playback",ic:"play",l:"پخش",d:"کراس‌فید، بی‌وقفه، ReplayGain، سرعت"},
+  {t:"nav",to:"sound",ic:"eq",l:"صدا و فضای سه‌بعدی",d:"اکولایزر، باس، صدای فضایی شخصی برای اتاق شما"},
+  {t:"nav",to:"haptic",ic:"haptic",l:"لرزش و حس موسیقی",d:"حس ضرب طبل، بیس و جزئیات سازها"},
+  {t:"nav",to:"library",ic:"library",l:"کتابخانه",d:"مرتب‌سازی، حداقل طول، حذف تکراری‌ها"},
+  {t:"nav",to:"social",ic:"users",l:"اجتماعی و Music DNA",d:"اتاق‌های مشترک، دوستان هم‌سلیقه"},
+  {t:"nav",to:"backup",ic:"reset",l:"پشتیبان و بازنشانی",d:"خروجی تم، بازگشت به پیش‌فرض"},
+  {t:"nav",to:"about",ic:"info",l:"درباره",d:"NAVAQ Core و این شبیه‌ساز"}]},
+ look:{t:"تم و رنگ",items:[{t:"gt",l:"قالب‌های آماده"},{t:"presets"},{t:"gt",l:"حالت"},
+  {t:"choice",k:"theme",l:"حالت نمایش",o:[["auto","خودکار"],["light","روشن"],["dark","تاریک"]]},
+  {t:"gt",l:"رنگ"},{t:"swatch"},{t:"choice",k:"wall",l:"تصویر زمینه",o:WALL.map(function(w){return [w[0],w[1]]})}]},
+ glass:{t:"شیشه و جلوه‌ها",items:[
+  {t:"range",k:"blur",l:"شدت محو‌شدگی",min:0,max:60,step:1,f:function(v){return fa(v)+" px"}},
+  {t:"range",k:"glass",l:"شفافیت شیشه",min:4,max:85,step:1,f:function(v){return fa(v)+"٪"}},
+  {t:"range",k:"radius",l:"گردی گوشه‌ها",min:6,max:38,step:1,f:function(v){return fa(v)+" px"}},
+  {t:"toggle",k:"glow",l:"درخشش لبه‌ها",d:"هاله‌ای به رنگ تأکید دور پنل‌ها"},
+  {t:"toggle",k:"anim",l:"انیمیشن‌ها",d:"حرکت زمینه، گذارها و ضرب کاور"},
+  {t:"toggle",k:"viz",l:"ویژوالایزر",d:"نمایش طیف صدا زیر کاور"},
+  {t:"toggle",k:"spin",l:"چرخش کاور دایره‌ای",d:"فقط با شکل کاور «دایره»"}]},
+ layout:{t:"چیدمان و رابط",items:[
+  {t:"range",k:"font",l:"اندازه متن",min:85,max:130,step:5,f:function(v){return fa(v)+"٪"}},
+  {t:"choice",k:"density",l:"تراکم فهرست",o:[["compact","فشرده"],["cozy","متعادل"],["roomy","گشاد"]]},
+  {t:"choice",k:"art",l:"شکل کاور",o:[["square","مربع"],["rounded","گرد"],["circle","دایره"]]},
+  {t:"choice",k:"list",l:"نمایش آهنگ‌ها",o:[["list","فهرست"],["grid","شبکه"]]},
+  {t:"choice",k:"nav",l:"نوار ناوبری",o:[["floating","شناور"],["docked","چسبیده"]]},
+  {t:"toggle",k:"showDur",l:"نمایش مدت آهنگ"},{t:"toggle",k:"tabArtists",l:"تب هنرمندان"},{t:"toggle",k:"tabGenres",l:"تب ژانرها"}]},
+ playback:{t:"پخش",items:[
+  {t:"range",k:"crossfade",l:"کراس‌فید",min:0,max:12,step:1,f:function(v){return v?fa(v)+" ثانیه":"خاموش"}},
+  {t:"toggle",k:"gapless",l:"پخش بی‌وقفه"},{t:"toggle",k:"fadeIO",l:"محو شدن هنگام توقف و شروع"},
+  {t:"choice",k:"rg",l:"تراز بلندی (ReplayGain)",o:[["off","خاموش"],["track","آهنگ"],["album","آلبوم"]]},
+  {t:"range",k:"speed",l:"سرعت پخش",min:0.5,max:2,step:0.05,f:function(v){return fa((+v).toFixed(2))+"×"}},
+  {t:"toggle",k:"skipSil",l:"رد شدن از سکوت"},{t:"toggle",k:"headset",l:"ادامه با اتصال هدفون"},{t:"toggle",k:"scrobble",l:"ثبت پخش‌ها (Scrobble)",d:"پس از شنیدن نیمی از آهنگ"}]},
+ sound:{t:"صدا و فضای سه‌بعدی",items:[
+  {t:"toggle",k:"eqOn",l:"اکولایزر"},{t:"eq"},
+  {t:"range",k:"bass",l:"تقویت باس",min:0,max:100,step:1,f:function(v){return fa(v)+"٪"}},
+  {t:"range",k:"virt",l:"گسترش فضای استریو",min:0,max:100,step:1,f:function(v){return fa(v)+"٪"}},
+  {t:"gt",l:"صدای فضایی شخصی"},{t:"toggle",k:"spatial",l:"صدای فضایی",d:"بر اساس اتاق، مبلمان و جای بلندگوها"},
+  {t:"range",k:"rw",l:"عرض اتاق",min:2,max:12,step:0.5,f:function(v){return fa(v)+" متر"}},
+  {t:"range",k:"rd",l:"طول اتاق",min:2,max:12,step:0.5,f:function(v){return fa(v)+" متر"}},
+  {t:"range",k:"rh",l:"ارتفاع سقف",min:2,max:5,step:0.1,f:function(v){return fa((+v).toFixed(1))+" متر"}},
+  {t:"choice",k:"furn",l:"مبلمان و پرده",o:[["none","خالی"],["few","کم"],["mid","متوسط"],["many","پر"]]},
+  {t:"toggle",k:"headtrack",l:"ردیابی سر",d:"ثابت ماندن صحنه صدا هنگام چرخش سر"},{t:"rt"}]},
+ haptic:{t:"لرزش و حس موسیقی",items:[
+  {t:"toggle",k:"haptic",l:"لرزش همراه موسیقی",d:"ضربه طبل، بیس و های‌هت به‌صورت لمسی"},
+  {t:"range",k:"hap",l:"شدت لرزش",min:0,max:100,step:5,f:function(v){return fa(v)+"٪"}},
+  {t:"choice",k:"hapMode",l:"حالت",o:[["beat","ضرب"],["bass","فقط باس"],["detail","جزئیات سازها"]]}]},
+ library:{t:"کتابخانه",items:[
+  {t:"choice",k:"sort",l:"مرتب‌سازی",o:[["title","نام"],["artist","هنرمند"],["dur","مدت"]]},
+  {t:"range",k:"minLen",l:"حداقل طول آهنگ",min:0,max:120,step:5,f:function(v){return fa(v)+" ثانیه"}},
+  {t:"toggle",k:"hideDup",l:"پنهان کردن تکراری‌ها",d:"تشخیص با نام و هنرمند"}]},
+ social:{t:"اجتماعی و Music DNA",items:[
+  {t:"toggle",k:"rooms",l:"اتاق‌های شنیدن مشترک"},
+  {t:"choice",k:"ctrl",l:"چه کسی کنترل می‌کند؟",o:[["host","فقط میزبان"],["everyone","همه"],["delegated","افراد مجاز"]]},
+  {t:"toggle",k:"dna",l:"Music DNA",d:"پیدا کردن افراد هم‌سلیقه و پیشنهاد دوست"},
+  {t:"toggle",k:"dnaShare",l:"ساخت پلی‌لیست مشترک با دوستان"}]},
+ backup:{t:"پشتیبان و بازنشانی",items:[{t:"act",a:"copytheme",ic:"copy",l:"کپی تنظیمات ظاهری",d:"به‌صورت JSON"},{t:"act",a:"reset",ic:"reset",l:"بازگشت به پیش‌فرض",d:"همه تنظیمات"}]},
+ about:{t:"درباره",items:[{t:"about"}]}};
+function item(it){
+  if(it.t==="gt")return '<div class="gt">'+it.l+'</div>';
+  if(it.t==="nav")return '<button class="row" style="width:100%;text-align:start" data-act="spage" data-v="'+it.to+'"><span class="ico">'+ic(it.ic)+'</span><div class="ti"><b>'+it.l+'</b><span>'+it.d+'</span></div>'+ic("left")+'</button>';
+  if(it.t==="toggle")return '<div class="row"><div class="ti"><b>'+it.l+'</b>'+(it.d?'<span>'+it.d+'</span>':"")+'</div><button class="sw" role="switch" aria-label="'+it.l+'" aria-checked="'+!!S[it.k]+'" data-act="tog" data-k="'+it.k+'"></button></div>';
+  if(it.t==="range")return '<div class="row col"><div class="rh"><b>'+it.l+'</b><output id="o-'+it.k+'">'+it.f(S[it.k])+'</output></div><input class="rg" type="range" min="'+it.min+'" max="'+it.max+'" step="'+it.step+'" value="'+S[it.k]+'" data-rg="'+it.k+'" style="--p:'+((S[it.k]-it.min)/(it.max-it.min)*100)+'%" aria-label="'+it.l+'"></div>';
+  if(it.t==="choice")return '<div class="row col"><b>'+it.l+'</b><div class="seg">'+it.o.map(function(o){return '<button data-act="set" data-k="'+it.k+'" data-v="'+o[0]+'" class="'+(String(S[it.k])===o[0]?"on":"")+'">'+o[1]+'</button>'}).join("")+'</div></div>';
+  if(it.t==="swatch")return '<div class="row col"><b>رنگ تأکید</b><div class="sws">'+ACC.map(function(a){return '<button data-act="acc" data-v="'+a[0]+'" style="background:'+a[0]+'" class="'+(S.accent===a[0]?"on":"")+'" aria-label="'+a[1]+'"></button>'}).join("")+'<input type="color" id="cc" value="'+S.accent+'" aria-label="رنگ دلخواه"></div></div>';
+  if(it.t==="presets")return '<div class="row col"><div class="pres">'+PRESETS.map(function(p,i){return '<button data-act="pre" data-v="'+i+'" style="background:'+p.g+'" class="'+(JSON.stringify(Object.keys(p.v).map(function(k){return S[k]}))===JSON.stringify(Object.keys(p.v).map(function(k){return p.v[k]}))?"on":"")+'">'+p.n+'</button>'}).join("")+'</div></div>';
+  if(it.t==="eq")return '<div class="row col">'+eqHTML()+'</div>';
+  if(it.t==="rt")return '<div class="row"><div class="ti"><b>زمان پژواک تخمینی (RT60)</b><span>محاسبه‌ی Sabine بر پایه اتاق و مبلمان</span></div><span class="pill" id="rt">'+fa(rt60().toFixed(2))+' ثانیه</span></div>';
+  if(it.t==="act")return '<button class="row" style="width:100%;text-align:start" data-act="'+it.a+'"><span class="ico">'+ic(it.ic)+'</span><div class="ti"><b>'+it.l+'</b><span>'+it.d+'</span></div></button>';
+  if(it.t==="about")return '<div class="row col"><b>NAVAQ Glass</b><span class="note">شبیه‌ساز رابط کاربری برای هسته‌ی Rust پروژه NAVAQ. پخش صدا در این نمایش شبیه‌سازی شده است؛ زمان‌بندی، صف، اتاق مشترک، اکولایزر و صدای فضایی همان قراردادهایی را نشان می‌دهند که هسته ارائه می‌کند.</span></div>';
+  return ""}
+function renderSub(keepScroll){
+  var path=UI.path;if(!path.length){$sub.classList.remove("open");return}
+  var id=path[path.length-1],pg=PAGES[id],old=$("#ssc"),top=old?old.scrollTop:0;
+  var body;
+  if(id==="root"&&UI.sq){body=searchSettings(UI.sq)}else{
+    var h="",grp="";pg.items.forEach(function(it){if(it.t==="gt"){if(grp)h+='<div class="grp glass">'+grp+'</div>';grp="";h+=item(it)}else grp+=item(it)});
+    if(grp)h+='<div class="grp glass">'+grp+'</div>';body=h}
+  $sub.innerHTML='<div class="hd"><button class="ib back" data-act="sback" aria-label="بازگشت">'+ic("right")+'</button><h1 class="big" style="font-size:1.5em;flex:1">'+pg.t+'</h1></div>'+(id==="root"?'<div class="sq glass">'+ic("search")+'<input id="sqi" type="search" placeholder="جستجو در تنظیمات" value="'+(UI.sq||"").replace(/"/g,"")+'" autocomplete="off"></div>':"")+'<div class="scroll" id="ssc">'+body+'</div>';
+  $sub.classList.add("open");if(keepScroll||old){var s=$("#ssc");if(s&&keepScroll)s.scrollTop=top}
+  var qi=$("#sqi");if(qi)qi.addEventListener("input",function(){UI.sq=qi.value.trim();$("#ssc").innerHTML=UI.sq?searchSettings(UI.sq):rootBody()})
+}
+function rootBody(){return '<div class="grp glass">'+PAGES.root.items.map(item).join("")+'</div>'}
+function searchSettings(q){var out="";Object.keys(PAGES).forEach(function(k){if(k==="root"||k==="about")return;PAGES[k].items.forEach(function(it){if(it.l&&it.t!=="gt"&&it.t!=="nav"&&(it.l+(it.d||"")).indexOf(q)>-1)out+=item(it)})});return out?'<div class="grp glass">'+out+'</div>':'<div class="empty">تنظیماتی با این نام پیدا نشد</div>'}
+
+/* ---------- playback logic ---------- */
+function play(id){P.idx=id;P.pos=0;P.playing=true;if(P.order.indexOf(id)<0)P.order.push(id);changed(true)}
+function changed(full){apply();renderMini();if(P.open)renderPlayer();refreshView(full)}
+function refreshView(){if(UI.screen==="library")renderLibrary();else if(UI.screen==="search")renderSearch()}
+function step(d,auto){var o=P.order,i=o.indexOf(P.idx);
+  if(auto&&P.repeat==="one"){P.pos=0;return}
+  i+=d;if(i>=o.length){if(P.repeat==="all"||!auto)i=0;else{P.playing=false;P.pos=0;changed();return}}if(i<0)i=o.length-1;
+  P.idx=o[i];P.pos=0;changed()}
+function setShuffle(){P.shuffle=!P.shuffle;var ids=T.map(function(t){return t.id});if(P.shuffle){for(var i=ids.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var x=ids[i];ids[i]=ids[j];ids[j]=x}ids.splice(ids.indexOf(P.idx),1);ids.unshift(P.idx)}P.order=ids;toast(P.shuffle?"پخش درهم روشن شد":"پخش درهم خاموش شد")}
+setInterval(function(){
+  if(P.sleepAt&&Date.now()>=P.sleepAt){P.sleepAt=0;P.playing=false;toast("تایمر خواب: پخش متوقف شد");changed();return}
+  if(!P.playing)return;P.pos+=0.25*S.speed;
+  if(P.pos>=cur().dur){if(P.sleepEnd){P.sleepEnd=false;P.playing=false;P.pos=0;toast("تایمر خواب: پخش متوقف شد");changed()}else step(1,true)}
+  else updateProg()},250);
+/* visualizer */
+var vt=0;
+function viz(){requestAnimationFrame(viz);var c=$("#viz");if(!c||!P.open)return;var g=c.getContext("2d"),w=c.width,h=c.height,n=32,bw=w/n;g.clearRect(0,0,w,h);
+  vt+=P.playing?0.07:0;var cs=getComputedStyle($ph).getPropertyValue("--accent")||"#3e91ff";g.fillStyle=cs.trim();
+  for(var i=0;i<n;i++){var e=P.playing?(0.5+0.5*Math.sin(vt*2+i*0.55))*(0.45+0.55*Math.sin(vt*0.9+i*1.7)**2)*(1-i/n*0.5):0.06;var bh=Math.max(3,e*h);
+    g.globalAlpha=0.9;g.beginPath();if(g.roundRect)g.roundRect(i*bw+2,h-bh,bw-4,bh,3);else g.rect(i*bw+2,h-bh,bw-4,bh);g.fill()}}
+requestAnimationFrame(viz);
+
+/* ---------- events ---------- */
+function setVal(k,v){var d=DEF[k];S[k]=typeof d==="number"?+v:v}
+document.addEventListener("click",function(e){
+  var el=e.target.closest("[data-act]");
+  if(!el){if(e.target.closest("#mini"))openPlayer();else if(e.target===$sc)closeSheet();return}
+  var a=el.dataset.act,v=el.dataset.v,k=el.dataset.k;e.stopPropagation();
+  switch(a){
+  case "play":play(+el.dataset.id);break;
+  case "fav":P.fav[el.dataset.id]?delete P.fav[el.dataset.id]:P.fav[el.dataset.id]=1;toast(P.fav[el.dataset.id]?"به علاقه‌مندی‌ها افزوده شد":"از علاقه‌مندی‌ها برداشته شد");renderMini();if(P.open)renderPlayer();refreshView();break;
+  case "toggle":P.playing=!P.playing;changed();break;
+  case "next":step(1);break;
+  case "prev":if(P.pos>3)P.pos=0;else step(-1);updateProg();break;
+  case "shuffle":setShuffle();renderPlayer();break;
+  case "repeat":P.repeat={off:"all",all:"one",one:"off"}[P.repeat];toast("تکرار: "+{off:"خاموش",all:"همه",one:"یک آهنگ"}[P.repeat]);renderPlayer();break;
+  case "playall":case "shufall":{var ids=el.dataset.ids.split(",").map(Number);P.order=ids;P.shuffle=a==="shufall";if(P.shuffle)ids.sort(function(){return Math.random()-.5});P.order=ids;play(ids[0]);openPlayer();break}
+  case "close":closePlayer();break;
+  case "view":P.view=P.view===v?"art":v;renderPlayer();break;
+  case "sheet":openSheet(v);break;
+  case "spd":S.speed=+v;save();openSheet("speed");break;
+  case "sleep":if(v==="end"){P.sleepEnd=true;P.sleepAt=0;toast("پخش پس از این آهنگ متوقف می‌شود")}else if(+v){P.sleepAt=Date.now()+v*60000;P.sleepEnd=false;toast("تایمر خواب: "+fa(v)+" دقیقه")}else{P.sleepAt=0;P.sleepEnd=false;toast("تایمر خواب خاموش شد")}closeSheet();renderMini();if(P.open)renderPlayer();break;
+  case "fx":toast("افکت «"+v+"» روی اتاق اعمال شد");break;
+  case "tab":UI.tab=v;renderLibrary();break;
+  case "detail":UI.detail={k:el.dataset.k,v:el.dataset.v,title:el.dataset.title};renderLibrary();break;
+  case "back":UI.detail=null;renderLibrary();break;
+  case "go":if(v==="settings"){UI.screen="library";UI.path=["root"];UI.sq="";renderSub()}else{UI.path=[];renderSub();UI.screen=v;UI.detail=null;renderNav();refreshView()}renderNav();break;
+  case "q":UI.q=v;renderSearch();break;
+  case "spage":UI.path.push(v);renderSub();break;
+  case "sback":UI.path.pop();UI.sq="";renderSub();renderNav();break;
+  case "tog":S[k]=!S[k];save();apply();if(UI.sheet)openSheet(UI.sheet);renderSub(true);renderMini();if(P.open)renderPlayer();refreshView();break;
+  case "set":setVal(k,v);save();apply();renderSub(true);refreshView();if(P.open)renderPlayer();break;
+  case "acc":S.accent=v;save();apply();renderSub(true);break;
+  case "pre":{var p=PRESETS[+v];Object.keys(p.v).forEach(function(x){S[x]=p.v[x]});save();apply();renderSub(true);toast("قالب «"+p.n+"» اعمال شد");break}
+  case "eqp":S.eq=EQP[v].slice();save();if(UI.sheet==="eq")openSheet("eq");renderSub(true);break;
+  case "copytheme":{var j=JSON.stringify({theme:S.theme,accent:S.accent,wall:S.wall,blur:S.blur,glass:S.glass,radius:S.radius,font:S.font,art:S.art},null,1);try{navigator.clipboard.writeText(j).then(function(){toast("تنظیمات کپی شد")},function(){toast("کپی ممکن نشد")})}catch(x){toast("کپی ممکن نشد")}break}
+  case "reset":S=Object.assign({},DEF);save();apply();renderSub(true);refreshView();renderMini();toast("همه تنظیمات بازنشانی شد");break;
+  }
+});
+document.addEventListener("keydown",function(e){if((e.key==="Enter"||e.key===" ")&&e.target.matches('[role="button"]')){e.preventDefault();e.target.click()}});
+document.addEventListener("input",function(e){var el=e.target;
+  if(el.dataset.rg){var k=el.dataset.rg;setVal(k,el.value);var it=null;Object.keys(PAGES).forEach(function(p){PAGES[p].items.forEach(function(x){if(x.k===k&&x.t==="range")it=x})});
+    el.style.setProperty("--p",((el.value-it.min)/(it.max-it.min)*100)+"%");var o=$("#o-"+k);if(o)o.textContent=it.f(S[k]);save();apply();var r=$("#rt");if(r)r.textContent=fa(rt60().toFixed(2))+" ثانیه";if(k==="speed")return;if(k==="font"||k==="minLen")refreshView()}
+  else if(el.dataset.eq!==undefined){var i=+el.dataset.eq;S.eq[i]=+el.value;el.style.setProperty("--p",((+el.value+12)/24*100)+"%");var o2=$("#eqv"+i);if(o2)o2.textContent=fa(el.value);save()}
+  else if(el.id==="cc"){S.accent=el.value;save();apply()}
+});
+$("#phone").addEventListener("click",function(e){if(e.target.closest("#mini")&&!e.target.closest("[data-act]"))openPlayer()});
+function openPlayer(){P.open=true;renderPlayer();requestAnimationFrame(function(){$p.classList.add("open")})}
+function closePlayer(){P.open=false;$p.classList.remove("open");closeSheet()}
+
+/* ---------- boot ---------- */
+apply();renderNav();renderMini();renderLibrary();
+})();
+</script>
