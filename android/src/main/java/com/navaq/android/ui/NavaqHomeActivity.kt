@@ -276,14 +276,14 @@ class NavaqHomeActivity : Activity() {
         nav.gravity = Gravity.CENTER
         if (s.navStyle == NavStyle.FLOATING) {
             nav.glass(1f)
-            nav.setPadding(T.dp(6), T.dp(6), T.dp(6), T.dp(6))
-            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(64), Gravity.BOTTOM).apply {
+            nav.setPadding(T.dp(7), T.dp(6), T.dp(7), T.dp(6))
+            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(68), Gravity.BOTTOM).apply {
                 setMargins(T.dp(14), 0, T.dp(14), insetBottom + T.dp(14))
             }
         } else {
             nav.glass(1f, topOnly = true)
-            nav.setPadding(T.dp(6), T.dp(6), T.dp(6), insetBottom)
-            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(74) + insetBottom, Gravity.BOTTOM)
+            nav.setPadding(T.dp(7), T.dp(6), T.dp(7), insetBottom)
+            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(78) + insetBottom, Gravity.BOTTOM)
         }
         val items = listOf(
             Triple("library", "کتابخانه", Icon.LIBRARY),
@@ -292,16 +292,36 @@ class NavaqHomeActivity : Activity() {
         )
         items.forEach { (id, text, icon) ->
             val on = screen == id
-            val tint = if (on) T.accent else T.fg2
-            nav.addView(LinearLayout(this).apply {
+            val tint = if (on) T.neonA else T.fg2
+            val tile = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    cornerRadius = T.radiusPx * 0.75f
-                    setColor(if (on) (T.accent and 0x00FFFFFF) or (0x38 shl 24) else Color.TRANSPARENT)
+                isFocusable = true
+                contentDescription = text
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    if (on) intArrayOf(
+                        (T.accent and 0x00FFFFFF) or (0x34 shl 24),
+                        (T.neonB and 0x00FFFFFF) or (0x20 shl 24)
+                    ) else intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                ).apply {
+                    cornerRadius = T.radiusPx * 0.72f
+                    if (on) setStroke(T.dp(1), (T.accent and 0x00FFFFFF) or (0x76 shl 24))
                 }
-                addView(IconView(this@NavaqHomeActivity, icon, tint), LinearLayout.LayoutParams(T.dp(22), T.dp(22)))
-                addView(label(this@NavaqHomeActivity, text, 11f, on, tint).apply { setPadding(0, T.dp(2), 0, 0) })
+                val glyph = IconView(this@NavaqHomeActivity, icon, tint)
+                addView(glyph, LinearLayout.LayoutParams(T.dp(22), T.dp(22)))
+                addView(label(this@NavaqHomeActivity, text, 11f, on, if (on) T.fg else T.fg2).apply {
+                    setPadding(0, T.dp(3), 0, 0)
+                })
+                addView(View(this@NavaqHomeActivity).apply {
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(T.neonA, T.neonB, T.neonC)
+                    ).apply { cornerRadius = T.dp(3).toFloat() }
+                    visibility = if (on) View.VISIBLE else View.INVISIBLE
+                }, LinearLayout.LayoutParams(if (on) T.dp(26) else T.dp(10), T.dp(2)).apply {
+                    topMargin = T.dp(4)
+                })
                 pressable {
                     if (screen != id) {
                         screen = id
@@ -310,11 +330,23 @@ class NavaqHomeActivity : Activity() {
                         buildScreen()
                     }
                 }
-            }, LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(T.dp(2), 0, T.dp(2), 0) })
+            }
+            nav.addView(tile, LinearLayout.LayoutParams(0, -1, 1f).apply {
+                setMargins(T.dp(3), 0, T.dp(3), 0)
+            })
+            if (s.animations) {
+                tile.alpha = 0f
+                tile.scaleX = 0.94f
+                tile.scaleY = 0.94f
+                tile.post {
+                    tile.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                        .setDuration(if (on) 240L else 180L).start()
+                }
+            }
         }
     }
 
-    private fun btn(icon: Icon, box: Int, glyph: Int, tint: Int = T.fg, onClick: () -> Unit): FrameLayout =
+        private fun btn(icon: Icon, box: Int, glyph: Int, tint: Int = T.fg, onClick: () -> Unit): FrameLayout =
         FrameLayout(this).apply {
             addView(IconView(this@NavaqHomeActivity, icon, tint), FrameLayout.LayoutParams(T.dp(glyph), T.dp(glyph), Gravity.CENTER))
             layoutParams = LinearLayout.LayoutParams(T.dp(box), T.dp(box))
