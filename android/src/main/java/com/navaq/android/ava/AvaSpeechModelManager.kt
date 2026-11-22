@@ -99,43 +99,113 @@ class AvaSpeechModelManager(context: Context) {
         }, "ava-model-installer").start()
     }
 
+    /**
+     * Downloads to a persistent partial file and resumes with HTTP Range after
+     * transient network failures. The archive is promoted only after its full
+     * expected byte count has been received.
+     */
     private fun downloadArchive(destination: File, onProgress: (Int) -> Unit) {
+        if (destination.isFile && destination.length() == EXPECTED_ARCHIVE_BYTES) {
+            onProgress(85)
+            return
+        }
+
+        val partial = File(destination.parentFile, destination.name + ".part")
+        val validatorFile = File(destination.parentFile, destination.name + ".validator")
+        var existingBytes = partial.length()
+        if (existingBytes > EXPECTED_ARCHIVE_BYTES) {
+            partial.delete()
+            validatorFile.delete()
+            existingBytes = 0L
+        }
+        if (existingBytes == EXPECTED_ARCHIVE_BYTES) {
+            check(partial.renameTo(destination)) { "Could not finalize the AVA model archive" }
+            validatorFile.delete()
+            onProgress(85)
+            return
+        }
+
         val connection = (URL(MODEL_ARCHIVE_URL).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 120_000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "NAVAQ-AVA/1.0")
             setRequestProperty("Accept-Encoding", "identity")
+            if (existingBytes > 0L) {
+                setRequestProperty("Range", "bytes=$existingBytes-")
+                if (validatorFile.isFile) {
+                    validatorFile.readText().takeIf { it.isNotBlank() }?.let {
+                        setRequestProperty("If-Range", it)
+                    }
+                }
+            }
         }
         try {
             connection.connect()
-            check(connection.responseCode == HttpURLConnection.HTTP_OK) {
-                "AVA model download failed (HTTP ${connection.responseCode})"
+            val responseCode = connection.responseCode
+            val append: Boolean
+            val totalBytes: Long
+            when (responseCode) {
+                HttpURLConnection.HTTP_PARTIAL -> {
+                    val range = Regex("^bytes (\\d+)-(\\d+)/(\\d+)$")
+                        .matchEntire(connection.getHeaderField("Content-Range").orEmpty())
+                    check(range != null && range.groupValues[1].toLong() == existingBytes) {
+                        "The server returned an invalid resume range for the AVA model"
+                    }
+                    totalBytes = range.groupValues[3].toLong()
+                    check(totalBytes == EXPECTED_ARCHIVE_BYTES) {
+                        "The AVA model archive has an unexpected total size"
+                    }
+                    append = true
+                }
+                HttpURLConnection.HTTP_OK -> {
+                    // The server ignored Range or the validator changed. Start
+                    // a clean transfer rather than joining unrelated versions.
+                    partial.delete()
+                    validatorFile.delete()
+                    existingBytes = 0L
+                    totalBytes = connection.contentLengthLong
+                    check(totalBytes == EXPECTED_ARCHIVE_BYTES) {
+                        "The AVA model archive has an unexpected size"
+                    }
+                    append = false
+                }
+                else -> error("AVA model download failed (HTTP $responseCode)")
             }
-            val total = connection.contentLength.toLong()
-            var downloaded = 0L
+
+            val validator = connection.getHeaderField("ETag")
+                ?: connection.getHeaderField("Last-Modified")
+            if (!validator.isNullOrBlank()) validatorFile.writeText(validator)
+
+            var downloaded = existingBytes
+            onProgress(((downloaded * 85L) / EXPECTED_ARCHIVE_BYTES).toInt().coerceIn(0, 85))
             var lastUpdate = 0L
             BufferedInputStream(connection.inputStream).use { input ->
-                BufferedOutputStream(FileOutputStream(destination)).use { output ->
+                BufferedOutputStream(FileOutputStream(partial, append)).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
                         val count = input.read(buffer)
                         if (count < 0) break
                         output.write(buffer, 0, count)
                         downloaded += count
+                        check(downloaded <= EXPECTED_ARCHIVE_BYTES) {
+                            "The AVA model archive is larger than expected"
+                        }
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastUpdate >= 300) {
-                            val percent = if (total > 0) ((downloaded * 85) / total).toInt() else 1
-                            onProgress(percent.coerceIn(1, 85))
+                            onProgress(((downloaded * 85L) / EXPECTED_ARCHIVE_BYTES).toInt().coerceIn(0, 85))
                             lastUpdate = now
                         }
                     }
                     output.flush()
                 }
             }
-            check(destination.length() == EXPECTED_ARCHIVE_BYTES) {
-                "The AVA speech model archive is incomplete or has an unexpected size"
+            check(partial.length() == EXPECTED_ARCHIVE_BYTES) {
+                "The AVA model download was interrupted. Retry to resume from the saved data."
             }
+            check(partial.renameTo(destination)) { "Could not finalize the AVA model archive" }
+            validatorFile.delete()
+            onProgress(85)
         } finally {
             connection.disconnect()
         }
