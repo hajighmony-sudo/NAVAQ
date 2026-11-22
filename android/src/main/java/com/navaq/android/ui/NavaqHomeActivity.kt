@@ -1893,11 +1893,14 @@ class NavaqHomeActivity : Activity() {
         }
         fun fillBody() {
             scroll.removeAllViews()
-            val q = settingsQuery.trim()
+            val q = settingsQuery.trim().replace('ي', 'ی').replace('ك', 'ک').lowercase(Locale.ROOT)
             if (id == "root" && q.isNotEmpty()) {
                 val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "room", "downloads", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
-                    .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
+                    .filter {
+                        (it.title + " " + it.keywords).replace('ي', 'ی').replace('ك', 'ک')
+                            .lowercase(Locale.ROOT).contains(q)
+                    }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))
             } else if (id == "root") {
                 val landing = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
