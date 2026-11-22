@@ -31,7 +31,7 @@ import java.net.URLEncoder
 import java.util.concurrent.Executors
 
 /**
- * Native Discover host: Wikimedia Commons audio search, embedded web browser,
+ * Native Discover host: Wikimedia Commons audio/video search, embedded web browser,
  * system-managed direct downloads and a local list of completed downloads.
  *
  * Network and filesystem work stays on Android. Rust remains the source of
@@ -162,7 +162,7 @@ class DiscoverActivity : Activity() {
                 val connection = URL(endpoint).openConnection()
                 connection.connectTimeout = 12_000
                 connection.readTimeout = 18_000
-                connection.setRequestProperty("User-Agent", "NAVAQ/0.1 (Discover audio search)")
+                connection.setRequestProperty("User-Agent", "NAVAQ/0.1 (Discover public media search)")
                 val body = connection.getInputStream().bufferedReader().use { it.readText() }
                 val response = JSONObject(body)
                 val pages = response.optJSONObject("query")?.optJSONObject("pages")
