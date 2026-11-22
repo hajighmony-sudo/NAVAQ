@@ -9,6 +9,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Environment
 import android.view.View
 import android.webkit.DownloadListener
@@ -55,6 +57,16 @@ class DiscoverActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var downloadManager: DownloadManager
     private lateinit var networkPolicyButton: Button
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var showingLibrary = false
+    private val libraryRefresh = object : Runnable {
+        override fun run() {
+            if (showingLibrary && ::libraryContainer.isInitialized) {
+                refreshLibrary()
+                mainHandler.postDelayed(this, 1500L)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +78,8 @@ class DiscoverActivity : Activity() {
     }
 
     override fun onDestroy() {
+        showingLibrary = false
+        mainHandler.removeCallbacks(libraryRefresh)
         if (::browser.isInitialized) browser.destroy()
         executor.shutdown()
         super.onDestroy()
@@ -102,6 +116,8 @@ class DiscoverActivity : Activity() {
     }
 
     private fun showSearch() {
+        showingLibrary = false
+        mainHandler.removeCallbacks(libraryRefresh)
         content.removeAllViews()
         searchInput = EditText(this).apply {
             hint = "Search public audio or video on Wikimedia Commons"
@@ -238,6 +254,8 @@ class DiscoverActivity : Activity() {
     }
 
     private fun showBrowser() {
+        showingLibrary = false
+        mainHandler.removeCallbacks(libraryRefresh)
         content.removeAllViews()
         browserInput = EditText(this).apply {
             hint = "Enter a website or search the web"
@@ -339,6 +357,8 @@ class DiscoverActivity : Activity() {
     }
 
     private fun showLibrary() {
+        showingLibrary = true
+        mainHandler.removeCallbacks(libraryRefresh)
         content.removeAllViews()
         content.addView(actionButton("Refresh offline library") { showLibrary() },
             params(bottom = 8))
@@ -349,6 +369,7 @@ class DiscoverActivity : Activity() {
         libraryContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(libraryContainer)
         refreshLibrary()
+        mainHandler.postDelayed(libraryRefresh, 1500L)
         status.text = "Completed downloads are saved in Music/NAVAQ and remain available offline."
     }
 
