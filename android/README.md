@@ -140,4 +140,7 @@ These integrations deliberately avoid hidden APIs, overlay permissions, automati
 - Personal spatial audio: room size, furniture and reverb are rendered by `nativeRenderSpatial`; the result drives a simplified room reverb tap in the Rust PCM pipeline (`nativeSetDspRoom`). It is not a binaural/HRTF renderer.
 - Advanced haptics: the Rust `HapticAnalyzer` (`nativeCreateHaptic`/`nativeProcessHaptic`) replaces the generic onset detector and maps bass hits, snares and hi-hats to `NavaqHaptics` triggers.
 - Song creation: lyrics (or wordless mode) to melody and harmony through `nativeGenerateSong`, saved as WAV + MIDI and added to the library.
-- Not wired yet: shared listening rooms and Music DNA matching need a network transport/backend; the Rust cores (`room_control`, `matching`) are ready for one.
+- Shared listening works without a server, like casting a phone to a TV: the host creates a room (6-digit code, address shown, mDNS `_navaq._tcp`), guests on the same Wi-Fi enter the code and follow the host's track and position. The host serves the audio over a small HTTP server with Range support; the token in each URL is issued only after the code is accepted. Cleartext HTTP is enabled for this LAN traffic. The room runs while the app process is alive.
+- Music DNA is exchanged as a copy-paste code (artist names only) and compared on-device by the Rust core.
+- Downloads: native queue page (progress, cancel, retry, play, Wi-Fi only) on top of DownloadManager; finished files join the library.
+- Not wired: internet-wide rooms (would need a relay server); playback bypasses the Rust PlayerCore queue.

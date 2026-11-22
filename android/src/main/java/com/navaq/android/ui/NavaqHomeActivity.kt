@@ -38,6 +38,9 @@ import com.navaq.android.discover.DiscoverActivity
 import com.navaq.android.core.NavaqNativeBridge
 import org.json.JSONArray
 import org.json.JSONObject
+import android.app.DownloadManager
+import com.navaq.android.net.Downloads
+import com.navaq.android.net.LanRoom
 import java.io.File
 import java.text.Collator
 import java.util.Locale
@@ -150,6 +153,10 @@ class NavaqHomeActivity : Activity() {
         loadTracks()
         rebuildAll()
         handler.post(tick)
+        LanRoom.listener = { ev -> runOnUiThread { roomEvent(ev) } }
+        LanRoom.commandListener = { cmd -> runOnUiThread { roomCommand(cmd) } }
+        LanRoom.resolver = { id -> if (id.startsWith("room:")) null else byId[id]?.sourceValue?.let { android.net.Uri.parse(it) } }
+        if (LanRoom.host != null) handler.post(roomTicker)
     }
 
     override fun onResume() {
@@ -159,6 +166,14 @@ class NavaqHomeActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        LanRoom.listener = null
+        LanRoom.commandListener = null
+        LanRoom.resolver = null
+        roomDiscovery?.stop()
+        if (isFinishing) {
+            LanRoom.host?.stop(); LanRoom.host = null
+            LanRoom.guest?.leave(); LanRoom.guest = null
+        }
         client.release()
         executor.shutdownNow()
         super.onDestroy()
@@ -227,8 +242,9 @@ class NavaqHomeActivity : Activity() {
             } catch (_: Exception) {
                 emptyList()
             }
+            val extra = createdTracks() + Downloads.tracks(this)
             runOnUiThread {
-                allTracks = list + createdTracks()
+                allTracks = list + extra
                 byId = allTracks.associateBy { it.id }
                 buildScreen()
                 updateMini(force = true)
@@ -366,6 +382,14 @@ class NavaqHomeActivity : Activity() {
         }
 
     private fun buildScreen() {
+        val onRoom = screen == "settings" && stack.lastOrNull() == "room"
+        if (onRoom && roomDiscovery == null && LanRoom.host == null && LanRoom.guest == null) {
+            roomDiscovery = LanRoom.Discovery(applicationContext) { l ->
+                runOnUiThread { roomFound = l; if (roomVisible() && LanRoom.guest == null) buildScreen() }
+            }.also { it.start() }
+        } else if (!onRoom && roomDiscovery != null) {
+            roomDiscovery?.stop(); roomDiscovery = null; roomFound = emptyList()
+        }
         content.removeAllViews()
         currentAdapter = null
         settingsScroll = null
@@ -670,6 +694,8 @@ class NavaqHomeActivity : Activity() {
         "sound" -> "صدا و اکولایزر"
         "create" -> "ساخت آهنگ"
         "dna" -> "Music DNA"
+        "room" -> "گوش دادن مشترک"
+        "downloads" -> "دانلودها"
         "library" -> "کتابخانه"
         "backup" -> "پشتیبان و بازنشانی"
         "about" -> "درباره"
@@ -728,6 +754,323 @@ class NavaqHomeActivity : Activity() {
             bands.put(org.json.JSONObject().put("frequency_hz", f).put("gain_db", gains[i].toDouble().coerceIn(-12.0, 12.0)))
         }
         client.setEqualizerJson(org.json.JSONObject().put("enabled", enabled).put("bands", bands).toString())
+    }
+
+    // ------------------------------------------------------------------ shared room (LAN)
+
+    private var roomFound: List<LanRoom.Found> = emptyList()
+    private var roomDiscovery: LanRoom.Discovery? = null
+    private var roomHostIn = ""
+    private var roomCodeIn = ""
+    private var roomStatus = ""
+    private var roomNow: TextView? = null
+    private val roomTicker = object : Runnable {
+        override fun run() {
+            roomPush()
+            if (LanRoom.host != null) handler.postDelayed(this, 1000L)
+        }
+    }
+
+    private fun roomVisible() = screen == "settings" && stack.lastOrNull() == "room"
+
+    private fun fieldRow(hint: String, value: String, ltr: Boolean, onChange: (String) -> Unit): View =
+        LinearLayout(this).apply {
+            setPadding(0, T.dp(8), 0, T.dp(8))
+            addView(android.widget.EditText(this@NavaqHomeActivity).apply {
+                setText(value)
+                this.hint = hint
+                setHintTextColor(T.fg2); setTextColor(T.fg)
+                textSize = 14f * T.fontScale
+                if (ltr) textDirection = View.TEXT_DIRECTION_LTR
+                isSingleLine = true
+                background = GradientDrawable().apply { cornerRadius = T.dpf(14f); setColor(Color.argb(60, 128, 134, 160)) }
+                setPadding(T.dp(12), T.dp(10), T.dp(12), T.dp(10))
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    override fun afterTextChanged(e: android.text.Editable?) { onChange(e?.toString().orEmpty()) }
+                })
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+
+    private fun roomPush() {
+        val h = LanRoom.host ?: return
+        val id = client.currentId
+        val t = id?.let { byId[it] }
+        val o = JSONObject()
+        if (id != null && t != null && !id.startsWith("room:")) {
+            o.put("id", id).put("title", t.title).put("artist", t.artist ?: "")
+                .put("dur", client.durationMs).put("pos", client.positionMs)
+                .put("playing", client.isPlaying).put("path", "/a/" + android.net.Uri.encode(id))
+        }
+        h.update(o)
+    }
+
+    private fun roomStartHost() {
+        if (LanRoom.host != null) return
+        LanRoom.guest?.leave(); LanRoom.guest = null
+        roomDiscovery?.stop(); roomDiscovery = null
+        executor.execute {
+            try {
+                val h = LanRoom.Host(
+                    applicationContext, LanRoom.newCode(), LanRoom.newToken(),
+                    { id -> LanRoom.resolver?.invoke(id) }, { cmd -> LanRoom.commandListener?.invoke(cmd) }
+                )
+                h.allowGuestControl = runtimePrefs().getBoolean("room_guest_control", true)
+                h.start(Build.MODEL ?: "NAVAQ")
+                LanRoom.host = h
+                runOnUiThread { handler.post(roomTicker); buildScreen() }
+            } catch (_: Exception) {
+                runOnUiThread { toast("ساخت اتاق ناموفق بود") }
+            }
+        }
+    }
+
+    private fun roomStop() {
+        LanRoom.host?.stop(); LanRoom.host = null
+        LanRoom.guest?.leave(); LanRoom.guest = null
+        roomStatus = ""
+        buildScreen()
+    }
+
+    private fun roomJoin() {
+        val addr = roomHostIn.trim()
+        val host = addr.substringBeforeLast(':', "")
+        val port = addr.substringAfterLast(':', "").toIntOrNull()
+        if (host.isEmpty() || port == null || port !in 1..65535) { toast("آدرس را به شکل 192.168.1.5:4000 وارد کنید"); return }
+        if (roomCodeIn.trim().length != 6) { toast("کد ۶ رقمی را وارد کنید"); return }
+        LanRoom.guest?.leave()
+        roomStatus = "در حال اتصال…"
+        LanRoom.guest = LanRoom.Guest(host, port, roomCodeIn.trim()) { ev -> LanRoom.listener?.invoke(ev) }.also { it.start() }
+        buildScreen()
+    }
+
+    private fun roomEvent(ev: String) {
+        when (ev) {
+            "state" -> { roomSync(); roomNow?.text = roomNowText(); return }
+            "connected" -> roomStatus = "متصل شدید؛ هم‌زمان با میزبان گوش می‌دهید"
+            "bad_code" -> { roomStatus = "کد اشتباه است"; LanRoom.guest = null }
+            "failed" -> { roomStatus = "اتصال برقرار نشد؛ آدرس، کد و وای‌فای را بررسی کنید"; LanRoom.guest = null }
+            "closed" -> { roomStatus = "اتاق بسته شد"; LanRoom.guest = null }
+        }
+        if (roomVisible()) buildScreen()
+    }
+
+    private fun roomNowText(): String {
+        val st = LanRoom.guest?.lastState
+        val title = st?.optString("title").orEmpty()
+        return if (title.isEmpty()) "میزبان هنوز آهنگی پخش نکرده است" else "در حال پخش: $title" +
+            st?.optString("artist").orEmpty().let { if (it.isEmpty()) "" else " — $it" }
+    }
+
+    private fun roomSync() {
+        val g = LanRoom.guest ?: return
+        val st = g.lastState ?: return
+        val id = st.optString("id")
+        if (id.isEmpty() || !g.connected) return
+        val playing = st.optBoolean("playing")
+        val elapsed = if (playing) android.os.SystemClock.elapsedRealtime() - g.lastAt else 0L
+        val target = st.optLong("pos") + elapsed
+        val rid = "room:$id"
+        if (client.currentId != rid) {
+            val t = AvaCatalogTrack(
+                id = rid, title = st.optString("title"), artist = st.optString("artist").ifBlank { null },
+                album = "اتاق مشترک", durationMs = st.optLong("dur"), sourceKind = "remote_url",
+                sourceValue = g.urlFor(st.optString("path"))
+            )
+            byId = byId + (rid to t)
+            client.playQueue(listOf(t), 0)
+            client.seekTo(target)
+            if (!playing) client.pause()
+            return
+        }
+        if (kotlin.math.abs(client.positionMs - target) > 1500L) client.seekTo(target)
+        if (playing != client.isPlaying) client.toggle()
+    }
+
+    private fun roomCommand(cmd: JSONObject) {
+        when (cmd.optString("k")) {
+            "toggle" -> client.toggle()
+            "play" -> if (!client.isPlaying) client.toggle()
+            "pause" -> if (client.isPlaying) client.toggle()
+            "next" -> client.next()
+            "prev" -> client.previous()
+            "seek" -> client.seekTo(cmd.optLong("pos"))
+        }
+        handler.postDelayed({ roomPush() }, 250L)
+    }
+
+    private fun roomItems(): List<Item> {
+        val h = LanRoom.host
+        val g = LanRoom.guest
+        val out = mutableListOf<Item>()
+        out += Item.Sec("میزبان — پخش برای دیگران")
+        if (h != null) {
+            val ip = LanRoom.localIp()
+            out += Item.Row("اطلاعات اتاق", "code address") {
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, T.dp(12), 0, T.dp(12))
+                    addView(label(this@NavaqHomeActivity, h.code, 34f, true, T.accent).apply { textDirection = View.TEXT_DIRECTION_LTR; letterSpacing = 0.2f })
+                    addView(label(this@NavaqHomeActivity, (ip ?: "؟") + ":" + h.port, 15f, false, T.fg).apply { textDirection = View.TEXT_DIRECTION_LTR; setPadding(0, T.dp(6), 0, T.dp(6)) })
+                    addView(label(this@NavaqHomeActivity, "دوستانتان باید به همین وای‌فای وصل باشند، اتاق شما را در فهرست «پیوستن» ببینند و کد را وارد کنند.", 12.5f, false, T.fg2))
+                }
+            }
+            out += Item.Row("کپی", "copy") { SettingsKit.actionRow(this, Icon.CHECK, "کپی آدرس و کد", null) { copyText("${ip ?: ""}:${h.port}  کد: ${h.code}") } }
+            out += Item.Row("کنترل مهمان‌ها", "guest control") {
+                SettingsKit.toggleRow(this, "کنترل مهمان‌ها", "پخش، توقف، بعدی و قبلی برای همه", runtimePrefs().getBoolean("room_guest_control", true)) { v ->
+                    runtimePrefs().edit().putBoolean("room_guest_control", v).apply(); LanRoom.host?.allowGuestControl = v
+                }
+            }
+            out += Item.Row("بستن", "stop") { SettingsKit.actionRow(this, Icon.RESET, "بستن اتاق", "مهمان‌ها قطع می‌شوند") { roomStop() } }
+        } else if (g == null) {
+            out += Item.Row("ساخت اتاق", "host start") { SettingsKit.actionRow(this, Icon.MUSIC, "ساخت اتاق", "آهنگ در حال پخش شما برای مهمان‌ها همگام می‌شود") { roomStartHost() } }
+        } else {
+            out += Item.Row("توضیح", "") { SettingsKit.noteRow(this, "برای ساخت اتاق ابتدا از اتاق فعلی خارج شوید.") }
+        }
+
+        out += Item.Sec("پیوستن به اتاق")
+        if (h != null) {
+            out += Item.Row("توضیح", "") { SettingsKit.noteRow(this, "هم‌زمان نمی‌توانید میزبان و مهمان باشید.") }
+        } else if (g != null) {
+            out += Item.Row("وضعیت", "status") { SettingsKit.noteRow(this, roomStatus) }
+            out += Item.Row("در حال پخش", "now") {
+                label(this, roomNowText(), 14f, true, T.fg).apply { setPadding(0, T.dp(10), 0, T.dp(10)); roomNow = this }
+            }
+            out += Item.Row("کنترل", "controls") {
+                LinearLayout(this).apply {
+                    gravity = Gravity.CENTER
+                    addView(btn(Icon.PREV, 52, 22) { g.send(JSONObject().put("k", "prev")) }, LinearLayout.LayoutParams(T.dp(64), T.dp(52)))
+                    addView(btn(Icon.PLAY, 52, 22) { g.send(JSONObject().put("k", "toggle")) }, LinearLayout.LayoutParams(T.dp(64), T.dp(52)))
+                    addView(btn(Icon.NEXT, 52, 22) { g.send(JSONObject().put("k", "next")) }, LinearLayout.LayoutParams(T.dp(64), T.dp(52)))
+                }
+            }
+            out += Item.Row("خروج", "leave") { SettingsKit.actionRow(this, Icon.RESET, "خروج از اتاق", null) { roomStop() } }
+        } else {
+            if (roomFound.isEmpty()) {
+                out += Item.Row("جستجو", "scan") { SettingsKit.noteRow(this, "در حال جستجوی اتاق‌های روی این شبکه… اگر اتاقی پیدا نشد، آدرس را دستی وارد کنید.") }
+            }
+            roomFound.forEach { f ->
+                out += Item.Row(f.name, "room") {
+                    SettingsKit.actionRow(this, Icon.MUSIC, f.name, "${f.host}:${f.port}") { roomHostIn = "${f.host}:${f.port}"; buildScreen() }
+                }
+            }
+            out += Item.Row("آدرس", "address") { fieldRow("آدرس میزبان، مثل 192.168.1.5:4000", roomHostIn, true) { roomHostIn = it } }
+            out += Item.Row("کد", "code") { fieldRow("کد ۶ رقمی", roomCodeIn, true) { roomCodeIn = it } }
+            if (roomStatus.isNotEmpty()) out += Item.Row("وضعیت", "status") { SettingsKit.noteRow(this, roomStatus) }
+            out += Item.Row("اتصال", "join") { SettingsKit.actionRow(this, Icon.CHECK, "اتصال", "آهنگ و جایگاه پخش با میزبان همگام می‌شود") { roomJoin() } }
+        }
+        return out
+    }
+
+    // ------------------------------------------------------------------ downloads
+
+    private var dlUrl = ""
+    private var dlName = ""
+    private var dlBox: LinearLayout? = null
+    private var dlDoneCount = -1
+    private val dlTicker = object : Runnable {
+        override fun run() {
+            if (screen == "settings" && stack.lastOrNull() == "downloads") {
+                fillDownloads()
+                handler.postDelayed(this, 1500L)
+            }
+        }
+    }
+
+    private fun dlAdd() {
+        val url = dlUrl.trim()
+        if (url.isEmpty()) { toast("لینک را وارد کنید"); return }
+        val wifi = runtimePrefs().getBoolean("dl_wifi_only", false)
+        val name = dlName
+        executor.execute {
+            val err = Downloads.enqueue(applicationContext, url, name, wifi)
+            runOnUiThread {
+                if (err != null) toast(err) else { toast("به صف دانلود اضافه شد"); dlUrl = ""; dlName = ""; buildScreen() }
+            }
+        }
+    }
+
+    private fun dlContainer(): View {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        dlBox = box
+        fillDownloads()
+        handler.removeCallbacks(dlTicker)
+        handler.postDelayed(dlTicker, 1500L)
+        return box
+    }
+
+    private fun fillDownloads() {
+        executor.execute {
+            val jobs = try { Downloads.list(applicationContext) } catch (_: Exception) { emptyList() }
+            runOnUiThread {
+                val box = dlBox ?: return@runOnUiThread
+                box.removeAllViews()
+                if (jobs.isEmpty()) {
+                    box.addView(label(this, "هنوز دانلودی ندارید.", 13f, false, T.fg2).apply { setPadding(0, T.dp(12), 0, T.dp(12)) })
+                }
+                jobs.forEach { box.addView(dlRow(it)) }
+                val done = jobs.count { it.status == DownloadManager.STATUS_SUCCESSFUL }
+                if (dlDoneCount >= 0 && done > dlDoneCount) loadTracks()
+                dlDoneCount = done
+            }
+        }
+    }
+
+    private fun dlStatus(j: Downloads.Job): String = when (j.status) {
+        DownloadManager.STATUS_SUCCESSFUL -> "آماده؛ آفلاین در کتابخانه"
+        DownloadManager.STATUS_FAILED -> "ناموفق (کد ${fa(j.reason)})"
+        DownloadManager.STATUS_PAUSED -> "متوقف توسط سیستم؛ منتظر اینترنت یا وای‌فای"
+        DownloadManager.STATUS_PENDING -> "در صف"
+        else -> if (j.total > 0) "${fa(j.percent)}٪ — ${fa(j.done / 1024 / 1024)} از ${fa(j.total / 1024 / 1024)} مگابایت" else "در حال دانلود…"
+    }
+
+    private fun dlRow(j: Downloads.Job): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, T.dp(10), 0, T.dp(10))
+        addView(label(this@NavaqHomeActivity, j.title.ifBlank { "دانلود" }, 15f, true, T.fg, 1))
+        addView(label(this@NavaqHomeActivity, dlStatus(j), 12f, false, T.fg2).apply { setPadding(0, T.dp(3), 0, T.dp(5)) })
+        if (j.running) {
+            val p = j.percent.toFloat()
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                background = GradientDrawable().apply { cornerRadius = T.dpf(3f); setColor(Color.argb(50, 128, 134, 160)) }
+                addView(View(this@NavaqHomeActivity).apply {
+                    background = GradientDrawable().apply { cornerRadius = T.dpf(3f); setColor(T.accent) }
+                }, LinearLayout.LayoutParams(0, T.dp(5), p))
+                addView(View(this@NavaqHomeActivity), LinearLayout.LayoutParams(0, T.dp(5), 100f - p))
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+        pressable { dlActions(j) }
+    }
+
+    private fun dlActions(j: Downloads.Job) {
+        val opts = mutableListOf<Pair<String, () -> Unit>>()
+        when {
+            j.status == DownloadManager.STATUS_SUCCESSFUL -> {
+                opts += "پخش" to {
+                    val name = j.localUri?.let { android.net.Uri.parse(it).lastPathSegment }.orEmpty()
+                    executor.execute {
+                        val t = byId["dl:$name"] ?: Downloads.tracks(applicationContext).firstOrNull { it.id == "dl:$name" }
+                        runOnUiThread { if (t != null) playFrom(listOf(t), 0) else toast("فایل پیدا نشد") }
+                    }
+                }
+                opts += "حذف فایل" to { Downloads.remove(applicationContext, j.id); loadTracks(); fillDownloads() }
+            }
+            j.status == DownloadManager.STATUS_FAILED -> {
+                opts += "تلاش دوباره" to {
+                    val wifi = runtimePrefs().getBoolean("dl_wifi_only", false)
+                    executor.execute {
+                        val err = Downloads.enqueue(applicationContext, j.url, j.title, wifi)
+                        if (err == null) Downloads.remove(applicationContext, j.id)
+                        runOnUiThread { if (err != null) toast(err); fillDownloads() }
+                    }
+                }
+                opts += "حذف از فهرست" to { Downloads.remove(applicationContext, j.id); fillDownloads() }
+            }
+            else -> opts += "لغو دانلود" to { Downloads.remove(applicationContext, j.id); fillDownloads() }
+        }
+        showSheet(j.title.ifBlank { "دانلود" }, opts)
     }
 
     // ------------------------------------------------------------------ playlists
@@ -1025,6 +1368,23 @@ class NavaqHomeActivity : Activity() {
     }
 
     private fun pageItems(id: String): List<Item> = when (id) {
+        "room" -> roomItems()
+        "downloads" -> listOf(
+            Item.Sec("دانلود جدید"),
+            Item.Row("لینک", "url link") { fieldRow("لینک مستقیم فایل صوتی (mp3، m4a، flac …)", dlUrl, true) { dlUrl = it } },
+            Item.Row("نام فایل", "name") { fieldRow("نام فایل (اختیاری)", dlName, false) { dlName = it } },
+            Item.Row("چسباندن", "paste") {
+                SettingsKit.actionRow(this, Icon.QUEUE, "چسباندن لینک از کلیپ‌بورد", null) {
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString().orEmpty().trim()
+                    if (text.isEmpty()) toast("کلیپ‌بورد خالی است") else { dlUrl = text; buildScreen() }
+                }
+            },
+            toggleRaw("فقط با وای‌فای", "جلوگیری از مصرف اینترنت همراه", "dl_wifi_only"),
+            Item.Row("افزودن", "add") { SettingsKit.actionRow(this, Icon.DOWN, "افزودن به صف دانلود", "فایل در پوشه‌ی NAVAQ ذخیره و به کتابخانه افزوده می‌شود") { dlAdd() } },
+            Item.Sec("صف دانلود"),
+            Item.Row("فهرست", "queue jobs") { dlContainer() }
+        )
         "dna" -> listOf(
             Item.Sec("کد DNA من"),
             Item.Row("کد من", "dna code") {
@@ -1197,6 +1557,8 @@ class NavaqHomeActivity : Activity() {
             Item.Row("تم و رنگ", "theme color wallpaper") { SettingsKit.navRow(this, Icon.PALETTE, "تم و رنگ", "حالت روشن و تاریک، رنگ، تصویر زمینه، قالب‌ها") { open("look") } },
             Item.Row("شیشه و جلوه‌ها", "glass blur") { SettingsKit.navRow(this, Icon.GLASS, "شیشه و جلوه‌ها", "محو‌شدگی، شفافیت، گوشه‌ها، انیمیشن") { open("glass") } },
             Item.Row("چیدمان و رابط", "layout font density") { SettingsKit.navRow(this, Icon.LAYOUT, "چیدمان و رابط", "اندازه متن، تراکم، کاور، ناوبری") { open("layout") } },
+            Item.Row("گوش دادن مشترک", "room share together cast") { SettingsKit.navRow(this, Icon.MUSIC, "گوش دادن مشترک", "پخش هم‌زمان با دوستان روی همین وای‌فای، با کد اتصال") { open("room") } },
+            Item.Row("دانلودها", "downloads") { SettingsKit.navRow(this, Icon.DOWN, "دانلودها", "صف دانلود، پیشرفت، لغو و پخش آفلاین") { open("downloads") } },
             Item.Row("Music DNA", "dna taste friend") { SettingsKit.navRow(this, Icon.DISC, "Music DNA", "مقایسه سلیقه با دوستان و پلی‌لیست مشترک، بدون سرور") { open("dna") } },
             Item.Row("ساخت آهنگ", "create song lyric melody") { SettingsKit.navRow(this, Icon.MUSIC, "ساخت آهنگ", "تبدیل متن به ملودی، آهنگ بی‌کلام") { open("create") } },
             Item.Row("صدا و اکولایزر", "sound equalizer eq") { SettingsKit.navRow(this, Icon.SLIDERS, "صدا و اکولایزر", "اکولایزر ۱۰ باندی و قالب‌های آماده") { open("sound") } },
@@ -1240,7 +1602,7 @@ class NavaqHomeActivity : Activity() {
             scroll.removeAllViews()
             val q = settingsQuery.trim()
             if (id == "root" && q.isNotEmpty()) {
-                val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "playback", "library", "backup")
+                val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "room", "downloads", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
                     .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))
@@ -1431,6 +1793,7 @@ class NavaqHomeActivity : Activity() {
 
     private fun onPlayback() {
         updateMini()
+        if (LanRoom.host != null) roomPush()
         val id = client.currentId
         if (id != null) byId[id]?.let { wall.setAlbumHue(hueOf(it.title)) }
         if (playerLayer != null) {
