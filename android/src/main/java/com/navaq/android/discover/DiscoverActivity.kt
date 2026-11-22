@@ -119,7 +119,7 @@ class DiscoverActivity : Activity() {
         loadMoreButton = actionButton("Load more results") {
             searchAudio(activeSearchQuery, append = true)
         }.apply { visibility = View.GONE }
-        content.addView(loadMoreButton, params(top = 8))
+        content.addView(loadMoreButton, params(bottom = 8))
         status.text = "Search uses Wikimedia Commons public audio files. Use Browser for the wider web."
     }
 
