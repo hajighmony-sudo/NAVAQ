@@ -294,7 +294,7 @@ class DiscoverActivity : Activity() {
                 }
                 setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
                     if (::downloadUrlInput.isInitialized) downloadUrlInput.setText(url)
-                    enqueueDownload(url, contentDisposition ?: mimeType ?: "web-download")
+                    enqueueDownload(url, contentDisposition ?: "web-media")
                 })
             }
         }
@@ -331,6 +331,8 @@ class DiscoverActivity : Activity() {
     private fun showLibrary() {
         content.removeAllViews()
         content.addView(actionButton("Refresh offline library") { showLibrary() },
+            params(bottom = 8))
+        content.addView(actionButton("Remove completed downloads") { clearCompletedDownloads() },
             params(bottom = 8))
         networkPolicyButton = actionButton(networkPolicyLabel()) { toggleNetworkPolicy() }
         content.addView(networkPolicyButton, params(bottom = 10))
@@ -447,22 +449,29 @@ class DiscoverActivity : Activity() {
                     return@execute
                 }
                 val urlFileName = Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() }
+                val dispositionName = suggestedName.substringAfter("filename=", "").substringBefore(";").trim().trim('"')
+                val headerName = dispositionName.takeIf { it.isNotBlank() }
                 val preferredName = if (suggestedName == "web-media" || suggestedName == "web-audio") {
-                    urlFileName ?: suggestedName
+                    headerName ?: urlFileName ?: suggestedName
                 } else {
-                    suggestedName
+                    headerName ?: suggestedName
+                }
+                val mediaMime = guessMime(url)
+                if (!mediaMime.startsWith("audio/") && !mediaMime.startsWith("video/")) {
+                    runOnUiThread { toast("This link is not a supported direct audio/video file.") }
+                    return@execute
                 }
                 val request = DownloadManager.Request(Uri.parse(url))
-                    .setTitle(safeFileName(preferredName))
+                    .setTitle(safeFileName(preferredName, mediaMime))
                     .setDescription("NAVAQ Discover")
-                    .setMimeType(guessMime(url))
+                    .setMimeType(mediaMime)
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setAllowedOverMetered(allowMobileData())
                     .setAllowedOverRoaming(false)
                     .setDestinationInExternalFilesDir(
                         this,
                         Environment.DIRECTORY_MUSIC,
-                        "NAVAQ/${uniqueFileName(preferredName)}"
+                        "NAVAQ/${uniqueFileName(preferredName, mediaMime)}"
                     )
                 val id = downloadManager.enqueue(request)
                 rememberDownload(id)
@@ -514,16 +523,18 @@ class DiscoverActivity : Activity() {
             address.hostAddress?.startsWith("fc", true) == true ||
             address.hostAddress?.startsWith("fd", true) == true
 
-    private fun safeFileName(value: String): String {
+    private fun safeFileName(value: String, mime: String): String {
         val cleaned = value.substringAfterLast('/').substringBefore('?')
             .replace(Regex("[^A-Za-z0-9._ -]"), "_")
             .trim().take(90).trim('.')
-        val name = cleaned.ifBlank { "navaq-audio" }
-        return if (name.contains('.')) name else "$name.${extensionForMime(guessMime(value))}"
+        val name = cleaned.ifBlank { "navaq-media" }
+        val extension = name.substringAfterLast('.', "").lowercase()
+        val known = setOf("mp4", "m4v", "webm", "mkv", "mov", "3gp", "avi", "mp3", "m4a", "aac", "flac", "ogg", "oga", "wav", "opus")
+        return if (extension in known) name else "$name.${extensionForMime(mime)}"
     }
 
-    private fun uniqueFileName(value: String): String {
-        val safe = safeFileName(value)
+    private fun uniqueFileName(value: String, mime: String): String {
+        val safe = safeFileName(value, mime)
         val dot = safe.lastIndexOf('.')
         val suffix = "-${System.currentTimeMillis()}"
         return if (dot > 0) safe.substring(0, dot) + suffix + safe.substring(dot)
