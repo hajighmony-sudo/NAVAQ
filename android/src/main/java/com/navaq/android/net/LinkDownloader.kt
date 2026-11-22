@@ -229,6 +229,7 @@ object LinkDownloader {
         job.stop = null
         job.error = null
         job.state = QUEUED
+        NavaqTransferService.ensure(app)
         pool.execute { run(app, job) }
     }
 

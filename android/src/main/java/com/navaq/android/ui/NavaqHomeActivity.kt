@@ -820,6 +820,7 @@ class NavaqHomeActivity : Activity() {
                 h.allowGuestControl = runtimePrefs().getBoolean("room_guest_control", true)
                 h.start(Build.MODEL ?: "NAVAQ")
                 LanRoom.host = h
+                com.navaq.android.net.NavaqTransferService.ensure(applicationContext)
                 runOnUiThread { handler.post(roomTicker); buildScreen() }
             } catch (_: Exception) {
                 runOnUiThread { toast("ساخت اتاق ناموفق بود") }
@@ -843,6 +844,7 @@ class NavaqHomeActivity : Activity() {
         LanRoom.guest?.leave()
         roomStatus = "در حال اتصال…"
         LanRoom.guest = LanRoom.Guest(host, port, roomCodeIn.trim()) { ev -> LanRoom.listener?.invoke(ev) }.also { it.start() }
+        com.navaq.android.net.NavaqTransferService.ensure(applicationContext)
         buildScreen()
     }
 
@@ -1806,6 +1808,14 @@ class NavaqHomeActivity : Activity() {
     private fun onPlayback() {
         updateMini()
         if (LanRoom.host != null) roomPush()
+        sleepEndId?.let { target ->
+            if (client.currentId != null && client.currentId != target) {
+                // Track changed (seek past the end or skip): stop now.
+                sleepRunnable?.let { handler.removeCallbacks(it) }
+                sleepRunnable = null; sleepEndId = null
+                client.pause()
+            }
+        }
         val id = client.currentId
         if (id != null) byId[id]?.let { wall.setAlbumHue(hueOf(it.title)) }
         if (playerLayer != null) {
@@ -1877,13 +1887,32 @@ class NavaqHomeActivity : Activity() {
         listOf(15, 30, 45, 60).forEach { m ->
             opts += "${fa(m)} دقیقه" to { setSleep(m) }
         }
+        opts += "پایان این آهنگ" to { setSleepAtTrackEnd() }
         opts += "خاموش" to { setSleep(0) }
         showSheet("تایمر خواب", opts)
+    }
+
+    private var sleepEndId: String? = null
+
+    private fun setSleepAtTrackEnd() {
+        sleepRunnable?.let { handler.removeCallbacks(it) }
+        sleepRunnable = null
+        val id = client.currentId
+        if (id == null) { toast("آهنگی در حال پخش نیست"); return }
+        sleepEndId = id
+        val r = Runnable { sleepEndId = null; sleepRunnable = null; client.pause(); toast("تایمر خواب: پایان آهنگ") }
+        if (client.durationMs > 0L) {
+            sleepRunnable = r
+            handler.postDelayed(r, (client.durationMs - client.positionMs - 300L).coerceAtLeast(0L))
+        }
+        toast("پخش در پایان این آهنگ متوقف می‌شود")
+        if (playerLayer != null) buildPlayer()
     }
 
     private fun setSleep(minutes: Int) {
         sleepRunnable?.let { handler.removeCallbacks(it) }
         sleepRunnable = null
+        sleepEndId = null
         if (minutes > 0) {
             val r = Runnable { client.pause(); sleepRunnable = null; toast("تایمر خواب: پخش متوقف شد") }
             sleepRunnable = r
