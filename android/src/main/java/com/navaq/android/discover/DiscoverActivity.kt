@@ -347,19 +347,32 @@ class DiscoverActivity : Activity() {
         val ids = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getStringSet(KEY_DOWNLOAD_IDS, emptySet()).orEmpty()
         var visible = 0
+        var completed = 0
+        var active = 0
+        var failed = 0
+        var transferred = 0L
+        val summary = label("Loading download queue…", 13, SUBTLE, false)
+        libraryContainer.addView(summary, params(bottom = 10))
         for (rawId in ids) {
             val id = rawId.toLongOrNull() ?: continue
             val cursor = downloadManager.query(DownloadManager.Query().setFilterById(id))
             cursor.use {
                 if (!it.moveToFirst()) return@use
                 val title = it.getString(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE))
+                val sourceUrl = it.getString(it.getColumnIndexOrThrow(DownloadManager.COLUMN_URI)).orEmpty()
                 val statusCode = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                when (statusCode) {
+                    DownloadManager.STATUS_SUCCESSFUL -> completed++
+                    DownloadManager.STATUS_FAILED -> failed++
+                    DownloadManager.STATUS_RUNNING, DownloadManager.STATUS_PENDING,
+                    DownloadManager.STATUS_PAUSED -> active++
+                }
                 val card = card()
                 card.addView(label(title ?: "Media download", 15, Color.WHITE, true))
                 val statusLabel = when (statusCode) {
                     DownloadManager.STATUS_SUCCESSFUL -> "Available offline"
-                    DownloadManager.STATUS_FAILED -> "Failed (code $reason)"
+                    DownloadManager.STATUS_FAILED -> "Failed • " + downloadReason(reason)
                     DownloadManager.STATUS_RUNNING -> "Downloading…"
                     DownloadManager.STATUS_PAUSED -> "Paused by system"
                     DownloadManager.STATUS_PENDING -> "Waiting in queue"
@@ -371,9 +384,10 @@ class DiscoverActivity : Activity() {
                 val total = it.getLong(it.getColumnIndexOrThrow(
                     DownloadManager.COLUMN_TOTAL_SIZE_BYTES
                 ))
+                transferred += downloaded.coerceAtLeast(0L)
                 val progressLabel = if (total > 0L) {
-                    " • ${downloaded * 100L / total}%"
-                } else ""
+                    " • ${downloaded * 100L / total}% • ${formatSize(downloaded)} / ${formatSize(total)}"
+                } else if (downloaded > 0L) " • ${formatSize(downloaded)}" else ""
                 card.addView(label(statusLabel + progressLabel, 12, MUTED, false).apply {
                     setPadding(0, dp(6), 0, dp(8))
                 })
@@ -396,6 +410,10 @@ class DiscoverActivity : Activity() {
                             }
                         }
                     }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) })
+                } else if (statusCode == DownloadManager.STATUS_FAILED && sourceUrl.isNotBlank()) {
+                    actions.addView(actionButton("Retry") {
+                        retryDownload(id, sourceUrl, title ?: "media")
+                    }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) })
                 }
                 actions.addView(actionButton(
                     if (statusCode == DownloadManager.STATUS_RUNNING ||
@@ -412,12 +430,56 @@ class DiscoverActivity : Activity() {
                 visible++
             }
         }
+        summary.text = "$visible tasks • $active active • $completed completed • $failed failed • ${formatSize(transferred)} transferred"
         if (visible == 0) {
             libraryContainer.addView(label(
                 "Your offline library is empty. Search audio or download a direct link from Browser.",
                 14, SUBTLE, false
             ))
         }
+    }
+
+    private fun downloadReason(reason: Int): String = when (reason) {
+        DownloadManager.PAUSED_WAITING_TO_RETRY -> "retry scheduled"
+        DownloadManager.PAUSED_WAITING_FOR_NETWORK -> "waiting for network"
+        DownloadManager.PAUSED_QUEUED_FOR_WIFI -> "waiting for Wi-Fi"
+        DownloadManager.ERROR_CANNOT_RESUME -> "server cannot resume"
+        DownloadManager.ERROR_DEVICE_NOT_FOUND -> "storage unavailable"
+        DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "file already exists"
+        DownloadManager.ERROR_FILE_ERROR -> "storage error"
+        DownloadManager.ERROR_HTTP_DATA_ERROR -> "server data error"
+        DownloadManager.ERROR_INSUFFICIENT_SPACE -> "not enough storage"
+        DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "too many redirects"
+        DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "server rejected request"
+        else -> "code $reason"
+    }
+
+    private fun retryDownload(id: Long, url: String, title: String) {
+        downloadManager.remove(id)
+        forgetDownload(id)
+        enqueueDownload(url, title)
+        refreshLibrary()
+    }
+
+    private fun clearCompletedDownloads() {
+        val ids = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getStringSet(KEY_DOWNLOAD_IDS, emptySet()).orEmpty().toList()
+        var removed = 0
+        ids.forEach { raw ->
+            val id = raw.toLongOrNull() ?: return@forEach
+            val cursor = downloadManager.query(DownloadManager.Query().setFilterById(id))
+            cursor.use {
+                if (it.moveToFirst() && it.getInt(it.getColumnIndexOrThrow(
+                    DownloadManager.COLUMN_STATUS
+                )) == DownloadManager.STATUS_SUCCESSFUL) {
+                    downloadManager.remove(id)
+                    forgetDownload(id)
+                    removed++
+                }
+            }
+        }
+        refreshLibrary()
+        toast("$removed completed download(s) removed.")
     }
 
     private fun enqueueDownload(rawUrl: String, suggestedName: String) {
