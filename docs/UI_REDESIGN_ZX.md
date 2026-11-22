@@ -55,6 +55,7 @@ GitHub Actions Android CI is configured to build the universal debug APK, verify
 - Brought the AVA console cards and controls into the same midnight-glass/cyan-violet visual language, with tactile button feedback. Voice recognition, permission handling, notification actions and command routing are unchanged.
 - Applied the same glass-card and button treatment to Discover. Search, browser, offline library, and the existing Wikimedia Commons-only download safeguards remain unchanged.
 - Refined shared settings icon chips and option chips so all settings subsections inherit the same selected-state treatment.
+- Elevated the full player with a multi-tone ambient stage, a gradient primary playback control and clearer active-state accents for queue and sleep timer actions.
 
 ## Validation status
 
