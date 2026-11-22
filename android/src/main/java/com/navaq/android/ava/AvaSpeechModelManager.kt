@@ -127,8 +127,11 @@ class AvaSpeechModelManager(context: Context) {
         val partial = File(destination.parentFile, destination.name + ".part")
         val validatorFile = File(destination.parentFile, destination.name + ".validator")
         var existingBytes = partial.length()
+        val savedValidator = validatorFile.takeIf { it.isFile }
+            ?.readText()
+            ?.takeIf { it.isNotBlank() }
         if (existingBytes > EXPECTED_ARCHIVE_BYTES ||
-            (existingBytes > 0L && !validatorFile.isFile)
+            (existingBytes > 0L && savedValidator == null)
         ) {
             // Resume only when the previous response supplied a validator.
             // Without one, restart instead of risking a mixed-version archive.
@@ -151,11 +154,7 @@ class AvaSpeechModelManager(context: Context) {
             setRequestProperty("Accept-Encoding", "identity")
             if (existingBytes > 0L) {
                 setRequestProperty("Range", "bytes=$existingBytes-")
-                if (validatorFile.isFile) {
-                    validatorFile.readText().takeIf { it.isNotBlank() }?.let {
-                        setRequestProperty("If-Range", it)
-                    }
-                }
+                savedValidator?.let { setRequestProperty("If-Range", it) }
             }
         }
         try {
@@ -166,11 +165,18 @@ class AvaSpeechModelManager(context: Context) {
                 HttpURLConnection.HTTP_PARTIAL -> {
                     val range = Regex("^bytes (\\d+)-(\\d+)/(\\d+)$")
                         .matchEntire(connection.getHeaderField("Content-Range").orEmpty())
-                    check(range != null && range.groupValues[1].toLong() == existingBytes) {
-                        "The server returned an invalid resume range for the AVA model"
-                    }
-                    check(range.groupValues[3].toLong() == EXPECTED_ARCHIVE_BYTES) {
-                        "The AVA model archive has an unexpected total size"
+                    val validRange = range != null &&
+                        range.groupValues[1].toLong() == existingBytes &&
+                        range.groupValues[2].toLong() == EXPECTED_ARCHIVE_BYTES - 1L &&
+                        range.groupValues[3].toLong() == EXPECTED_ARCHIVE_BYTES
+                    val responseValidator = connection.getHeaderField("ETag")
+                        ?: connection.getHeaderField("Last-Modified")
+                    if (!validRange || responseValidator.isNullOrBlank() ||
+                        responseValidator != savedValidator
+                    ) {
+                        partial.delete()
+                        validatorFile.delete()
+                        error("The AVA model changed during download. Retry to start a fresh download.")
                     }
                     append = true
                 }
