@@ -65,6 +65,20 @@ class AvaCommandInterpreter(context: Context) {
                 "تنظیمات اعلان ها را باز کن", "تنظیمات نوتیفیکیشن را باز کن",
                 "open notification settings", "manage notifications"
             ) -> "open_notification_settings"
+            command in setOf("وای فای را باز کن", "تنظیمات وای فای", "open wifi settings", "open wi-fi settings") ->
+                "open_wifi_settings"
+            command in setOf("بلوتوث را باز کن", "تنظیمات بلوتوث", "open bluetooth settings") ->
+                "open_bluetooth_settings"
+            command in setOf("تنظیمات صدا را باز کن", "تنظیمات صوتی", "open sound settings") ->
+                "open_sound_settings"
+            command in setOf("تنظیمات باتری را باز کن", "حالت ذخیره باتری", "open battery settings") ->
+                "open_battery_settings"
+            command in setOf("پیام ها را باز کن", "پیامک ها را باز کن", "open messages", "open messaging") ->
+                "open_messages"
+            command in setOf("دوربین را باز کن", "دوربین رو باز کن", "open camera") ->
+                "open_camera"
+            command in setOf("ساعت را باز کن", "آلارم را باز کن", "open clock", "open alarms") ->
+                "open_clock"
             else -> null
         }
         if (systemAction != null) {
