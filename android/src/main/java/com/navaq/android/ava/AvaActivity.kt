@@ -323,6 +323,12 @@ class AvaActivity : Activity() {
 
 
     private fun enableSmartNotifications() {
+        if (NavaqNotificationCenter.isEnabled(this)) {
+            NavaqNotificationCenter.setEnabled(this, false)
+            notificationButton.text = "Enable smart notifications"
+            statusText.text = "Smart notifications are disabled."
+            return
+        }
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
