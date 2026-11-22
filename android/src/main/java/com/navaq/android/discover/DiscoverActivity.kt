@@ -378,8 +378,7 @@ class DiscoverActivity : Activity() {
                         val uri = downloadManager.getUriForDownloadedFile(id)
                         if (uri != null) {
                             try {
-                                val detectedMime = downloadManager.getMimeTypeForDownloadedFile(id) ?: itMime(title)
-                                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, detectedMime)
+                                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, itMime(title))
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             } catch (_: Exception) {
                                 toast("No compatible media app was found.")
@@ -432,8 +431,14 @@ class DiscoverActivity : Activity() {
                     runOnUiThread { toast("The download host resolves to a local/private address.") }
                     return@execute
                 }
+                val urlFileName = Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() }
+                val preferredName = if (suggestedName == "web-media" || suggestedName == "web-audio") {
+                    urlFileName ?: suggestedName
+                } else {
+                    suggestedName
+                }
                 val request = DownloadManager.Request(Uri.parse(url))
-                    .setTitle(safeFileName(suggestedName))
+                    .setTitle(safeFileName(preferredName))
                     .setDescription("NAVAQ Discover")
                     .setMimeType(guessMime(url))
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
@@ -442,7 +447,7 @@ class DiscoverActivity : Activity() {
                     .setDestinationInExternalFilesDir(
                         this,
                         Environment.DIRECTORY_MUSIC,
-                        "NAVAQ/${uniqueFileName(suggestedName)}"
+                        "NAVAQ/${uniqueFileName(preferredName)}"
                     )
                 val id = downloadManager.enqueue(request)
                 rememberDownload(id)
