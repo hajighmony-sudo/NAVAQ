@@ -300,7 +300,13 @@ object LinkDownloader {
         } catch (e: Exception) {
             if (job.stop == "pause") job.state = PAUSED
             else if (job.stop == "cancel") cleanFiles(job, true)
-            else { job.state = FAILED; job.error = e.message ?: "خطا" }
+            else {
+                job.state = FAILED
+                job.error = e.message ?: "خطا"
+                if (NavaqNotificationCenter.isEnabled(ctx)) {
+                    NavaqNotificationCenter.downloadComplete(ctx, job.title, false)
+                }
+            }
         }
         save(ctx)
     }
@@ -329,6 +335,10 @@ object LinkDownloader {
                     .find(c.getHeaderField("Content-Range").orEmpty())?.groupValues?.getOrNull(1)?.toLongOrNull()
                 if (rangeStart != have) throw IOException("سرور محدودهٔ ادامهٔ دانلود را تأیید نکرد")
             }
+            val responseType = (c.contentType ?: "").lowercase()
+            if (responseType.contains("text/html") || responseType.contains("application/json") ||
+                responseType.contains("text/xml")
+            ) throw IOException("سرور به‌جای فایل رسانه، صفحهٔ وب برگرداند")
             val len = c.contentLengthLong
             job.total = if (len > 0) len + have else 0L
             job.done = have
@@ -368,6 +378,10 @@ object LinkDownloader {
             }
         } finally {
             c.disconnect()
+        }
+        if (!part.exists() || part.length() == 0L) throw IOException("فایل دانلودشده خالی است")
+        if (job.total > 0L && part.length() != job.total) {
+            throw IOException("دانلود کامل نشد؛ اندازهٔ فایل با اندازهٔ اعلام‌شدهٔ سرور برابر نیست")
         }
         if (!part.renameTo(File(job.path))) throw IOException("ذخیره‌ی فایل ناموفق بود")
     }
