@@ -4,7 +4,7 @@ NAVAQ is a music application project with a platform-independent Rust playback/d
 ## Workspace
 
 - `core/` — playback state, command/event contracts, queue management, audio-session policy, snapshot recovery, equalizer/crossfade settings, library, playlists, lyrics (LRC), sleep timer, play history, **and exclusive features** (Shared Listening Rooms, Music DNA matching, creative tools, advanced haptics, personalized spatial audio).
-- `android/` — native Android app using AndroidX Media3, MediaSessionService, a JNI bridge to Rust, AVA voice controls, and NAVAQ Discover (audio search, in-app browser, direct downloads, and offline download list).
+- `android/` — native Android app using AndroidX Media3, MediaSessionService, a JNI bridge to Rust, AVA voice controls, and NAVAQ Discover and Downloader (public audio search, in-app browser, direct audio/video downloads, Wi-Fi/mobile-data policy, and offline download list).
 - The iOS AVFoundation adapter is not yet implemented.
 
 ## Core boundary
@@ -47,8 +47,9 @@ Discover is a native Android feature reachable from the AVA home screen. It is s
 
 - **Public audio search:** searches Wikimedia Commons for audio files, displays the title, MIME type and available file size, and supports loading subsequent result pages.
 - **In-app browser:** an Android WebView with DuckDuckGo as the default search engine, address/search input, back/forward/reload controls, and HTTP(S)-only top-level navigation.
-- **Direct-link downloads:** accepts a direct HTTP(S) media URL, and also receives downloadable URLs exposed through the WebView download callback. Android DownloadManager performs the transfer and provides system notifications.
-- **Download queue and offline list:** stores DownloadManager IDs in app preferences, shows queued/running/paused/failed/completed states and known progress, allows active tasks to be cancelled and finished entries to be removed, and opens completed files with an Android audio intent.
+- **Public audio/video downloads:** searches Wikimedia Commons for public media and downloads supported direct HTTPS media files from its media host only. Supported common formats include MP4, WebM, MKV, MOV, 3GP, AVI, MP3, M4A/AAC, FLAC, OGG, WAV and Opus.
+- **Network controls:** choose Wi-Fi only or Wi-Fi plus mobile data for newly queued downloads; roaming is disabled.
+- **Download queue and offline list:** stores DownloadManager IDs in app preferences, shows task states and percentage progress, allows active tasks to be cancelled and finished entries to be removed, and opens completed audio/video files with an Android media app.
 - **Rust URL validation:** the Android bridge calls `nativeValidateDownloadUrl`, which delegates URL policy checks to `core/src/downloads.rs`. The Android host also checks the initial DNS result for local/private addresses before enqueueing.
 
 ### Build and entry point
@@ -63,8 +64,8 @@ gradle :android:assembleDebug
 ### Important boundaries
 
 - Structured audio search currently uses Wikimedia Commons; the Browser tab is general web browsing/search, not a universal multi-site audio index.
-- A page URL is not necessarily a media file URL. Use the browser's download callback when a site exposes a direct download, or paste a direct media URL into the download field. Discover does not scrape arbitrary pages to extract hidden media URLs.
-- DRM, protected streams, authentication, paywalls, and website access restrictions are not bypassed.
+- Downloads are restricted to public Wikimedia Commons media files hosted on `upload.wikimedia.org`; media URLs from other hosts are rejected. The Browser tab remains for ordinary web browsing and does not extract media from arbitrary pages.
+- Check the license and attribution terms for each Commons file before reuse. DRM, protected streams, authentication, paywalls, age gates and site restrictions are not bypassed.
 - Android DownloadManager owns transfer execution, retry policy, and notifications. Discover reports its state and can cancel tasks; it does not yet provide a custom resumable/range-download engine or in-app pause/resume controls.
 - The initial hostname is checked before enqueueing, but DownloadManager follows redirects itself. This client-side check is not a complete server-side SSRF boundary.
 - Files are saved under app-specific external Music/NAVAQ storage. They are available offline while retained by Android, but may be removed when the app is uninstalled. Search and browsing require internet access.
