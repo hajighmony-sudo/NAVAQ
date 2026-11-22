@@ -87,6 +87,7 @@ object SettingsKit {
             val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
             addView(Switch(ctx).apply {
                 isChecked = checked
+                contentDescription = title
                 trackTintList = ColorStateList(states, intArrayOf(T.accent, gray()))
                 thumbTintList = ColorStateList(states, intArrayOf(Color.WHITE, Color.WHITE))
                 setOnCheckedChangeListener { _, value -> onChange(value) }
@@ -137,6 +138,7 @@ object SettingsKit {
                 if (on) setStroke(T.dp(1), (T.neonA and 0x00FFFFFF) or (0x88 shl 24))
             }
             isFocusable = true
+            contentDescription = if (on) "$text، انتخاب‌شده" else text
             pressable(onClick)
         }
 
@@ -172,6 +174,8 @@ object SettingsKit {
                             if (hex.equals(selected, true)) setStroke(T.dp(3), T.fg) else setStroke(T.dp(2), Color.argb(140, 255, 255, 255))
                         }
                         layoutParams = LinearLayout.LayoutParams(T.dp(38), T.dp(38))
+                        isFocusable = true
+                        contentDescription = "رنگ تأکید $hex"
                         pressable { onPick(hex) }
                     })
                 }
