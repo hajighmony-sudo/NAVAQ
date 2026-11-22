@@ -43,6 +43,11 @@ class DiscoverActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var searchInput: EditText
     private lateinit var browserInput: EditText
+    private lateinit var downloadUrlInput: EditText
+    private lateinit var loadMoreButton: Button
+    private var nextSearchOffset = 0
+    private var activeSearchQuery = ""
+    private var searchGeneration = 0
     private lateinit var resultsContainer: LinearLayout
     private lateinit var libraryContainer: LinearLayout
     private lateinit var browser: WebView
@@ -97,7 +102,7 @@ class DiscoverActivity : Activity() {
     private fun showSearch() {
         content.removeAllViews()
         searchInput = EditText(this).apply {
-            hint = "Search audio on Wikimedia Commons"
+            hint = "Search public audio on Wikimedia Commons"
             setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(MUTED)
@@ -111,11 +116,15 @@ class DiscoverActivity : Activity() {
         content.addView(progress, params(bottom = 8))
         resultsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(resultsContainer)
+        loadMoreButton = actionButton("Load more results") {
+            searchAudio(activeSearchQuery, append = true)
+        }.apply { visibility = View.GONE }
+        content.addView(loadMoreButton, params(top = 8))
         status.text = "Search uses Wikimedia Commons public audio files. Use Browser for the wider web."
     }
 
-    private fun searchAudio(rawQuery: String) {
-        val query = rawQuery.trim()
+    private fun searchAudio(rawQuery: String, append: Boolean = false) {
+        val query = if (append) activeSearchQuery else rawQuery.trim()
         if (query.isEmpty()) {
             toast("Enter a search term first.")
             return
@@ -124,20 +133,32 @@ class DiscoverActivity : Activity() {
             toast("Search text is too long.")
             return
         }
-        resultsContainer.removeAllViews()
+        if (!append) {
+            activeSearchQuery = query
+            nextSearchOffset = 0
+            searchGeneration += 1
+            resultsContainer.removeAllViews()
+        }
+        val requestGeneration = searchGeneration
+        val requestOffset = nextSearchOffset
+        loadMoreButton.visibility = View.GONE
         progress.visibility = View.VISIBLE
-        status.text = "Searching audio…"
+        status.text = if (append) "Loading more audio…" else "Searching audio…"
         executor.execute {
             try {
                 val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
                     URLEncoder.encode("filetype:audio $query", Charsets.UTF_8.name()) +
-                    "&gsrnamespace=6&gsrlimit=25&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json"
+                    "&gsrnamespace=6&gsrlimit=25&gsroffset=$requestOffset&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json"
                 val connection = URL(endpoint).openConnection()
                 connection.connectTimeout = 12_000
                 connection.readTimeout = 18_000
                 connection.setRequestProperty("User-Agent", "NAVAQ/0.1 (Discover audio search)")
                 val body = connection.getInputStream().bufferedReader().use { it.readText() }
-                val pages = JSONObject(body).optJSONObject("query")?.optJSONObject("pages")
+                val response = JSONObject(body)
+                val pages = response.optJSONObject("query")?.optJSONObject("pages")
+                val continuation = response.optJSONObject("continue")
+                val hasMore = continuation?.has("gsroffset") == true
+                val followingOffset = continuation?.optInt("gsroffset", 0) ?: 0
                 val found = mutableListOf<AudioHit>()
                 if (pages != null) {
                     val keys = pages.keys()
@@ -159,18 +180,23 @@ class DiscoverActivity : Activity() {
                     }
                 }
                 runOnUiThread {
+                    if (requestGeneration != searchGeneration) return@runOnUiThread
                     progress.visibility = View.GONE
-                    resultsContainer.removeAllViews()
-                    if (found.isEmpty()) {
+                    if (!append) resultsContainer.removeAllViews()
+                    if (found.isEmpty() && !append) {
                         status.text = "No audio files found. Try another phrase or use Browser."
                     } else {
-                        status.text = "${found.size} audio result(s)"
+                        status.text = if (append) "More results loaded • ${found.size} added" else "${found.size} audio result(s)"
                         found.forEach { addAudioHit(it) }
                     }
+                    nextSearchOffset = followingOffset
+                    loadMoreButton.visibility = if (hasMore && followingOffset > requestOffset) View.VISIBLE else View.GONE
                 }
             } catch (error: Exception) {
                 runOnUiThread {
+                    if (requestGeneration != searchGeneration) return@runOnUiThread
                     progress.visibility = View.GONE
+                    loadMoreButton.visibility = if (append && nextSearchOffset > 0) View.VISIBLE else View.GONE
                     status.text = "Search failed: ${error.message ?: "network error"}"
                 }
             }
@@ -205,10 +231,32 @@ class DiscoverActivity : Activity() {
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controls.addView(actionButton("Go") { navigateBrowser(browserInput.text.toString()) },
             LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) })
-        controls.addView(actionButton("Download link") {
-            enqueueDownload(browser.url ?: browserInput.text.toString(), "web-audio")
+        controls.addView(actionButton("Copy page URL") {
+            val current = browser.url
+            if (!current.isNullOrBlank()) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NAVAQ page URL", current))
+                toast("Page URL copied. Paste a direct media URL below to download it.")
+            }
         }, LinearLayout.LayoutParams(0, dp(46), 1f))
         content.addView(controls, params(bottom = 8))
+        downloadUrlInput = EditText(this).apply {
+            hint = "Paste a direct HTTP(S) media URL to download"
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(MUTED)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = fieldBackground()
+        }
+        content.addView(downloadUrlInput, params(bottom = 8))
+        content.addView(actionButton("Download direct URL") {
+            enqueueDownload(downloadUrlInput.text.toString(), "web-audio")
+        }, params(bottom = 8))
+        val navigation = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        navigation.addView(actionButton("Back") { if (::browser.isInitialized && browser.canGoBack()) browser.goBack() }, weightParams())
+        navigation.addView(actionButton("Forward") { if (::browser.isInitialized && browser.canGoForward()) browser.goForward() }, weightParams())
+        navigation.addView(actionButton("Reload") { if (::browser.isInitialized) browser.reload() }, weightParams())
+        content.addView(navigation, params(bottom = 8))
 
         if (!::browser.isInitialized) {
             browser = WebView(this).apply {
@@ -226,8 +274,14 @@ class DiscoverActivity : Activity() {
                         val scheme = request.url.scheme?.lowercase()
                         return scheme != "http" && scheme != "https"
                     }
+
+                    override fun onPageFinished(view: WebView, url: String) {
+                        super.onPageFinished(view, url)
+                        if (::browserInput.isInitialized) browserInput.setText(url)
+                    }
                 }
                 setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
+                    if (::downloadUrlInput.isInitialized) downloadUrlInput.setText(url)
                     enqueueDownload(url, contentDisposition ?: mimeType ?: "web-download")
                 })
             }
