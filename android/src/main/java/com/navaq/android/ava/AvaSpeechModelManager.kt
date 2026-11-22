@@ -113,7 +113,11 @@ class AvaSpeechModelManager(context: Context) {
         val partial = File(destination.parentFile, destination.name + ".part")
         val validatorFile = File(destination.parentFile, destination.name + ".validator")
         var existingBytes = partial.length()
-        if (existingBytes > EXPECTED_ARCHIVE_BYTES) {
+        if (existingBytes > EXPECTED_ARCHIVE_BYTES ||
+            (existingBytes > 0L && !validatorFile.isFile)
+        ) {
+            // Resume only when the previous response supplied a validator.
+            // Without one, restart instead of risking a mixed-version archive.
             partial.delete()
             validatorFile.delete()
             existingBytes = 0L
@@ -144,7 +148,6 @@ class AvaSpeechModelManager(context: Context) {
             connection.connect()
             val responseCode = connection.responseCode
             val append: Boolean
-            val totalBytes: Long
             when (responseCode) {
                 HttpURLConnection.HTTP_PARTIAL -> {
                     val range = Regex("^bytes (\\d+)-(\\d+)/(\\d+)$")
@@ -152,8 +155,7 @@ class AvaSpeechModelManager(context: Context) {
                     check(range != null && range.groupValues[1].toLong() == existingBytes) {
                         "The server returned an invalid resume range for the AVA model"
                     }
-                    totalBytes = range.groupValues[3].toLong()
-                    check(totalBytes == EXPECTED_ARCHIVE_BYTES) {
+                    check(range.groupValues[3].toLong() == EXPECTED_ARCHIVE_BYTES) {
                         "The AVA model archive has an unexpected total size"
                     }
                     append = true
@@ -164,8 +166,8 @@ class AvaSpeechModelManager(context: Context) {
                     partial.delete()
                     validatorFile.delete()
                     existingBytes = 0L
-                    totalBytes = connection.contentLengthLong
-                    check(totalBytes == EXPECTED_ARCHIVE_BYTES) {
+                    val responseLength = connection.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
+                    check(responseLength == EXPECTED_ARCHIVE_BYTES) {
                         "The AVA model archive has an unexpected size"
                     }
                     append = false
