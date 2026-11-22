@@ -353,10 +353,8 @@ class AvaActivity : Activity() {
                 Intent.ACTION_DIAL,
                 Uri.parse(if (safeNumber.isBlank()) "tel:" else "tel:$safeNumber")
             )
-            "open_system_settings" -> Intent(Settings.ACTION_SETTINGS)
             "open_wifi_settings" -> Intent(Settings.ACTION_WIFI_SETTINGS)
             "open_bluetooth_settings" -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-            "open_sound_settings" -> Intent(Settings.ACTION_SOUND_SETTINGS)
             "open_battery_settings" -> Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
             "open_messages" -> Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)
             "open_camera" -> Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
