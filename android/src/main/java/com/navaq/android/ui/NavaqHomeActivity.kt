@@ -1086,14 +1086,25 @@ class NavaqHomeActivity : Activity() {
         dlDoneCount = done
     }
 
-    private fun dlStatus(j: LinkDownloader.Job): String = when (j.state) {
-        LinkDownloader.DONE -> "آماده؛ آفلاین در کتابخانه"
-        LinkDownloader.FAILED -> "ناموفق: ${j.error.orEmpty()}"
-        LinkDownloader.PAUSED -> "متوقف" + (j.error?.let { " — $it" } ?: "") + if (j.total > 0) " (${fa(j.percent)}٪)" else ""
-        LinkDownloader.QUEUED -> "در صف"
-        else -> if (j.hls) "دریافت بخش‌ها: ${fa(j.done)} از ${fa(j.total)}"
-        else if (j.total > 0) "${fa(j.percent)}٪ — ${fa(j.done / 1024 / 1024)} از ${fa(j.total / 1024 / 1024)} مگابایت"
-        else "در حال دانلود… ${fa(j.done / 1024 / 1024)} مگابایت"
+    private fun dlStatus(j: LinkDownloader.Job): String {
+        val base = when (j.state) {
+            LinkDownloader.DONE -> "آماده؛ آفلاین در کتابخانه"
+            LinkDownloader.FAILED -> "ناموفق: " + j.error.orEmpty()
+            LinkDownloader.PAUSED -> "متوقف" + (j.error?.let { " — " + it } ?: "") + if (j.total > 0) " (" + fa(j.percent) + "٪)" else ""
+            LinkDownloader.QUEUED -> "در صف"
+            else -> if (j.hls) "دریافت بخش‌ها: " + fa(j.done) + " از " + fa(j.total)
+            else if (j.total > 0) fa(j.percent) + "٪ — " + fa(j.done / 1024 / 1024) + " از " + fa(j.total / 1024 / 1024) + " مگابایت"
+            else "در حال دانلود… " + fa(j.done / 1024 / 1024) + " مگابایت"
+        }
+        val speed = if (j.state == LinkDownloader.RUNNING && j.speedBps > 0L) {
+            val rate = if (j.speedBps >= 1_048_576L) String.format("%.1f MB/s", j.speedBps / 1_048_576.0)
+                else fa(j.speedBps / 1024L) + " KB/s"
+            " • " + rate
+        } else ""
+        val eta = if (j.state == LinkDownloader.RUNNING && j.etaSeconds >= 0L) {
+            " • زمان باقی‌مانده: " + fa(j.etaSeconds / 60) + ":" + fa(j.etaSeconds % 60)
+        } else ""
+        return base + speed + eta
     }
 
     private fun dlRow(j: LinkDownloader.Job): View = LinearLayout(this).apply {
@@ -1439,7 +1450,7 @@ class NavaqHomeActivity : Activity() {
         "room" -> roomItems()
         "downloads" -> listOf(
             Item.Sec("NAVAQ Downloader"),
-            Item.Row("لینک", "url link video") { fieldRow("لینک فایل، ویدیو، جریان m3u8 یا صفحه‌ای که ویدیو دارد", dlUrl, true) { dlUrl = it } },
+            Item.Row("لینک", "url link video") { fieldRow("لینک مستقیم رسانهٔ عمومی Wikimedia Commons یا صفحهٔ فایل آن", dlUrl, true) { dlUrl = it } },
             Item.Row("نام فایل", "name") { fieldRow("نام فایل (اختیاری)", dlName, false) { dlName = it } },
             Item.Row("چسباندن", "paste") {
                 SettingsKit.actionRow(this, Icon.QUEUE, "چسباندن لینک از کلیپ‌بورد", null) {
@@ -1451,7 +1462,7 @@ class NavaqHomeActivity : Activity() {
             toggleRaw("فقط صدا", "از ویدیو آهنگ (m4a) جدا می‌کند؛ اگر کدک پشتیبانی نشود فایل کامل می‌ماند", "dl_audio_only"),
             toggleRaw("فقط با وای‌فای", "جلوگیری از مصرف اینترنت همراه", "dl_wifi_only"),
             Item.Row("دانلود", "add") { SettingsKit.actionRow(this, Icon.DOWN, "دانلود", "فایل در کتابخانه‌ی NAVAQ ذخیره می‌شود") { dlAdd() } },
-            Item.Row("توضیح", "") { SettingsKit.noteRow(this, "فقط محتوایی را دانلود کنید که حق آن را دارید. جریان‌های رمزگذاری‌شده، DRM و سایت‌هایی مثل یوتیوب که لینک مستقیم ندارند پشتیبانی نمی‌شوند. دانلودها تا زمانی که برنامه باز یا در پس‌زمینه زنده است ادامه دارند.") },
+            Item.Row("توضیح", "") { SettingsKit.noteRow(this, "در این نسخه فقط رسانه‌های عمومی Wikimedia Commons پشتیبانی می‌شوند؛ لینک‌های سایت‌های دیگر پذیرفته نمی‌شوند. پیش از استفادهٔ مجدد، مجوز و الزام درج نام سازنده را بررسی کنید. DRM، جریان رمزگذاری‌شده و پخش زنده پشتیبانی نمی‌شود. دانلودها با امکان مکث و ادامه، از فایل موقت ادامه‌پذیرند.") },
             Item.Sec("صف دانلود"),
             Item.Row("فهرست", "queue jobs") { dlContainer() }
         )
