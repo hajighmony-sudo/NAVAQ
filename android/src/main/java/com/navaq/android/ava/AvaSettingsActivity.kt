@@ -7,8 +7,8 @@ import androidx.fragment.app.FragmentActivity
 class AvaSettingsActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(10, 15, 29)
-        window.navigationBarColor = android.graphics.Color.rgb(10, 15, 29)
+        window.statusBarColor = android.graphics.Color.rgb(7, 8, 18)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 8, 18)
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
                 .replace(android.R.id.content, AvaSettingsFragment())

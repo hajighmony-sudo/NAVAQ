@@ -276,14 +276,14 @@ class NavaqHomeActivity : Activity() {
         nav.gravity = Gravity.CENTER
         if (s.navStyle == NavStyle.FLOATING) {
             nav.glass(1f)
-            nav.setPadding(T.dp(6), T.dp(6), T.dp(6), T.dp(6))
-            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(64), Gravity.BOTTOM).apply {
+            nav.setPadding(T.dp(7), T.dp(6), T.dp(7), T.dp(6))
+            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(68), Gravity.BOTTOM).apply {
                 setMargins(T.dp(14), 0, T.dp(14), insetBottom + T.dp(14))
             }
         } else {
             nav.glass(1f, topOnly = true)
-            nav.setPadding(T.dp(6), T.dp(6), T.dp(6), insetBottom)
-            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(74) + insetBottom, Gravity.BOTTOM)
+            nav.setPadding(T.dp(7), T.dp(6), T.dp(7), insetBottom)
+            nav.layoutParams = FrameLayout.LayoutParams(-1, T.dp(78) + insetBottom, Gravity.BOTTOM)
         }
         val items = listOf(
             Triple("library", "کتابخانه", Icon.LIBRARY),
@@ -292,16 +292,36 @@ class NavaqHomeActivity : Activity() {
         )
         items.forEach { (id, text, icon) ->
             val on = screen == id
-            val tint = if (on) T.accent else T.fg2
-            nav.addView(LinearLayout(this).apply {
+            val tint = if (on) T.neonA else T.fg2
+            val tile = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    cornerRadius = T.radiusPx * 0.75f
-                    setColor(if (on) (T.accent and 0x00FFFFFF) or (0x38 shl 24) else Color.TRANSPARENT)
+                isFocusable = true
+                contentDescription = text
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    if (on) intArrayOf(
+                        (T.accent and 0x00FFFFFF) or (0x34 shl 24),
+                        (T.neonB and 0x00FFFFFF) or (0x20 shl 24)
+                    ) else intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                ).apply {
+                    cornerRadius = T.radiusPx * 0.72f
+                    if (on) setStroke(T.dp(1), (T.accent and 0x00FFFFFF) or (0x76 shl 24))
                 }
-                addView(IconView(this@NavaqHomeActivity, icon, tint), LinearLayout.LayoutParams(T.dp(22), T.dp(22)))
-                addView(label(this@NavaqHomeActivity, text, 11f, on, tint).apply { setPadding(0, T.dp(2), 0, 0) })
+                val glyph = IconView(this@NavaqHomeActivity, icon, tint)
+                addView(glyph, LinearLayout.LayoutParams(T.dp(22), T.dp(22)))
+                addView(label(this@NavaqHomeActivity, text, 11f, on, if (on) T.fg else T.fg2).apply {
+                    setPadding(0, T.dp(3), 0, 0)
+                })
+                addView(View(this@NavaqHomeActivity).apply {
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(T.neonA, T.neonB, T.neonC)
+                    ).apply { cornerRadius = T.dp(3).toFloat() }
+                    visibility = if (on) View.VISIBLE else View.INVISIBLE
+                }, LinearLayout.LayoutParams(if (on) T.dp(26) else T.dp(10), T.dp(2)).apply {
+                    topMargin = T.dp(4)
+                })
                 pressable {
                     if (screen != id) {
                         screen = id
@@ -310,11 +330,23 @@ class NavaqHomeActivity : Activity() {
                         buildScreen()
                     }
                 }
-            }, LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(T.dp(2), 0, T.dp(2), 0) })
+            }
+            nav.addView(tile, LinearLayout.LayoutParams(0, -1, 1f).apply {
+                setMargins(T.dp(3), 0, T.dp(3), 0)
+            })
+            if (s.animations) {
+                tile.alpha = 0f
+                tile.scaleX = 0.94f
+                tile.scaleY = 0.94f
+                tile.post {
+                    tile.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                        .setDuration(if (on) 240L else 180L).start()
+                }
+            }
         }
     }
 
-    private fun btn(icon: Icon, box: Int, glyph: Int, tint: Int = T.fg, onClick: () -> Unit): FrameLayout =
+        private fun btn(icon: Icon, box: Int, glyph: Int, tint: Int = T.fg, onClick: () -> Unit): FrameLayout =
         FrameLayout(this).apply {
             addView(IconView(this@NavaqHomeActivity, icon, tint), FrameLayout.LayoutParams(T.dp(glyph), T.dp(glyph), Gravity.CENTER))
             layoutParams = LinearLayout.LayoutParams(T.dp(box), T.dp(box))
@@ -401,6 +433,74 @@ class NavaqHomeActivity : Activity() {
             else -> libraryScreen()
         }
         content.addView(v, fill())
+        // Short, low-amplitude page transition: keeps the existing screen/state logic intact.
+        if (s.animations) {
+            v.alpha = 0f
+            v.translationY = T.dp(10).toFloat()
+            v.post {
+                if (v.parent === content) {
+                    v.animate().cancel()
+                    v.animate().alpha(1f).translationY(0f)
+                        .setDuration(220L)
+                        .setInterpolator(android.view.animation.DecelerateInterpolator())
+                        .start()
+                }
+            }
+        }
+        v.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        v.contentDescription = when (screen) {
+            "search" -> "صفحه جستجوی موسیقی"
+            "settings" -> "صفحه تنظیمات"
+            else -> "کتابخانه موسیقی"
+        }
+    }
+
+    /** Compact Bento overview: live library counts, with no changes to playback or storage logic. */
+    private fun libraryHero(): View {
+        val favoriteCount = allTracks.count { favs.isFavorite(it.id) }
+        val playlistCount = playlists().size
+        fun stat(value: String, caption: String, accent: Int): View =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                glass(0.72f)
+                setPadding(T.dp(8), T.dp(9), T.dp(8), T.dp(9))
+                addView(label(this@NavaqHomeActivity, value, 18f, true, accent))
+                addView(label(this@NavaqHomeActivity, caption, 10.5f, false, T.fg2).apply {
+                    setPadding(0, T.dp(3), 0, 0)
+                })
+            }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            glass(1.05f)
+            setPadding(T.dp(16), T.dp(14), T.dp(16), T.dp(13))
+            addView(label(this@NavaqHomeActivity, "NAVAQ  /  YOUR SOUNDSPACE", 10f, true, T.neonA))
+            addView(label(this@NavaqHomeActivity, "موسیقی، با امضای تو", 20f, true, T.fg).apply {
+                setPadding(0, T.dp(5), 0, T.dp(2))
+            })
+            addView(label(
+                this@NavaqHomeActivity,
+                if (client.currentId != null) "پخش ادامه دارد؛ به فضای شنیدنت برگرد." else "کتابخانه‌ات را کشف کن و حال‌وهوای شنیدنت را بساز.",
+                11.5f, false, T.fg2, 2
+            ))
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                addView(stat(fa(allTracks.size), "آهنگ", T.neonA), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginEnd = T.dp(6)
+                })
+                addView(stat(fa(favoriteCount), "پسندیده", T.neonB), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = T.dp(3); marginEnd = T.dp(3)
+                })
+                addView(stat(fa(playlistCount), "پلی‌لیست", T.neonC), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = T.dp(6)
+                })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(12) })
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(T.dp(16), T.dp(3), T.dp(16), T.dp(8))
+            }
+        }
     }
 
     private fun libraryScreen(): View {
@@ -425,6 +525,7 @@ class NavaqHomeActivity : Activity() {
         col.addView(header("موسیقی", null,
             btn(Icon.SEARCH, 44, 22) { screen = "search"; buildNav(); buildScreen() },
             btn(Icon.SLIDERS, 44, 22) { screen = "settings"; buildNav(); buildScreen() }))
+        col.addView(libraryHero())
         val tabs = mutableListOf("tracks" to "آهنگ‌ها", "albums" to "آلبوم‌ها")
         if (s.showArtistsTab) tabs += "artists" to "هنرمندان"
         tabs += "fav" to "علاقه‌مندی‌ها"
@@ -439,10 +540,21 @@ class NavaqHomeActivity : Activity() {
                     val on = tab == id
                     addView(label(this@NavaqHomeActivity, text, 14f, on, if (on) T.accentFg else T.fg).apply {
                         setPadding(T.dp(16), T.dp(8), T.dp(16), T.dp(8))
-                        background = GradientDrawable().apply {
+                        background = GradientDrawable(
+                            GradientDrawable.Orientation.TL_BR,
+                            if (on) intArrayOf(
+                                (T.accent and 0x00FFFFFF) or (0x48 shl 24),
+                                (T.neonB and 0x00FFFFFF) or (0x28 shl 24)
+                            ) else intArrayOf(
+                                Color.argb(if (T.dark) 34 else 90, 128, 134, 160),
+                                Color.argb(if (T.dark) 18 else 45, 128, 134, 160)
+                            )
+                        ).apply {
                             cornerRadius = T.dpf(40f)
-                            setColor(if (on) T.accent else Color.argb(if (T.dark) 40 else 130, 128, 134, 160))
+                            if (on) setStroke(T.dp(1), (T.accent and 0x00FFFFFF) or (0x90 shl 24))
                         }
+                        isFocusable = true
+                        contentDescription = if (on) "$text، انتخاب‌شده" else text
                         pressable { tab = id; buildScreen() }
                     }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = T.dp(8) })
                 }
@@ -1115,20 +1227,58 @@ class NavaqHomeActivity : Activity() {
 
     private fun dlRow(j: LinkDownloader.Job): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(0, T.dp(10), 0, T.dp(10))
-        addView(label(this@NavaqHomeActivity, j.title.ifBlank { "دانلود" }, 15f, true, T.fg, 1))
-        addView(label(this@NavaqHomeActivity, dlStatus(j), 12f, false, T.fg2).apply { setPadding(0, T.dp(3), 0, T.dp(5)) })
+        glass(0.88f)
+        setPadding(T.dp(13), T.dp(12), T.dp(13), T.dp(12))
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(0, T.dp(5), 0, T.dp(5))
+        }
+        val stateColor = when (j.state) {
+            LinkDownloader.DONE -> T.neonA
+            LinkDownloader.FAILED -> 0xFFFF7373.toInt()
+            LinkDownloader.PAUSED -> T.neonC
+            else -> T.accent
+        }
+        addView(LinearLayout(this@NavaqHomeActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label(this@NavaqHomeActivity, j.title.ifBlank { "دانلود" }, 14.5f, true, T.fg, 1),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            addView(label(this@NavaqHomeActivity, when (j.state) {
+                LinkDownloader.DONE -> "کامل"
+                LinkDownloader.FAILED -> "خطا"
+                LinkDownloader.PAUSED -> "مکث"
+                LinkDownloader.QUEUED -> "صف"
+                else -> "دریافت"
+            }, 10.5f, true, stateColor).apply {
+                setPadding(T.dp(8), T.dp(5), T.dp(8), T.dp(5))
+                background = GradientDrawable().apply {
+                    cornerRadius = T.dpf(30f)
+                    setColor((stateColor and 0x00FFFFFF) or (0x25 shl 24))
+                    setStroke(T.dp(1), (stateColor and 0x00FFFFFF) or (0x70 shl 24))
+                }
+            })
+        })
+        addView(label(this@NavaqHomeActivity, dlStatus(j), 11.5f, false, T.fg2)
+            .apply { setPadding(0, T.dp(7), 0, T.dp(9)) })
         if (j.state == LinkDownloader.RUNNING || j.state == LinkDownloader.PAUSED || j.state == LinkDownloader.QUEUED) {
-            val p = j.percent.toFloat()
+            val p = j.percent.toFloat().coerceIn(0f, 100f)
             addView(LinearLayout(this@NavaqHomeActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                background = GradientDrawable().apply { cornerRadius = T.dpf(3f); setColor(Color.argb(50, 128, 134, 160)) }
+                background = GradientDrawable().apply {
+                    cornerRadius = T.dpf(4f)
+                    setColor(Color.argb(55, 128, 134, 160))
+                }
                 addView(View(this@NavaqHomeActivity).apply {
-                    background = GradientDrawable().apply { cornerRadius = T.dpf(3f); setColor(T.accent) }
-                }, LinearLayout.LayoutParams(0, T.dp(5), p))
-                addView(View(this@NavaqHomeActivity), LinearLayout.LayoutParams(0, T.dp(5), 100f - p))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(T.accent, T.neonB, T.neonA)
+                    ).apply { cornerRadius = T.dpf(4f) }
+                }, LinearLayout.LayoutParams(0, T.dp(5), p.coerceAtLeast(0.1f)))
+                addView(View(this@NavaqHomeActivity), LinearLayout.LayoutParams(0, T.dp(5), (100f - p).coerceAtLeast(0.1f)))
             }, LinearLayout.LayoutParams(-1, -2))
         }
+        contentDescription = "${j.title}، ${dlStatus(j)}. برای مدیریت لمس کنید."
+        isFocusable = true
         pressable { dlActions(j) }
     }
 
@@ -1675,6 +1825,62 @@ class NavaqHomeActivity : Activity() {
         return out
     }
 
+    /** Fast control-centre summary for the settings landing page. All values come from existing stores/services. */
+    private fun settingsOverview(): View {
+        val eqOn = runtimePrefs().getBoolean("eq_on", false)
+        val roomLabel = when {
+            LanRoom.host != null -> "میزبان فعال"
+            LanRoom.guest != null -> "متصل به اتاق"
+            else -> "آماده اتصال"
+        }
+        val downloadCount = runCatching {
+            LinkDownloader.list(applicationContext).count {
+                it.state == LinkDownloader.RUNNING || it.state == LinkDownloader.QUEUED
+            }
+        }.getOrDefault(0)
+        fun tile(title: String, value: String, accent: Int, action: () -> Unit): View =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                glass(0.78f)
+                setPadding(T.dp(12), T.dp(11), T.dp(12), T.dp(11))
+                addView(label(this@NavaqHomeActivity, title, 10.5f, false, T.fg2))
+                addView(label(this@NavaqHomeActivity, value, 13f, true, accent).apply {
+                    setPadding(0, T.dp(4), 0, 0)
+                })
+                isFocusable = true
+                contentDescription = "$title، $value"
+                pressable(action)
+            }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            glass(1.02f)
+            setPadding(T.dp(14), T.dp(13), T.dp(14), T.dp(13))
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(T.dp(16), T.dp(5), T.dp(16), T.dp(7))
+            }
+            addView(label(this@NavaqHomeActivity, "NAVAQ CONTROL CENTER", 10f, true, T.neonA))
+            addView(label(this@NavaqHomeActivity, "همه‌چیز زیر کنترل تو", 18f, true, T.fg).apply {
+                setPadding(0, T.dp(4), 0, T.dp(3))
+            })
+            addView(label(this@NavaqHomeActivity, "میان‌برهای سریع و وضعیت قابلیت‌های فعال", 11f, false, T.fg2))
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(tile("ظاهر و تم", if (s.theme == ThemeMode.DARK) "تاریک" else if (s.theme == ThemeMode.LIGHT) "روشن" else "خودکار", T.neonB) { open("look") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = T.dp(5) })
+                addView(tile("اکولایزر", if (eqOn) "فعال" else "خاموش", if (eqOn) T.neonA else T.fg2) { open("sound") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = T.dp(5) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(11) })
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(tile("گوش‌دادن مشترک", roomLabel, T.neonC) { open("room") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = T.dp(5) })
+                addView(tile("صف دانلود", fa(downloadCount) + " فعال", T.neonA) { open("downloads") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = T.dp(5) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(8) })
+        }
+    }
+
     private fun settingsScreen(): View {
         val id = stack.lastOrNull() ?: "root"
         val col = column()
@@ -1687,12 +1893,20 @@ class NavaqHomeActivity : Activity() {
         }
         fun fillBody() {
             scroll.removeAllViews()
-            val q = settingsQuery.trim()
+            val q = settingsQuery.trim().replace('ي', 'ی').replace('ك', 'ک').lowercase(Locale.ROOT)
             if (id == "root" && q.isNotEmpty()) {
                 val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "room", "downloads", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
-                    .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
+                    .filter {
+                        (it.title + " " + it.keywords).replace('ي', 'ی').replace('ك', 'ک')
+                            .lowercase(Locale.ROOT).contains(q)
+                    }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))
+            } else if (id == "root") {
+                val landing = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                landing.addView(settingsOverview())
+                landing.addView(renderItems(pageItems(id)))
+                scroll.addView(landing)
             } else {
                 scroll.addView(renderItems(pageItems(id)))
             }
@@ -1741,7 +1955,15 @@ class NavaqHomeActivity : Activity() {
         layer.removeAllViews()
         val hue = hueOf(track.title)
         val top = if (T.dark) Color.HSVToColor(floatArrayOf(hue, 0.7f, 0.45f)) else Color.HSVToColor(floatArrayOf(hue, 0.35f, 0.96f))
-        layer.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, T.bg))
+        layer.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                (T.neonB and 0x00FFFFFF) or (0x2A shl 24),
+                top,
+                T.bg,
+                T.bg
+            )
+        )
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(T.dp(22), insetTop + T.dp(10), T.dp(22), insetBottom + T.dp(18))
@@ -1828,7 +2050,14 @@ class NavaqHomeActivity : Activity() {
         val repeat = btn(repeatIcon(), 48, 24, if (client.repeatMode != Player.REPEAT_MODE_OFF) T.accent else T.fg) { client.cycleRepeat() }
         pShuffle = iconOf(shuffle); pRepeat = iconOf(repeat)
         val play = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(T.accent) }
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(T.accent, T.neonB, T.neonA)
+            ).apply {
+                shape = GradientDrawable.OVAL
+                setStroke(T.dp(1), Color.argb(180, 255, 255, 255))
+            }
+            elevation = T.dp(9).toFloat()
             val ic = IconView(this@NavaqHomeActivity, if (client.isPlaying) Icon.PAUSE else Icon.PLAY, T.accentFg)
             pPlay = ic
             addView(ic, FrameLayout.LayoutParams(T.dp(32), T.dp(32), Gravity.CENTER))
@@ -1852,9 +2081,9 @@ class NavaqHomeActivity : Activity() {
             glass(0.8f)
             setPadding(T.dp(8), T.dp(4), T.dp(8), T.dp(4))
             addView(btn(Icon.SPEED, 52, 22) { speedSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
-            addView(btn(Icon.TIMER, 52, 22, if (sleepRunnable != null) T.accent else T.fg) { sleepSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
+            addView(btn(Icon.TIMER, 52, 22, if (sleepRunnable != null || sleepEndId != null) T.neonC else T.fg) { sleepSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.LIBRARY, 52, 22) { addToPlaylistSheet(track.id) }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
-            addView(btn(Icon.QUEUE, 52, 22, if (playerQueue) T.accent else T.fg) { playerQueue = !playerQueue; buildPlayer() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
+            addView(btn(Icon.QUEUE, 52, 22, if (playerQueue) T.neonA else T.fg) { playerQueue = !playerQueue; buildPlayer() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(6) })
     }
 

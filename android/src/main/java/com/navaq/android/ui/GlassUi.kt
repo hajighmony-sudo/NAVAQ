@@ -26,7 +26,11 @@ class GlassTheme(val s: UiSettings, val dark: Boolean, val density: Float) {
     val bg: Int = if (dark) 0xFF07080D.toInt() else 0xFFECEFF6.toInt()
     val fg: Int = if (dark) 0xFFF2F4FB.toInt() else 0xFF10131C.toInt()
     val fg2: Int = (fg and 0x00FFFFFF) or (0x9E shl 24)
-    val glassBase: Int = if (dark) Color.rgb(24, 27, 40) else Color.WHITE
+    val glassBase: Int = if (dark) Color.rgb(12, 17, 32) else Color.WHITE
+    /** ZX-inspired three-tone neon system; the user's chosen accent remains authoritative. */
+    val neonA: Int = if (dark) Color.rgb(98, 231, 255) else Color.rgb(8, 127, 168)
+    val neonB: Int = if (dark) Color.rgb(181, 107, 255) else Color.rgb(117, 64, 184)
+    val neonC: Int = if (dark) Color.rgb(255, 200, 87) else Color.rgb(182, 106, 0)
     val accent: Int = s.accentColor()
     val accentFg: Int = run {
         val lum = 0.299 * Color.red(accent) + 0.587 * Color.green(accent) + 0.114 * Color.blue(accent)
@@ -119,9 +123,27 @@ class GlassDrawable(private val radiusFactor: Float = 1f, private val topOnly: B
         stroke.color = Color.argb(if (t.dark) 46 else 170, 255, 255, 255)
         canvas.drawRoundRect(rect, r, r, stroke)
         if (t.s.edgeGlow) {
-            stroke.strokeWidth = t.dpf(1.5f)
-            stroke.color = (t.accent and 0x00FFFFFF) or (0x5A shl 24)
+            // Layered neon edge: user accent leads, ZX cyan/violet/gold add depth.
+            stroke.strokeWidth = t.dpf(2f)
+            stroke.shader = LinearGradient(
+                rect.left, rect.top, rect.right, rect.bottom,
+                intArrayOf(t.accent, t.neonB, t.neonC, t.neonA),
+                floatArrayOf(0f, 0.38f, 0.72f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            stroke.alpha = if (t.dark) 178 else 112
             canvas.drawRoundRect(rect, r, r, stroke)
+            stroke.shader = null
+            stroke.alpha = 255
+            // A restrained inner highlight keeps glass readable instead of over-glowing.
+            stroke.strokeWidth = t.dpf(0.65f)
+            stroke.color = Color.argb(if (t.dark) 34 else 92, 255, 255, 255)
+            canvas.drawRoundRect(
+                RectF(rect.left + t.dpf(1.5f), rect.top + t.dpf(1.5f), rect.right - t.dpf(1.5f), rect.bottom - t.dpf(1.5f)),
+                (r - t.dpf(1.5f)).coerceAtLeast(0f),
+                (r - t.dpf(1.5f)).coerceAtLeast(0f),
+                stroke
+            )
         }
         canvas.restore()
     }
@@ -144,11 +166,18 @@ fun refreshTree(view: View) {
 
 fun View.pressable(onClick: () -> Unit) {
     isClickable = true
+    isFocusable = true
     setOnClickListener { onClick() }
     setOnTouchListener { v, e ->
         when (e.action) {
-            MotionEvent.ACTION_DOWN -> v.alpha = 0.6f
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 1f
+            MotionEvent.ACTION_DOWN -> {
+                v.animate().cancel()
+                v.animate().alpha(0.82f).scaleX(0.985f).scaleY(0.985f).setDuration(90L).start()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                v.animate().cancel()
+                v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150L).start()
+            }
         }
         false
     }

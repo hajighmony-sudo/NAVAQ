@@ -112,6 +112,12 @@ class DiscoverActivity : Activity() {
             addView(content)
         }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.alpha = 0f
+        root.translationY = dp(10).toFloat()
+        root.post {
+            root.animate().alpha(1f).translationY(0f).setDuration(240L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }
         return root
     }
 
@@ -700,11 +706,14 @@ class DiscoverActivity : Activity() {
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(14), dp(14), dp(14), dp(14))
-        background = GradientDrawable().apply {
-            setColor(CARD)
-            cornerRadius = dp(18).toFloat()
-            setStroke(dp(1), STROKE)
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF1A2947.toInt(), CARD)
+        ).apply {
+            cornerRadius = dp(20).toFloat()
+            setStroke(dp(1), 0x7562DFFF.toInt())
         }
+        elevation = dp(2).toFloat()
     }
 
     private fun label(value: String, size: Int, color: Int, bold: Boolean) =
@@ -727,9 +736,27 @@ class DiscoverActivity : Activity() {
         isAllCaps = false
         textSize = 14f
         setTextColor(Color.WHITE)
-        background = GradientDrawable().apply {
-            setColor(ACCENT)
-            cornerRadius = dp(12).toFloat()
+        background = GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(ACCENT, 0xFF684DAA.toInt())
+        ).apply {
+            cornerRadius = dp(13).toFloat()
+            setStroke(dp(1), 0x7062DFFF.toInt())
+        }
+        elevation = dp(2).toFloat()
+        isFocusable = true
+        setOnTouchListener { view, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    view.animate().cancel()
+                    view.animate().scaleX(0.985f).scaleY(0.985f).alpha(0.88f).setDuration(85L).start()
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    view.animate().cancel()
+                    view.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(140L).start()
+                }
+            }
+            false
         }
         setOnClickListener { action() }
     }
@@ -760,10 +787,10 @@ class DiscoverActivity : Activity() {
     )
 
     companion object {
-        private const val BG = 0xFF0A0F1D.toInt()
-        private const val CARD = 0xFF141D30.toInt()
+        private const val BG = 0xFF070812.toInt()
+        private const val CARD = 0xFF101A30.toInt()
         private const val STROKE = 0xFF273650.toInt()
-        private const val ACCENT = 0xFF176B72.toInt()
+        private const val ACCENT = 0xFF167C9B.toInt()
         private const val MUTED = 0xFF8FA4C7.toInt()
         private const val SUBTLE = 0xFFB9C7DF.toInt()
         private const val PREFS = "navaq_discover"
