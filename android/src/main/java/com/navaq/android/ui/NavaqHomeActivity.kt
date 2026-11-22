@@ -1825,6 +1825,62 @@ class NavaqHomeActivity : Activity() {
         return out
     }
 
+    /** Fast control-centre summary for the settings landing page. All values come from existing stores/services. */
+    private fun settingsOverview(): View {
+        val eqOn = runtimePrefs().getBoolean("eq_on", false)
+        val roomLabel = when {
+            LanRoom.host != null -> "میزبان فعال"
+            LanRoom.guest != null -> "متصل به اتاق"
+            else -> "آماده اتصال"
+        }
+        val downloadCount = runCatching {
+            LinkDownloader.list(applicationContext).count {
+                it.state == LinkDownloader.RUNNING || it.state == LinkDownloader.QUEUED
+            }
+        }.getOrDefault(0)
+        fun tile(title: String, value: String, accent: Int, action: () -> Unit): View =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                glass(0.78f)
+                setPadding(T.dp(12), T.dp(11), T.dp(12), T.dp(11))
+                addView(label(this@NavaqHomeActivity, title, 10.5f, false, T.fg2))
+                addView(label(this@NavaqHomeActivity, value, 13f, true, accent).apply {
+                    setPadding(0, T.dp(4), 0, 0)
+                })
+                isFocusable = true
+                contentDescription = "$title، $value"
+                pressable(action)
+            }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            glass(1.02f)
+            setPadding(T.dp(14), T.dp(13), T.dp(14), T.dp(13))
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(T.dp(16), T.dp(5), T.dp(16), T.dp(7))
+            }
+            addView(label(this@NavaqHomeActivity, "NAVAQ CONTROL CENTER", 10f, true, T.neonA))
+            addView(label(this@NavaqHomeActivity, "همه‌چیز زیر کنترل تو", 18f, true, T.fg).apply {
+                setPadding(0, T.dp(4), 0, T.dp(3))
+            })
+            addView(label(this@NavaqHomeActivity, "میان‌برهای سریع و وضعیت قابلیت‌های فعال", 11f, false, T.fg2))
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(tile("ظاهر و تم", if (s.theme == ThemeMode.DARK) "تاریک" else if (s.theme == ThemeMode.LIGHT) "روشن" else "خودکار", T.neonB) { open("look") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = T.dp(5) })
+                addView(tile("اکولایزر", if (eqOn) "فعال" else "خاموش", if (eqOn) T.neonA else T.fg2) { open("sound") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = T.dp(5) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(11) })
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(tile("گوش‌دادن مشترک", roomLabel, T.neonC) { open("room") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = T.dp(5) })
+                addView(tile("صف دانلود", fa(downloadCount) + " فعال", T.neonA) { open("downloads") },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = T.dp(5) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(8) })
+        }
+    }
+
     private fun settingsScreen(): View {
         val id = stack.lastOrNull() ?: "root"
         val col = column()
@@ -1843,6 +1899,11 @@ class NavaqHomeActivity : Activity() {
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
                     .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))
+            } else if (id == "root") {
+                val landing = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                landing.addView(settingsOverview())
+                landing.addView(renderItems(pageItems(id)))
+                scroll.addView(landing)
             } else {
                 scroll.addView(renderItems(pageItems(id)))
             }
