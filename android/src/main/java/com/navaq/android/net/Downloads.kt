@@ -14,7 +14,7 @@ import java.net.InetAddress
 object Downloads {
     private const val PREFS = "navaq_discover"
     private const val KEY = "download_manager_ids"
-    private val AUDIO = setOf("mp3", "m4a", "mp4", "flac", "ogg", "oga", "wav", "opus", "aac", "ts", "webm", "mkv")
+    private val AUDIO = setOf("mp3", "m4a", "mp4", "m4v", "flac", "ogg", "oga", "wav", "opus", "aac", "ts", "webm", "mkv", "mov", "avi", "3gp")
 
     class Job(
         val id: Long, val title: String, val url: String, val status: Int, val reason: Int,
@@ -40,7 +40,13 @@ object Downloads {
 
     private fun mimeFor(name: String) = when (name.substringAfterLast('.', "").lowercase()) {
         "mp3" -> "audio/mpeg"
-        "m4a", "mp4", "aac" -> "audio/mp4"
+        "m4a", "aac" -> "audio/mp4"
+        "mp4", "m4v" -> "video/mp4"
+        "webm" -> "video/webm"
+        "mkv" -> "video/x-matroska"
+        "mov" -> "video/quicktime"
+        "avi" -> "video/x-msvideo"
+        "3gp" -> "video/3gpp"
         "flac" -> "audio/flac"
         "ogg", "oga" -> "audio/ogg"
         "wav" -> "audio/wav"
