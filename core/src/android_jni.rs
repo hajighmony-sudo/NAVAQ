@@ -4,7 +4,9 @@ use crate::creative::LyricToMelodyRequest;
 use crate::downloads::validate_http_url;
 use crate::equalizer::EqualizerSettings;
 use crate::haptic_analyzer::HapticAnalyzer;
+use crate::matching::shared_artists;
 use crate::melody::generate_from_request;
+use crate::music_dna::TasteProfile;
 use crate::spatial::SpatialSettings;
 use crate::spatial_render::render as render_room;
 use crate::{BackendEvent, PlayerCommand, PlayerCore};
@@ -440,4 +442,37 @@ pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeDestr
             drop(Box::from_raw(handle as *mut SharedHapticAnalyzer));
         }
     }
+}
+
+/// Compares two `TasteProfile` JSON documents (Music DNA codes exchanged between friends).
+/// Returns `{"score": 0..1, "shared_artists": [...]}` or `{"error": "..."}`.
+#[no_mangle]
+pub extern "system" fn Java_com_navaq_android_core_NavaqNativeBridge_nativeDnaCompare(
+    mut env: JNIEnv,
+    _class: JClass,
+    mine_json: JString,
+    theirs_json: JString,
+) -> jstring {
+    let mine: String = match env.get_string(&mine_json) {
+        Ok(v) => v.into(),
+        Err(_) => return json_string(&mut env, r#"{"error":"invalid_string"}"#.to_owned()),
+    };
+    let theirs: String = match env.get_string(&theirs_json) {
+        Ok(v) => v.into(),
+        Err(_) => return json_string(&mut env, r#"{"error":"invalid_string"}"#.to_owned()),
+    };
+    let response = (|| -> Result<String, String> {
+        let a: TasteProfile = serde_json::from_str(&mine).map_err(|e| e.to_string())?;
+        let b: TasteProfile = serde_json::from_str(&theirs).map_err(|e| e.to_string())?;
+        if !a.is_valid() || !b.is_valid() {
+            return Err("invalid taste profile".to_owned());
+        }
+        Ok(serde_json::json!({
+            "score": a.similarity(&b),
+            "shared_artists": shared_artists(&a, &b, 20),
+        })
+        .to_string())
+    })()
+    .unwrap_or_else(|error| serde_json::json!({"error": error}).to_string());
+    json_string(&mut env, response)
 }

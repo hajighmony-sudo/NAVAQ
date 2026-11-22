@@ -37,6 +37,9 @@ public final class NavaqNativeBridge {
     /** Writes a lyric-to-melody song as {outBase}.wav and {outBase}.mid; returns JSON. */
     public static native String nativeGenerateSong(String requestJson, String outBase);
 
+    /** Compares two Music DNA (TasteProfile) JSON documents; returns JSON. */
+    public static native String nativeDnaCompare(String mineJson, String theirsJson);
+
     public static native long nativeCreateHaptic(int sampleRate, int channels);
     public static native String nativeProcessHaptic(long handle, float[] samples);
     public static native void nativeDestroyHaptic(long handle);

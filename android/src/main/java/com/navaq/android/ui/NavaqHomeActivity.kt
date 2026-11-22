@@ -139,6 +139,12 @@ class NavaqHomeActivity : Activity() {
                 if (!handleBack()) finish()
             }
         }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Needed for the media notification and lock-screen controls.
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 12)
+        }
         client = PlaybackClient(this) { onPlayback() }
         client.connect()
         loadTracks()
@@ -375,8 +381,18 @@ class NavaqHomeActivity : Activity() {
         val col = column()
         val d = detail
         if (d != null) {
-            col.addView(header(d.second, { detail = null; buildScreen() }))
-            val list = visibleTracks().filter { if (d.first == "album") it.album == d.second else it.artist == d.second }
+            val actions = if (d.first == "playlist") arrayOf<View>(
+                label(this, "حذف", 14f, true, T.accent).apply {
+                    setPadding(T.dp(12), T.dp(8), T.dp(12), T.dp(8))
+                    pressable { val cur = playlists(); cur.remove(d.second); savePlaylists(cur); detail = null; buildScreen() }
+                }
+            ) else emptyArray()
+            col.addView(header(d.second, { detail = null; buildScreen() }, *actions))
+            val list = when (d.first) {
+                "playlist" -> playlists()[d.second].orEmpty().mapNotNull { byId[it] }
+                "album" -> visibleTracks().filter { it.album == d.second }
+                else -> visibleTracks().filter { it.artist == d.second }
+            }
             col.addView(trackPane(list), LinearLayout.LayoutParams(-1, 0, 1f))
             return col
         }
@@ -386,6 +402,7 @@ class NavaqHomeActivity : Activity() {
         val tabs = mutableListOf("tracks" to "آهنگ‌ها", "albums" to "آلبوم‌ها")
         if (s.showArtistsTab) tabs += "artists" to "هنرمندان"
         tabs += "fav" to "علاقه‌مندی‌ها"
+        tabs += "playlists" to "پلی‌لیست‌ها"
         if (tabs.none { it.first == tab }) tab = "tracks"
         col.addView(HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -422,6 +439,20 @@ class NavaqHomeActivity : Activity() {
                         detail = "artist" to name; buildScreen()
                     }
                 }, grid = false)
+            }
+            tab == "playlists" -> {
+                val all = playlists()
+                val cells = mutableListOf(
+                    Cell("pl:new", "＋ پلی‌لیست جدید", "ساخت پلی‌لیست خالی", null, "new", null) {
+                        val cur = playlists(); cur[newPlaylistName(cur)] = mutableListOf(); savePlaylists(cur); buildScreen()
+                    }
+                )
+                all.forEach { (name, ids) ->
+                    cells += Cell("pl:$name", name, "${fa(ids.size)} آهنگ", ids.firstOrNull()?.let { byId[it]?.sourceValue }, name, null) {
+                        detail = "playlist" to name; buildScreen()
+                    }
+                }
+                listPane(cells, grid = false)
             }
             tab == "fav" -> trackPane(visibleTracks().filter { favs.isFavorite(it.id) })
             else -> trackPane(visibleTracks())
@@ -638,6 +669,7 @@ class NavaqHomeActivity : Activity() {
         "playback" -> "پخش"
         "sound" -> "صدا و اکولایزر"
         "create" -> "ساخت آهنگ"
+        "dna" -> "Music DNA"
         "library" -> "کتابخانه"
         "backup" -> "پشتیبان و بازنشانی"
         "about" -> "درباره"
@@ -696,6 +728,126 @@ class NavaqHomeActivity : Activity() {
             bands.put(org.json.JSONObject().put("frequency_hz", f).put("gain_db", gains[i].toDouble().coerceIn(-12.0, 12.0)))
         }
         client.setEqualizerJson(org.json.JSONObject().put("enabled", enabled).put("bands", bands).toString())
+    }
+
+    // ------------------------------------------------------------------ playlists
+
+    private fun plPrefs() = getSharedPreferences("navaq_playlists", MODE_PRIVATE)
+
+    private fun playlists(): LinkedHashMap<String, MutableList<String>> {
+        val out = LinkedHashMap<String, MutableList<String>>()
+        try {
+            val o = JSONObject(plPrefs().getString("all", "{}") ?: "{}")
+            o.keys().forEach { name ->
+                val a = o.getJSONArray(name)
+                out[name] = MutableList(a.length()) { a.getString(it) }
+            }
+        } catch (_: Exception) {
+        }
+        return out
+    }
+
+    private fun savePlaylists(all: Map<String, List<String>>) {
+        val o = JSONObject()
+        all.forEach { (k, v) -> o.put(k, JSONArray(v)) }
+        plPrefs().edit().putString("all", o.toString()).apply()
+    }
+
+    private fun newPlaylistName(all: Map<String, *>): String {
+        var n = all.size + 1
+        while ("پلی‌لیست ${fa(n)}" in all) n++
+        return "پلی‌لیست ${fa(n)}"
+    }
+
+    private fun addToPlaylistSheet(trackId: String) {
+        val all = playlists()
+        val opts = mutableListOf<Pair<String, () -> Unit>>()
+        all.keys.forEach { name ->
+            opts += name to {
+                val cur = playlists()
+                val list = cur.getOrPut(name) { mutableListOf() }
+                if (trackId !in list) list.add(trackId)
+                savePlaylists(cur)
+                toast("به «$name» افزوده شد")
+            }
+        }
+        opts += "＋ پلی‌لیست جدید" to {
+            val cur = playlists()
+            val name = newPlaylistName(cur)
+            cur[name] = mutableListOf(trackId)
+            savePlaylists(cur)
+            toast("«$name» ساخته شد")
+        }
+        showSheet("افزودن به پلی‌لیست", opts)
+    }
+
+    // ------------------------------------------------------------------ Music DNA (code exchange, no server)
+
+    private fun dnaProfile(): JSONObject {
+        val artists = java.util.TreeMap<String, Double>()
+        allTracks.forEach { t ->
+            val a = t.artist
+            if (!a.isNullOrBlank() && !t.id.startsWith("created:")) {
+                artists[a] = (artists[a] ?: 0.0) + 1.0 + if (favs.isFavorite(t.id)) 3.0 else 0.0
+            }
+        }
+        val o = JSONObject()
+        val ar = JSONObject()
+        artists.forEach { (k, v) -> ar.put(k, v) }
+        return o.put("artists", ar).put("genres", JSONObject()).put("avg_tempo", JSONObject.NULL)
+            .put("energy", JSONObject.NULL).put("sample_size", allTracks.size)
+    }
+
+    private fun dnaCode(): String = android.util.Base64.encodeToString(
+        dnaProfile().toString().toByteArray(Charsets.UTF_8),
+        android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+    )
+
+    private var dnaResult = ""
+    private var dnaShared: List<String> = emptyList()
+    private var dnaInput = ""
+
+    private fun dnaCompare() {
+        val raw = dnaInput.trim()
+        if (raw.isEmpty()) { toast("کد دوست را وارد کنید"); return }
+        val theirs = try {
+            String(android.util.Base64.decode(raw, android.util.Base64.URL_SAFE), Charsets.UTF_8)
+        } catch (_: IllegalArgumentException) {
+            toast("کد معتبر نیست"); return
+        }
+        val mine = dnaProfile().toString()
+        executor.execute {
+            val out = try { NavaqNativeBridge.nativeDnaCompare(mine, theirs) } catch (e: Throwable) { null }
+            runOnUiThread {
+                val json = try { JSONObject(out ?: "{}") } catch (_: Exception) { JSONObject() }
+                if (!json.has("score")) { toast("مقایسه ناموفق بود"); return@runOnUiThread }
+                val shared = json.optJSONArray("shared_artists")
+                dnaShared = (0 until (shared?.length() ?: 0)).map { shared!!.getString(it) }
+                val pct = (json.getDouble("score") * 100).toInt()
+                dnaResult = "شباهت سلیقه: ${fa(pct)}٪" +
+                    if (dnaShared.isEmpty()) "" else "\nهنرمندان مشترک: " + dnaShared.take(8).joinToString("، ")
+                if (screen == "settings" && stack.lastOrNull() == "dna") buildScreen()
+            }
+        }
+    }
+
+    private fun sharedPlaylist() {
+        val wanted = dnaShared.toSet()
+        val tracks = allTracks.filter { it.artist in wanted }
+            .groupBy { it.artist }.values.flatMap { it.take(3) }.shuffled()
+        if (tracks.isEmpty()) { toast("آهنگ مشترکی در کتابخانه‌ی شما پیدا نشد"); return }
+        val cur = playlists()
+        val name = "مشترک " + fa(cur.size + 1)
+        cur[name] = tracks.map { it.id }.toMutableList()
+        savePlaylists(cur)
+        playFrom(tracks, 0)
+        toast("پلی‌لیست مشترک ساخته شد")
+    }
+
+    private fun copyText(text: String) {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("NAVAQ", text))
+        toast("کپی شد")
     }
 
     // ------------------------------------------------------------------ created songs
@@ -873,6 +1025,41 @@ class NavaqHomeActivity : Activity() {
     }
 
     private fun pageItems(id: String): List<Item> = when (id) {
+        "dna" -> listOf(
+            Item.Sec("کد DNA من"),
+            Item.Row("کد من", "dna code") {
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, T.dp(12), 0, T.dp(12))
+                    addView(label(this@NavaqHomeActivity, "این کد سلیقه‌ی شما را (فقط نام هنرمندان) نشان می‌دهد. برای دوستتان بفرستید.", 12.5f, false, T.fg2))
+                    addView(label(this@NavaqHomeActivity, dnaCode().take(48) + "…", 12f, false, T.fg).apply { setPadding(0, T.dp(8), 0, T.dp(8)); textDirection = View.TEXT_DIRECTION_LTR })
+                }
+            },
+            Item.Row("کپی کد", "copy") { SettingsKit.actionRow(this, Icon.CHECK, "کپی کد DNA من", null) { copyText(dnaCode()) } },
+            Item.Sec("مقایسه با دوست"),
+            Item.Row("کد دوست", "friend code") {
+                LinearLayout(this).apply {
+                    setPadding(0, T.dp(12), 0, T.dp(12))
+                    addView(android.widget.EditText(this@NavaqHomeActivity).apply {
+                        setText(dnaInput)
+                        hint = "کد DNA دوست را اینجا بچسبانید"
+                        setHintTextColor(T.fg2); setTextColor(T.fg)
+                        textSize = 14f * T.fontScale
+                        textDirection = View.TEXT_DIRECTION_LTR
+                        background = GradientDrawable().apply { cornerRadius = T.dpf(14f); setColor(Color.argb(60, 128, 134, 160)) }
+                        setPadding(T.dp(12), T.dp(10), T.dp(12), T.dp(10))
+                        addTextChangedListener(object : android.text.TextWatcher {
+                            override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                            override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                            override fun afterTextChanged(e: android.text.Editable?) { dnaInput = e?.toString().orEmpty() }
+                        })
+                    }, LinearLayout.LayoutParams(-1, -2))
+                }
+            },
+            Item.Row("مقایسه", "compare") { SettingsKit.actionRow(this, Icon.SEARCH, "مقایسه سلیقه", "محاسبه با هسته، بدون ارسال اطلاعات به جایی") { dnaCompare() } },
+            Item.Row("نتیجه", "result") { SettingsKit.noteRow(this, dnaResult.ifBlank { "هنوز مقایسه‌ای انجام نشده است." }) },
+            Item.Row("پلی‌لیست مشترک", "shared playlist") { SettingsKit.actionRow(this, Icon.MUSIC, "ساخت پلی‌لیست مشترک", "از هنرمندان مشترک در کتابخانه‌ی شما") { sharedPlaylist() } }
+        )
         "create" -> listOf(
             Item.Sec("متن آهنگ"),
             Item.Row("متن", "lyrics text") { lyricsBox() },
@@ -1010,6 +1197,7 @@ class NavaqHomeActivity : Activity() {
             Item.Row("تم و رنگ", "theme color wallpaper") { SettingsKit.navRow(this, Icon.PALETTE, "تم و رنگ", "حالت روشن و تاریک، رنگ، تصویر زمینه، قالب‌ها") { open("look") } },
             Item.Row("شیشه و جلوه‌ها", "glass blur") { SettingsKit.navRow(this, Icon.GLASS, "شیشه و جلوه‌ها", "محو‌شدگی، شفافیت، گوشه‌ها، انیمیشن") { open("glass") } },
             Item.Row("چیدمان و رابط", "layout font density") { SettingsKit.navRow(this, Icon.LAYOUT, "چیدمان و رابط", "اندازه متن، تراکم، کاور، ناوبری") { open("layout") } },
+            Item.Row("Music DNA", "dna taste friend") { SettingsKit.navRow(this, Icon.DISC, "Music DNA", "مقایسه سلیقه با دوستان و پلی‌لیست مشترک، بدون سرور") { open("dna") } },
             Item.Row("ساخت آهنگ", "create song lyric melody") { SettingsKit.navRow(this, Icon.MUSIC, "ساخت آهنگ", "تبدیل متن به ملودی، آهنگ بی‌کلام") { open("create") } },
             Item.Row("صدا و اکولایزر", "sound equalizer eq") { SettingsKit.navRow(this, Icon.SLIDERS, "صدا و اکولایزر", "اکولایزر ۱۰ باندی و قالب‌های آماده") { open("sound") } },
             Item.Row("پخش", "playback haptic ava") { SettingsKit.navRow(this, Icon.PLAY, "پخش", "لرزش، دستیار AVA، کشف موسیقی") { open("playback") } },
@@ -1052,7 +1240,7 @@ class NavaqHomeActivity : Activity() {
             scroll.removeAllViews()
             val q = settingsQuery.trim()
             if (id == "root" && q.isNotEmpty()) {
-                val hits = listOf("look", "glass", "layout", "sound", "create", "playback", "library", "backup")
+                val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
                     .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))
@@ -1216,6 +1404,7 @@ class NavaqHomeActivity : Activity() {
             setPadding(T.dp(8), T.dp(4), T.dp(8), T.dp(4))
             addView(btn(Icon.SPEED, 52, 22) { speedSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.TIMER, 52, 22, if (sleepRunnable != null) T.accent else T.fg) { sleepSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
+            addView(btn(Icon.LIBRARY, 52, 22) { addToPlaylistSheet(track.id) }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.QUEUE, 52, 22, if (playerQueue) T.accent else T.fg) { playerQueue = !playerQueue; buildPlayer() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(6) })
     }
