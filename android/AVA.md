@@ -120,7 +120,7 @@ call `AvaCommandClient.confirmMusicChange(context, accepted)`.
 AVA's multilingual Whisper tiny INT8 speech model is an optional app-private download,
 not an APK asset. Users can install it from AVA settings when they want offline Persian
 and English speech recognition. The settings page reports the installed model size and
-allows the model files to be removed to reclaim storage. Removing this model does not
+allows the model files to be removed to reclaim storage. Removing the optional model also clears any retained partial archive and its resume metadata, so interrupted downloads do not leave hidden cache files behind. Removing this model does not
 remove AVA or change other NAVAQ features; offline speech recognition remains unavailable
 until the model is downloaded again. Speech recognition stays on-device after installation.
 
