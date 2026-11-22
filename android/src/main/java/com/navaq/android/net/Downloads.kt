@@ -59,7 +59,8 @@ object Downloads {
         val cleaned = base.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(90).trim('.').ifBlank { "navaq-audio" }
         val urlExtension = Uri.parse(url).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
         val extension = cleaned.substringAfterLast('.', "").lowercase()
-        val named = if (extension in AUDIO) cleaned else "$cleaned.${urlExtension.takeIf { it in AUDIO } ?: "mp3"}"
+        val fallbackExtension = urlExtension.takeIf { it in AUDIO } ?: "mp3"
+        val named = if (extension in AUDIO) cleaned else "$cleaned.$fallbackExtension"
         val dot = named.lastIndexOf('.')
         val stamp = "-" + System.currentTimeMillis() % 100000000
         return named.substring(0, dot) + stamp + named.substring(dot)
