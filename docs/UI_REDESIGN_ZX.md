@@ -45,3 +45,19 @@ The ZX reference files reviewed were:
 ## Validation
 
 GitHub Actions Android CI is configured to build the universal debug APK, verify native ABI payloads and build the release variant. The branch push triggered the workflow; final build status must be checked from the run linked in the pull request before merging.
+
+
+## Follow-up implementation pass
+
+- Added low-amplitude fade/slide transitions when switching between the library, search and settings screens; transitions respect the existing animation preference.
+- Improved library filter chips with selected-state gradients, a visible outline and accessibility labels.
+- Rebuilt download queue entries as glass status cards with distinct complete/failed/paused/active states, readable progress tracks and clearer touch affordance. Download scheduling and network policy are unchanged.
+- Brought the AVA console cards and controls into the same midnight-glass/cyan-violet visual language, with tactile button feedback. Voice recognition, permission handling, notification actions and command routing are unchanged.
+- Applied the same glass-card and button treatment to Discover. Search, browser, offline library, and the existing Wikimedia Commons-only download safeguards remain unchanged.
+- Refined shared settings icon chips and option chips so all settings subsections inherit the same selected-state treatment.
+
+## Validation status
+
+- Source changes are committed to `core-zx-ui-redesign` and included in PR #2.
+- The earlier Android CI attempt was cancelled before APK assembly; it is not a passing build.
+- The latest commits have not yet produced a confirmed successful CI run. Do not merge or distribute an APK until Android CI completes successfully.
