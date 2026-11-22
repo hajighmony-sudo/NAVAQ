@@ -57,7 +57,8 @@ GitHub Actions Android CI is configured to build the universal debug APK, verify
 - Refined shared settings icon chips and option chips so all settings subsections inherit the same selected-state treatment.
 - Added a settings Control Center with live theme, equalizer, shared-room and active-download summaries plus direct shortcuts into the existing sections.
 - Improved accessibility descriptions for settings switches, chips and color swatches.
-- Matched AVA's scroll surface to the new midnight background.
+- Matched AVA's main and preferences screens to the midnight background, adding a restrained preferences entrance transition.
+- Normalized Persian/Arabic letter variants in settings search so equivalent ی/ي and ک/ك queries find the same options.
 - Elevated the full player with a multi-tone ambient stage, a gradient primary playback control and clearer active-state accents for queue and sleep timer actions.
 
 ## Validation status
