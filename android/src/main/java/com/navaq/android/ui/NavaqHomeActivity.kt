@@ -435,6 +435,54 @@ class NavaqHomeActivity : Activity() {
         content.addView(v, fill())
     }
 
+    /** Compact Bento overview: live library counts, with no changes to playback or storage logic. */
+    private fun libraryHero(): View {
+        val favoriteCount = allTracks.count { favs.isFavorite(it.id) }
+        val playlistCount = playlists().size
+        fun stat(value: String, caption: String, accent: Int): View =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                glass(0.72f)
+                setPadding(T.dp(8), T.dp(9), T.dp(8), T.dp(9))
+                addView(label(this@NavaqHomeActivity, value, 18f, true, accent))
+                addView(label(this@NavaqHomeActivity, caption, 10.5f, false, T.fg2).apply {
+                    setPadding(0, T.dp(3), 0, 0)
+                })
+            }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            glass(1.05f)
+            setPadding(T.dp(16), T.dp(14), T.dp(16), T.dp(13))
+            addView(label(this@NavaqHomeActivity, "NAVAQ  /  YOUR SOUNDSPACE", 10f, true, T.neonA))
+            addView(label(this@NavaqHomeActivity, "موسیقی، با امضای تو", 20f, true, T.fg).apply {
+                setPadding(0, T.dp(5), 0, T.dp(2))
+            })
+            addView(label(
+                this@NavaqHomeActivity,
+                if (client.currentId != null) "پخش ادامه دارد؛ به فضای شنیدنت برگرد." else "کتابخانه‌ات را کشف کن و حال‌وهوای شنیدنت را بساز.",
+                11.5f, false, T.fg2, 2
+            ))
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                addView(stat(fa(allTracks.size), "آهنگ", T.neonA), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginEnd = T.dp(6)
+                })
+                addView(stat(fa(favoriteCount), "پسندیده", T.neonB), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = T.dp(3); marginEnd = T.dp(3)
+                })
+                addView(stat(fa(playlistCount), "پلی‌لیست", T.neonC), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = T.dp(6)
+                })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(12) })
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(T.dp(16), T.dp(3), T.dp(16), T.dp(8))
+            }
+        }
+    }
+
     private fun libraryScreen(): View {
         val col = column()
         val d = detail
@@ -457,6 +505,7 @@ class NavaqHomeActivity : Activity() {
         col.addView(header("موسیقی", null,
             btn(Icon.SEARCH, 44, 22) { screen = "search"; buildNav(); buildScreen() },
             btn(Icon.SLIDERS, 44, 22) { screen = "settings"; buildNav(); buildScreen() }))
+        col.addView(libraryHero())
         val tabs = mutableListOf("tracks" to "آهنگ‌ها", "albums" to "آلبوم‌ها")
         if (s.showArtistsTab) tabs += "artists" to "هنرمندان"
         tabs += "fav" to "علاقه‌مندی‌ها"
