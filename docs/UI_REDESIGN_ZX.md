@@ -55,10 +55,14 @@ GitHub Actions Android CI is configured to build the universal debug APK, verify
 - Brought the AVA console cards and controls into the same midnight-glass/cyan-violet visual language, with tactile button feedback. Voice recognition, permission handling, notification actions and command routing are unchanged.
 - Applied the same glass-card and button treatment to Discover. Search, browser, offline library, and the existing Wikimedia Commons-only download safeguards remain unchanged.
 - Refined shared settings icon chips and option chips so all settings subsections inherit the same selected-state treatment.
+- Added a settings Control Center with live theme, equalizer, shared-room and active-download summaries plus direct shortcuts into the existing sections.
+- Improved accessibility descriptions for settings switches, chips and color swatches.
+- Matched AVA's scroll surface to the new midnight background.
 - Elevated the full player with a multi-tone ambient stage, a gradient primary playback control and clearer active-state accents for queue and sleep timer actions.
 
 ## Validation status
 
 - Source changes are committed to `core-zx-ui-redesign` and included in PR #2.
 - The earlier Android CI attempt was cancelled before APK assembly; it is not a passing build.
-- The latest commits have not yet produced a confirmed successful CI run. Do not merge or distribute an APK until Android CI completes successfully.
+- Changed Android CI concurrency to queue rather than cancel active builds when several commits are pushed in quick succession.
+- A fresh Android CI run is in progress/queued for the updated branch; do not merge or distribute an APK until the latest run completes successfully.
