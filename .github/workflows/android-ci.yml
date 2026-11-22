@@ -1,7 +1,7 @@
 name: NAVAQ Android CI
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   # Keep the APK build running while several UI commits are pushed in sequence.
   cancel-in-progress: false
 
