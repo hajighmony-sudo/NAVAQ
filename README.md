@@ -1,4 +1,167 @@
-# NAVAQ
+<div dir="rtl">
+
+# NAVAQ — پخش‌کنندهٔ موسیقی شیشه‌ای با هستهٔ Rust
+
+NAVAQ یک برنامهٔ موسیقی اندروید است با رابط کاربری شیشه‌ای و کاملاً قابل شخصی‌سازی (با ظاهر الهام‌گرفته از Samsung Music)، فارسی و راست‌به‌چپ. پخش و صدا با Media3 (ExoPlayer) انجام می‌شود و منطق مشترک (صف، اکولایزر، DSP، ساخت آهنگ، تحلیل ضرب، مدل اتاق، سلیقهٔ موسیقی) در هستهٔ Rust نوشته شده و از طریق JNI به اندروید وصل است.
+
+> وضعیت راستی‌آزمایی: هستهٔ Rust تست واحد دارد (۲۳۰ تست). لایهٔ Kotlin/JNI اندروید در محیط توسعه فقط بررسی نحوی شده؛ ساخت APK و تست روی گوشی واقعی را باید CI یا شما انجام دهید.
+
+## فهرست قابلیت‌ها
+
+1. [کتابخانه، جستجو و پلی‌لیست‌ها](#1-کتابخانه-جستجو-و-پلی‌لیست‌ها)
+2. [پخش‌کنندهٔ تمام‌صفحه](#2-پخش‌کنندهٔ-تمام‌صفحه)
+3. [تم و رابط شیشه‌ای](#3-تم-و-رابط-شیشه‌ای)
+4. [صدا: اکولایزر و صدای فضایی شخصی](#4-صدا-اکولایزر-و-صدای-فضایی-شخصی)
+5. [لرزش همراه ضرب (Haptics)](#5-لرزش-همراه-ضرب-haptics)
+6. [ساخت آهنگ (متن به ملودی و آهنگ بی‌کلام)](#6-ساخت-آهنگ)
+7. [Music DNA (مقایسهٔ سلیقه)](#7-music-dna)
+8. [گوش دادن مشترک](#8-گوش-دادن-مشترک)
+9. [NAVAQ Downloader](#9-navaq-downloader)
+10. [کشف موسیقی (Discover)](#10-کشف-موسیقی-discover)
+11. [دستیار صوتی AVA](#11-دستیار-صوتی-ava)
+12. [کنترل‌های سیستم و اعلان‌ها](#12-کنترل‌های-سیستم-و-اعلان‌ها)
+13. [پشتیبان و بازنشانی](#13-پشتیبان-و-بازنشانی)
+
+برای همهٔ بخش‌ها: دکمهٔ ⚙ (تنظیمات) بالای صفحهٔ اصلی را بزنید؛ در تنظیمات نوار جستجو هم هست و بین همهٔ گزینه‌ها جستجو می‌کند.
+
+---
+
+### 1. کتابخانه، جستجو و پلی‌لیست‌ها
+
+**چیست:** موسیقی‌های گوشی با چند تب: آهنگ‌ها، آلبوم‌ها، هنرمندان (در تنظیمات قابل خاموش‌کردن)، علاقه‌مندی‌ها و پلی‌لیست‌ها. دانلودهای NAVAQ و آهنگ‌های ساخته‌شده هم خودکار در کتابخانه می‌آیند.
+
+**نحوه استفاده**
+- بار اول اجازهٔ دسترسی به موسیقی را بدهید. بعد از آن کتابخانه خودکار پر می‌شود (تنظیمات › کتابخانه › «اسکن دوباره» برای بروزرسانی).
+- روی یک آهنگ بزنید تا همان فهرست به‌عنوان صف پخش شود. روی قلب بزنید تا به علاقه‌مندی‌ها برود.
+- ذره‌بین بالای صفحه: جستجو در عنوان، هنرمند و آلبوم؛ حروف عربی/فارسی و ارقام یکسان‌سازی می‌شوند (مثلاً «ك» و «ک»).
+- تب پلی‌لیست‌ها: «＋ پلی‌لیست جدید» می‌سازد؛ روی پلی‌لیست بزنید تا آهنگ‌هایش را ببینید و «حذف» بزنید تا پاک شود. برای افزودن آهنگ، در پخش‌کنندهٔ تمام‌صفحه دکمهٔ کتابخانه را بزنید و پلی‌لیست را انتخاب کنید.
+- تنظیمات › کتابخانه: مرتب‌سازی (نام، هنرمند، مدت) و «حداقل طول آهنگ» برای حذف صداهای کوتاه (مثل زنگ‌ها).
+
+**کارکرد:** فهرست از MediaStore خوانده می‌شود، علاقه‌مندی‌ها و پلی‌لیست‌ها در حافظهٔ خصوصی برنامه می‌مانند.
+
+### 2. پخش‌کنندهٔ تمام‌صفحه
+
+**نحوه استفاده:** روی مینی‌پلیر پایین صفحه بزنید.
+- پخش/توقف، قبلی/بعدی، جلو/عقب با نوار زمان.
+- درهم (shuffle) و تکرار (خاموش / همه / یک آهنگ).
+- سرعت پخش (۰٫۵× تا ۲×) و تایمر خواب (۱۵ تا ۶۰ دقیقه یا «پایان این آهنگ»).
+- صف پخش، علاقه‌مندی، افزودن به پلی‌لیست.
+- رنگ زمینه با کاور آهنگ هماهنگ می‌شود و نوار موج زیر کاور می‌تواند نشان داده شود.
+
+**کارکرد:** Media3 MediaSession؛ در قفل‌صفحه، اعلان، هدفون و بلوتوث هم کنترل می‌شود و با Music Island / Now Bar دستگاه‌های سازگار هماهنگ است (ظاهر دقیق به سازندهٔ گوشی بستگی دارد).
+
+### 3. تم و رابط شیشه‌ای
+
+**نحوه استفاده:** تنظیمات › «تم و رنگ»، «شیشه و جلوه‌ها»، «چیدمان و رابط».
+- قالب‌های آماده (شفق، شکوفه، نیمه‌شب، مینیمال …).
+- حالت روشن/تاریک/خودکار، رنگ تأکید دلخواه (کد hex)، تصویر زمینهٔ متحرک.
+- شیشه: میزان محو‌شدگی، شفافیت، گردی گوشه‌ها، درخشش لبه‌ها.
+- حرکت: انیمیشن‌ها، نوار موج، چرخش کاور دایره‌ای.
+- اندازهٔ متن، تراکم فهرست، شکل کاور (مربع/گرد/دایره)، نمایش فهرست یا شبکه، نمایش مدت، نوار ناوبری شناور یا چسبیده، تب هنرمندان.
+
+**کارکرد:** مدل `UiSettings` در Rust (`ui_settings.rs`) و آینهٔ Kotlin آن تنظیمات را اعتبارسنجی و پاک‌سازی می‌کنند؛ تغییرات فوری اعمال و ذخیره می‌شوند. محو‌شدگی واقعی روی اندروید ۱۲ به بالا با `RenderEffect` است.
+
+### 4. صدا: اکولایزر و صدای فضایی شخصی
+
+**نحوه استفاده:** تنظیمات › «صدا و اکولایزر».
+- اکولایزر ۱۰ باندی با قالب‌های آماده (باس، وکال، راک …) و تنظیم دستی هر باند.
+- «صدای فضایی اتاق»: عرض، طول و ارتفاع اتاق، میزان مبلمان و پرده و شدت طنین را وارد کنید؛ برنامه زمان واکنش اتاق (RT60) را نشان می‌دهد.
+
+**کارکرد:** صدا پیش از خروجی از زنجیرهٔ DSP هستهٔ Rust عبور می‌کند (بهره، اکولایزر، پژواک/طنین، سقف قله). مدل اتاق (فرمول Sabine، جذب سطوح و مبلمان) در هسته محاسبه و به‌صورت یک طنین ساده روی صدا اعمال می‌شود. این یک رندر دوگوشی HRTF کامل نیست.
+
+### 5. لرزش همراه ضرب (Haptics)
+
+**نحوه استفاده:** تنظیمات › «پخش» › «لرزش همراه ضرب» را روشن کنید (پیش‌فرض خاموش). «تحلیل پیشرفته ضرب» طبل/باس، اسنیر و های‌هت را جدا تشخیص می‌دهد و الگوی لرزش متفاوت می‌دهد.
+
+**کارکرد:** `HapticAnalyzer` هسته روی همان PCMِ در حال پخش سه باند فرکانسی را بررسی می‌کند؛ بدون ضبط میکروفون. حالت ساده فقط شروع انرژی (onset) را تشخیص می‌دهد.
+
+### 6. ساخت آهنگ
+
+**نحوه استفاده:** تنظیمات › «ساخت آهنگ».
+- متن آهنگ را بنویسید (فارسی هم پشتیبانی می‌شود) یا «آهنگ بی‌کلام» را روشن کنید و تعداد بندها را بدهید.
+- سبک (پاپ، غمگین، راک، لوفای، جاز، ایرانی، سینمایی)، گام و سرعت (BPM) را انتخاب کنید.
+- «ساخت و پخش»: ملودی، هارمونی، باس و درام ساخته، به‌صورت WAV و MIDI ذخیره و در کتابخانه (آلبوم «ساخته‌شده») پخش می‌شود.
+
+**کارکرد:** `melody.rs` و `composition.rs` به‌صورت آفلاین و قطعی (برای یک متن و seed یکسان، خروجی یکسان) آهنگ می‌سازند. این مولد قاعده‌محور است، نه مدل هوش مصنوعی مولد.
+
+### 7. Music DNA
+
+**چیست:** مقایسهٔ سلیقهٔ موسیقی با دوستان، بدون سرور و بدون ارسال اطلاعات.
+
+**نحوه استفاده:** تنظیمات › «Music DNA».
+1. «کپی کد DNA من» را بزنید و کد را برای دوستتان بفرستید.
+2. کد دوست را در کادر بچسبانید و «مقایسه سلیقه» را بزنید: درصد شباهت و هنرمندان مشترک نشان داده می‌شود.
+3. «ساخت پلی‌لیست مشترک»: از آهنگ‌های هنرمندان مشترک در کتابخانهٔ خودتان یک پلی‌لیست می‌سازد و پخش می‌کند.
+
+**کارکرد:** کد فقط شامل نام هنرمندان و وزن آن‌هاست (علاقه‌مندی‌ها وزن بیشتر)، به‌صورت base64. مقایسه با شباهت کسینوسی در هستهٔ Rust روی خود گوشی انجام می‌شود.
+
+### 8. گوش دادن مشترک
+
+**چیست:** مثل وصل‌کردن گوشی به تلویزیون در یوتیوب: یک نفر اتاق می‌سازد، بقیه با کد وصل می‌شوند و همه یک لحظه از یک آهنگ را می‌شنوند. بدون سرور؛ همهٔ گوشی‌ها باید روی یک وای‌فای باشند.
+
+**نحوه استفاده:** تنظیمات › «گوش دادن مشترک».
+- **میزبان:** «ساخت اتاق» را بزنید. کد ۶ رقمی و آدرس (مثل `192.168.1.5:4000`) نشان داده می‌شود. «کنترل مهمان‌ها» تعیین می‌کند مهمان‌ها بتوانند پخش/توقف/بعدی/قبلی را بزنند یا نه. «بستن اتاق» همه را قطع می‌کند.
+- **مهمان:** در بخش «پیوستن» اتاق خودکار پیدا می‌شود؛ رویش بزنید (یا آدرس را دستی بنویسید)، کد را وارد و «اتصال» را بزنید. آهنگ میزبان از گوشی او استریم و پخش می‌شود، پس لازم نیست آهنگ را داشته باشید.
+- «جبران تاخیر صدا» (±۵۰۰ ms): برای بلندگوی بلوتوثی که صدا را دیرتر می‌رساند.
+
+**کارکرد:** میزبان یک سرور TCP کوچک دارد (JSON برای وضعیت و فرمان؛ HTTP با Range برای خود فایل صوتی) و با mDNS (`_navaq._tcp`) خودش را معرفی می‌کند. مهمان با پینگ‌های مکرر اختلاف ساعت را تخمین می‌زند و جایگاه میزبان را به «همین لحظه» تبدیل می‌کند؛ اختلاف کم با تغییر ملایم سرعت (±۶٪) و اختلاف زیاد با پرش اصلاح می‌شود. آهنگ بعدی از پیش بارگذاری می‌شود. امنیت: توکن لینک فایل فقط بعد از درست‌بودن کد صادر می‌شود و بعد از ۱۰ کد اشتباه میزبان کد جدید نمی‌پذیرد. ترافیک روی شبکهٔ محلی رمزگذاری نشده (HTTP) است؛ در شبکه‌های عمومی استفاده نکنید. یک سرویس پیش‌زمینه اتاق را در پس‌زمینه زنده نگه می‌دارد.
+
+**محدودیت:** پخش از راه اینترنت (بیرون از یک وای‌فای) نیازمند سرور واسط است و ساخته نشده.
+
+### 9. NAVAQ Downloader
+
+**چیست:** دانلودر لینک: لینک یک فایل صوتی/تصویری، یک جریان HLS یا صفحهٔ وبی که ویدیو دارد را بدهید تا دانلود شود.
+
+**نحوه استفاده:** تنظیمات › «دانلودها».
+1. لینک را بچسبانید (یا «چسباندن از کلیپ‌بورد»)، در صورت نیاز نام فایل بدهید.
+2. گزینه‌ها: «فقط صدا» (جداکردن آهنگ از ویدیو به m4a) و «فقط با وای‌فای».
+3. «دانلود» را بزنید. اگر صفحه چند فایل داشته باشد، فهرست نشان داده می‌شود تا انتخاب کنید.
+4. در «صف دانلود» روی هر مورد بزنید: مکث، ادامه، تلاش دوباره، لغو، پخش یا حذف. فایل‌های تمام‌شده خودکار در کتابخانه می‌آیند و آفلاین پخش می‌شوند.
+
+**کارکرد:** لینک بررسی می‌شود (تغییر مسیرها دنبال می‌شوند و آدرس‌های محلی/خصوصی و برگشت از https به http رد می‌شوند). فایل مستقیم با درخواست Range ادامه‌پذیر است؛ HLS بخش‌به‌بخش دریافت و چسبانده می‌شود؛ استخراج صدا با MediaExtractor/MediaMuxer و بدون تبدیل کیفیت انجام می‌شود. تا سه دانلود هم‌زمان؛ سرویس پیش‌زمینه در پس‌زمینه آن‌ها را زنده نگه می‌دارد.
+
+**محدودیت:** یوتیوب و سایت‌های مشابه که لینک مستقیم فایل ندارند، جریان‌های رمزگذاری‌شده/DRM و پخش زنده پشتیبانی نمی‌شوند. فقط محتوایی را دانلود کنید که حق آن را دارید.
+
+### 10. کشف موسیقی (Discover)
+
+**نحوه استفاده:** تنظیمات › «پخش» › «کشف موسیقی». جستجوی فایل‌های صوتی/تصویری عمومی Wikimedia Commons، مرورگر داخلی، و دانلود فایل‌های عمومی همان منبع با DownloadManager اندروید. جزئیات: [`android/DISCOVER.md`](android/DISCOVER.md).
+
+### 11. دستیار صوتی AVA
+
+**نحوه استفاده:** تنظیمات › «پخش» › «دستیار صوتی AVA». بار اول مدل گفتار آفلاین (حدود ۱۱۶ مگابایت) نصب می‌شود؛ بعد از آن تشخیص گفتار کاملاً روی گوشی انجام می‌شود. دستور بدهید: پخش آهنگ، جستجوی هنرمند، باز کردن تنظیمات وای‌فای/بلوتوث/باتری/اعلان، دوربین، پیام‌ها، آلارم، یا آماده‌کردن شماره‌گیر. NAVAQ هرگز خودش تماس نمی‌گیرد؛ شماره را در شماره‌گیر سیستم می‌گذارد و شما خودتان می‌زنید. جزئیات: [`android/AVA.md`](android/AVA.md).
+
+### 12. کنترل‌های سیستم و اعلان‌ها
+
+اعلان‌های هوشمند اختیاری‌اند (از صفحهٔ AVA روشن می‌شوند) و در سه کانال جدا هستند: فعالیت، دانلود، هشدار پخش. اعلان پخش را Media3 مدیریت می‌کند. روی اندروید ۱۳ به بالا مجوز اعلان هنگام شروع درخواست می‌شود.
+
+### 13. پشتیبان و بازنشانی
+
+تنظیمات › «پشتیبان و بازنشانی» › «بازگشت به پیش‌فرض»: ظاهر برنامه به حالت اولیه برمی‌گردد.
+
+---
+
+## ساخت برنامه
+
+```sh
+android/scripts/build-rust-android.sh   # کتابخانه‌های Rust (به NDK نیاز دارد)
+gradle :android:assembleDebug
+```
+
+نیازمندی‌ها: Android SDK ‏(API 36)، JDK 17 و (برای ساخت هسته) Rust + Android NDK. تست هسته: `cargo test --workspace`.
+
+## چه چیزهایی هنوز ساخته نشده
+
+- گوش دادن مشترک از راه اینترنت (نیاز به سرور واسط).
+- رندر دوگوشی HRTF کامل و ردیابی سر.
+- مدل هوش مصنوعی مولد برای ساخت آهنگ و جداسازی استم‌ها.
+- پخش از طریق صف `PlayerCore` در Rust (پخش فعلاً مستقیم با Media3 است).
+- نسخهٔ iOS.
+
+</div>
+
+---
+
+# English technical reference
 
 NAVAQ is a music application project with a platform-independent Rust playback/domain core and a native Android host. The Android app includes Media3 playback, AVA voice controls, and the Discover experience described below. 
 ## Workspace
@@ -37,7 +200,7 @@ android/scripts/build-rust-android.sh
 gradle :android:assembleDebug
 ```
 
-The Android playback service publishes normalized title, display title, artist, album, and optional artwork URI through Media3 `MediaSession` metadata. Playback state and supported transport controls are exposed by the session and its automatically maintained MediaStyle notification. This is the public Android interoperability path used by compatible OEM media surfaces; Xiaomi HyperOS Super Island and Samsung One UI Now Bar decide whether and how to present a third-party session based on device model, OS version, settings, and OEM policy. NAVAQ does not use private OEM APIs or claim that an island can be forcibly displayed. Actual HyperOS/One UI presentation and artwork loading still require testing on physical supported devices. The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. `NavaqHaptics` provides an opt-in, rate-limited Android vibrator adapter for classified bass/snare/hi-hat/vocal/beat events; it is intentionally disabled by default and awaits event wiring from the audio-analysis pipeline. The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. It also exposes `PcmAudioPipeline` in `core/src/audio_pipeline.rs`, which composes equalizer, ReplayGain/master gain, optional stateful echo, peak limiting, non-finite input sanitization before stateful filters, and PCM meter statistics (including sanitized/limited sample counts) for native decoders. Hosts must feed decoded PCM buffers through this pipeline; it is not automatically inserted into Media3's decoder/output path. These algorithms are ready for a native PCM pipeline, but the Android Media3 service does not yet insert them into its decoding/output path. Discover and AVA now provide native Android user-facing screens. Discover handles its own direct-download storage in app-specific Music/NAVAQ storage; broader MediaStore scanning/import and user-managed library synchronization remain separate host-integration tasks.
+The Android playback service publishes normalized title, display title, artist, album, and optional artwork URI through Media3 `MediaSession` metadata. Playback state and supported transport controls are exposed by the session and its automatically maintained MediaStyle notification. This is the public Android interoperability path used by compatible OEM media surfaces; Xiaomi HyperOS Super Island and Samsung One UI Now Bar decide whether and how to present a third-party session based on device model, OS version, settings, and OEM policy. NAVAQ does not use private OEM APIs or claim that an island can be forcibly displayed. Actual HyperOS/One UI presentation and artwork loading still require testing on physical supported devices. The Android service currently bridges player commands, backend preparation/buffering/position/end/error callbacks, and supported Media3 actions. `NavaqHaptics` provides an opt-in, rate-limited Android vibrator adapter for classified bass/snare/hi-hat/vocal/beat events; it is disabled by default and is driven by the audio-processing path (generic onsets, or the Rust `HapticAnalyzer` when advanced haptics is enabled). The platform-independent core now includes stateful PCM equalizer/gain processing and equal-power crossfade mixing primitives in `core/src/dsp.rs`. It also exposes `PcmAudioPipeline` in `core/src/audio_pipeline.rs`, which composes equalizer, ReplayGain/master gain, optional stateful echo, peak limiting, non-finite input sanitization before stateful filters, and PCM meter statistics (including sanitized/limited sample counts) for native decoders. On Android the Media3 service inserts the pipeline into its audio sink through `NavaqBeatAudioProcessor` (equalizer, room reverb, peak ceiling). The launcher is `ui.NavaqHomeActivity` (native glass UI: library, search, player, settings). Discover and AVA are reachable from Settings. Downloads are stored in app-specific Music/NAVAQ storage and merged into the library; the library itself is read from MediaStore.
 
 ## NAVAQ Discover (Android)
 
@@ -66,7 +229,7 @@ gradle :android:assembleDebug
 - Structured audio search currently uses Wikimedia Commons; the Browser tab is general web browsing/search, not a universal multi-site audio index.
 - Downloads are restricted to public Wikimedia Commons media files hosted on `upload.wikimedia.org`; media URLs from other hosts are rejected. The Browser tab remains for ordinary web browsing and does not extract media from arbitrary pages.
 - Check the license and attribution terms for each Commons file before reuse. DRM, protected streams, authentication, paywalls, age gates and site restrictions are not bypassed.
-- Android DownloadManager owns transfer execution, retry policy, and notifications. Discover reports its state and can cancel tasks; it does not yet provide a custom resumable/range-download engine or in-app pause/resume controls.
+- Discover uses Android DownloadManager (no in-app pause/resume). The separate **NAVAQ Downloader** (Settings > Downloads, `net/LinkDownloader.kt`) is a custom engine for media files, unencrypted HLS VOD and pages that embed media, with pause/resume; it has no site-specific extractors, DRM or encrypted-stream support.
 - The initial hostname is checked before enqueueing, but DownloadManager follows redirects itself. This client-side check is not a complete server-side SSRF boundary.
 - Files are saved under app-specific external Music/NAVAQ storage. They are available offline while retained by Android, but may be removed when the app is uninstalled. Search and browsing require internet access.
 - The offline list is scoped to downloads started by Discover; it is not a full device-wide MediaStore music scanner.
@@ -124,7 +287,9 @@ These modules do no I/O. Scanning files, reading tags, networking, AI inference,
 
 Implemented: everything in the modules above plus typed track/source models, playback state, command/event contract, queue operations (move, clear, unique ids, next-track lookup for gapless preloading), repeat/shuffle, native backend contract, asynchronous event runtime, audio-focus handling with ducking, failure recovery, versioned snapshots with safe paused restoration, and unit tests.
 
-Not in the core (platform work): real-time network transport and audio mixing for Shared Rooms; account/authentication, safety/moderation and consent UX; on-device beat/source separation and AI inference; synthesis/rendering of manual arrangements and generated melodies; audio-reactive beat/onset analysis and event wiring (the Android actuator exists, but is not yet connected to the analyzer); full binaural/HRTF rendering; MediaStore-wide scanning/import and tag reading; complete Android DSP integration; and the iOS AVFoundation adapter. Discover's direct HTTP(S) download queue and app-specific offline list are implemented in the Android host.
+Implemented in the Android host (not in the core crate): LAN shared rooms with clock-synchronised playback, Music DNA code exchange, user playlists, the NAVAQ Downloader, Rust-DSP-backed equalizer and room reverb, Rust haptic analyzer wiring, song creation (WAV/MIDI), and the native glass UI.
+
+Not built: internet-wide shared rooms (needs a relay server, accounts, moderation); on-device source separation and generative-AI melody models; full binaural/HRTF rendering and head tracking; routing playback through the Rust `PlayerCore` queue (Media3 owns the queue today); and the iOS AVFoundation adapter.
 
 
 ### Social, sensory and creative integration status
@@ -132,17 +297,17 @@ Not in the core (platform work): real-time network transport and audio mixing fo
 The core APIs are intentionally platform-neutral. The following boundaries are
 important when planning an end-to-end release:
 
-| Feature | In repository | Still required for a live product |
+| Feature | In repository | Still required for an internet-scale product |
 | --- | --- | --- |
-| Shared Listening Rooms | Room state, revision-checked commands, participant effect stacks, host authority, drift correction | Authenticated room server, WebSocket/WebRTC transport, clock source, low-latency audio routing/mixing, reconnect and moderation flows |
-| Music DNA Matching | Taste profile builder, similarity scoring, opt-in candidate ranking | Explicit discovery/privacy controls, backend candidate discovery, block/report controls, shared-playlist storage and invitations |
-| Haptic feedback | Trigger patterns, intensity settings, Android vibrator adapter | Audio beat/onset detector, Rust-to-Android event dispatch, user settings UI and device QA |
-| Personalized spatial audio | Room/speaker/listener models, validation and RT60 estimate | Room setup UI, calibrated measurements, HRTF dataset/renderer, head tracking where supported, native audio pipeline integration |
-| Manual instrumental creation | Editable note/instrument arrangement and MIDI export | SoundFont/instrument renderer, preview transport, editing UI, export/share workflow |
-| Lyric-to-Melody | Validated job request/result lifecycle and playback-ready result contract | Actual local/cloud generative model, melody/harmony arrangement, rendering, cancellation/progress adapter and consent/cost controls |
-| Instrumental/stem creation | Stem request/result contracts | Actual source-separation model and audio renderer |
+| Shared Listening Rooms | Core room model and drift correction; **Android LAN rooms** (pairing code, mDNS, HTTP audio, clock-synced playback) | Authenticated relay server, WebSocket/WebRTC transport, reconnect and moderation flows |
+| Music DNA Matching | Core profile/similarity/ranking; **Android code exchange** compared on-device | Discovery/privacy controls, backend candidate discovery, block/report, invitations |
+| Haptic feedback | Patterns, Rust band analyzer, Android vibrator adapter, settings toggles | Device QA across vibration hardware |
+| Personalized spatial audio | Room/speaker models, RT60, per-speaker numbers; simplified room reverb in the Rust PCM chain | HRTF dataset/renderer, head tracking, calibrated measurements |
+| Manual instrumental creation | Note/instrument arrangement, WAV render, MIDI export | Editing UI, instrument/SoundFont renderer, share workflow |
+| Lyric-to-Melody | Offline rule-based generator (`melody`), Android UI, WAV/MIDI output | A generative model if AI-quality results are wanted |
+| Instrumental/stem creation | Stem request/result contracts | A source-separation model |
 
-The `audio_analysis` module now supplies timestamped generic onset events suitable for a host-controlled beat-reactive path; mapping them to `HapticTrigger::Beat` is possible, but the Android service has not yet wired that dispatch. It does not infer instrument identity or vocal onsets. The Android haptic adapter accepts only classified events from a trusted host
+The `audio_analysis` module now supplies timestamped generic onset events suitable for a host-controlled beat-reactive path; the Android service maps them to `HapticTrigger::Beat`; the optional `HapticAnalyzer` path classifies bass, snare and hi-hat bands. Neither infers vocal onsets. The Android haptic adapter accepts only classified events from a trusted host
 component. It does not record microphone audio or perform background capture.
 The app must expose a clear user toggle before dispatching events. For shared
 rooms, participant-generated vocal/effect streams must be explicitly enabled

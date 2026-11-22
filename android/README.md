@@ -1,5 +1,7 @@
 # NAVAQ Android platform layer
 
+Feature guide (Persian) with usage and how each feature works: see the [root README](../README.md). This file is the Android engineering reference.
+
 This module is the native Android playback host for the Rust workspace.
 
 ## Included
@@ -38,10 +40,10 @@ The Media3 service is the first native platform layer. The Rust command/event br
 PCM is copied into a bounded per-buffer float array for processing, then written
 back to Media3's output buffer; the pipeline instance persists across buffers so
 filter and delay state remains continuous. Core `SetEqualizer` actions are
-forwarded into that pipeline. The onset detector remains in Kotlin and reports
-generic energy transients; it does not classify kick, snare, hi-hat, or vocals.
-Echo currently uses the Rust pipeline defaults and is not yet exposed through
-the Android settings surface.
+forwarded into that pipeline. The Kotlin onset detector reports generic energy
+transients; with advanced haptics enabled the Rust `HapticAnalyzer` classifies
+bass, snare and hi-hat bands instead. The room reverb (echo stage) is driven by
+the spatial-audio settings (`ACTION_SET_ROOM`).
 
 
 ## Music Island and OEM media surfaces
