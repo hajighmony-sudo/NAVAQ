@@ -150,13 +150,14 @@ class DiscoverActivity : Activity() {
         }
         val requestGeneration = searchGeneration
         val requestOffset = nextSearchOffset
+        val requestMediaType = activeMediaType
         loadMoreButton.visibility = View.GONE
         progress.visibility = View.VISIBLE
         status.text = if (append) "Loading more $activeMediaType…" else "Searching $activeMediaType…"
         executor.execute {
             try {
                 val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
-                    URLEncoder.encode("filetype:$activeMediaType $query", Charsets.UTF_8.name()) +
+                    URLEncoder.encode("filetype:$requestMediaType $query", Charsets.UTF_8.name()) +
                     "&gsrnamespace=6&gsrlimit=25&gsroffset=$requestOffset&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json"
                 val connection = URL(endpoint).openConnection()
                 connection.connectTimeout = 12_000
@@ -176,7 +177,7 @@ class DiscoverActivity : Activity() {
                         val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
                         val url = info.optString("url")
                         val mime = info.optString("mime")
-                        if (url.startsWith("https://") && mime.startsWith("$activeMediaType/")) {
+                        if (url.startsWith("https://") && mime.startsWith("$requestMediaType/")) {
                             found += MediaHit(
                                 title = page.optString("title").removePrefix("File:"),
                                 pageUrl = "https://commons.wikimedia.org/wiki/" +
