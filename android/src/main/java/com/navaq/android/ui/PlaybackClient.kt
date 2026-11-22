@@ -114,4 +114,12 @@ class PlaybackClient(private val context: Context, private val onChange: () -> U
             .putExtra(NavaqPlaybackService.EXTRA_ENABLED, enabled)
         context.startService(intent)
     }
+
+    /** Sends a Rust-validated equalizer (`EqualizerSettings` JSON) to the playback DSP. */
+    fun setEqualizerJson(json: String) {
+        val intent = Intent(context, NavaqPlaybackService::class.java)
+            .setAction(NavaqPlaybackService.ACTION_SET_EQUALIZER)
+            .putExtra(NavaqPlaybackService.EXTRA_EQUALIZER_JSON, json)
+        context.startService(intent)
+    }
 }

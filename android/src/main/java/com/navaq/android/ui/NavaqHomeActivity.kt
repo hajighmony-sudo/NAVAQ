@@ -632,6 +632,7 @@ class NavaqHomeActivity : Activity() {
         "glass" -> "شیشه و جلوه‌ها"
         "layout" -> "چیدمان و رابط"
         "playback" -> "پخش"
+        "sound" -> "صدا و اکولایزر"
         "library" -> "کتابخانه"
         "backup" -> "پشتیبان و بازنشانی"
         "about" -> "درباره"
@@ -667,7 +668,58 @@ class NavaqHomeActivity : Activity() {
             }
         }
 
+    private val eqFreqs = intArrayOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+    private val eqPresets = mapOf(
+        "flat" to floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+        "bass" to floatArrayOf(6f, 5f, 4f, 2f, 0f, 0f, 0f, 0f, 0f, 0f),
+        "treble" to floatArrayOf(0f, 0f, 0f, 0f, 0f, 1f, 2f, 4f, 5f, 6f),
+        "vocal" to floatArrayOf(-2f, -2f, -1f, 1f, 3f, 3f, 2f, 1f, 0f, -1f),
+        "rock" to floatArrayOf(4f, 3f, 2f, -1f, -2f, -1f, 2f, 3f, 4f, 4f),
+        "classical" to floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, -2f, -2f, -2f, -3f)
+    )
+
+    private fun eqGains(): FloatArray {
+        val parts = runtimePrefs().getString("eq_gains", null)?.split(",")
+        return if (parts != null && parts.size == 10) FloatArray(10) { parts[it].toFloatOrNull() ?: 0f } else FloatArray(10)
+    }
+
+    private fun saveEq(gains: FloatArray, enabled: Boolean) {
+        runtimePrefs().edit().putString("eq_gains", gains.joinToString(",")).putBoolean("eq_on", enabled).apply()
+        // Same shape as the Rust `EqualizerSettings`, which validates it before applying.
+        val bands = org.json.JSONArray()
+        eqFreqs.forEachIndexed { i, f ->
+            bands.put(org.json.JSONObject().put("frequency_hz", f).put("gain_db", gains[i].toDouble().coerceIn(-12.0, 12.0)))
+        }
+        client.setEqualizerJson(org.json.JSONObject().put("enabled", enabled).put("bands", bands).toString())
+    }
+
     private fun pageItems(id: String): List<Item> = when (id) {
+        "sound" -> {
+            val gains = eqGains()
+            val on = runtimePrefs().getBoolean("eq_on", false)
+            val rows = mutableListOf<Item>(
+                Item.Sec("اکولایزر"),
+                Item.Row("اکولایزر", "equalizer eq") {
+                    SettingsKit.toggleRow(this, "اکولایزر ۱۰ باندی", "پردازش با هسته‌ی Rust روی صدای پخش", on) { v -> saveEq(gains, v); buildScreen() }
+                },
+                Item.Row("قالب اکولایزر", "preset bass vocal rock") {
+                    SettingsKit.choiceRow(this, "قالب", listOf("flat" to "فلت", "bass" to "باس", "treble" to "زیر", "vocal" to "وکال", "rock" to "راک", "classical" to "کلاسیک"), "") { k ->
+                        saveEq(eqPresets.getValue(k).copyOf(), true); buildScreen()
+                    }
+                },
+                Item.Sec("باندها")
+            )
+            eqFreqs.forEachIndexed { i, f ->
+                val name = if (f >= 1000) fa(f / 1000) + " kHz" else fa(f) + " Hz"
+                rows += Item.Row("باند $name", "band $f") {
+                    SettingsKit.sliderRow(this, name, -12, 12, gains[i].toInt(), { fa(it) + " dB" }, { }, { v ->
+                        gains[i] = v.toFloat(); saveEq(gains, true)
+                    })
+                }
+            }
+            rows
+        }
+
         "look" -> listOf(
             Item.Sec("قالب‌های آماده"),
             Item.Row("قالب", "شفق شکوفه نیمه‌شب مینیمال") {
@@ -754,6 +806,7 @@ class NavaqHomeActivity : Activity() {
             Item.Row("تم و رنگ", "theme color wallpaper") { SettingsKit.navRow(this, Icon.PALETTE, "تم و رنگ", "حالت روشن و تاریک، رنگ، تصویر زمینه، قالب‌ها") { open("look") } },
             Item.Row("شیشه و جلوه‌ها", "glass blur") { SettingsKit.navRow(this, Icon.GLASS, "شیشه و جلوه‌ها", "محو‌شدگی، شفافیت، گوشه‌ها، انیمیشن") { open("glass") } },
             Item.Row("چیدمان و رابط", "layout font density") { SettingsKit.navRow(this, Icon.LAYOUT, "چیدمان و رابط", "اندازه متن، تراکم، کاور، ناوبری") { open("layout") } },
+            Item.Row("صدا و اکولایزر", "sound equalizer eq") { SettingsKit.navRow(this, Icon.SLIDERS, "صدا و اکولایزر", "اکولایزر ۱۰ باندی و قالب‌های آماده") { open("sound") } },
             Item.Row("پخش", "playback haptic ava") { SettingsKit.navRow(this, Icon.PLAY, "پخش", "لرزش، دستیار AVA، کشف موسیقی") { open("playback") } },
             Item.Row("کتابخانه", "library sort") { SettingsKit.navRow(this, Icon.LIBRARY, "کتابخانه", "مرتب‌سازی و حداقل طول") { open("library") } },
             Item.Row("پشتیبان و بازنشانی", "reset") { SettingsKit.navRow(this, Icon.RESET, "بازنشانی", "بازگشت به پیش‌فرض") { open("backup") } },
@@ -794,7 +847,7 @@ class NavaqHomeActivity : Activity() {
             scroll.removeAllViews()
             val q = settingsQuery.trim()
             if (id == "root" && q.isNotEmpty()) {
-                val hits = listOf("look", "glass", "layout", "playback", "library", "backup")
+                val hits = listOf("look", "glass", "layout", "sound", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
                     .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))

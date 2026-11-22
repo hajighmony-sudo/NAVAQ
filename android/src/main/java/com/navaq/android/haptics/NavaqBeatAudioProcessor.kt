@@ -25,6 +25,7 @@ class NavaqBeatAudioProcessor(
     private var noiseFloor: Float? = null
     private var lastBeatAtMs = Long.MIN_VALUE
     private var dspHandle = 0L
+    private var equalizerJson: String? = null
 
     @Synchronized
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -39,6 +40,8 @@ class NavaqBeatAudioProcessor(
         encoding = inputAudioFormat.encoding
         samplesPerWindow = (sampleRate / 50).coerceAtLeast(1) * channels
         dspHandle = NavaqNativeBridge.nativeCreateDsp(sampleRate, channels)
+        // A new Rust pipeline starts flat; restore the user's last equalizer.
+        equalizerJson?.let { if (dspHandle != 0L) NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, it) }
         resetAnalysis()
         return inputAudioFormat
     }
@@ -81,8 +84,10 @@ class NavaqBeatAudioProcessor(
 
     /** Apply a validated Rust EQ configuration; false means it was rejected. */
     @Synchronized
-    fun setEqualizerJson(equalizerJson: String): Boolean =
-        dspHandle != 0L && NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, equalizerJson)
+    fun setEqualizerJson(equalizerJson: String): Boolean {
+        this.equalizerJson = equalizerJson
+        return dspHandle != 0L && NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, equalizerJson)
+    }
 
     private fun acceptSample(sample: Double) {
         squareSum += sample * sample

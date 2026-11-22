@@ -124,6 +124,9 @@ class NavaqPlaybackService : MediaSessionService() {
             }
         }
         beatProcessor = onsetProcessor
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .getString(PREFERENCE_EQUALIZER, null)
+            ?.let { onsetProcessor.setEqualizerJson(it) }
         val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
@@ -166,6 +169,13 @@ class NavaqPlaybackService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_SET_EQUALIZER -> {
+                val json = intent.getStringExtra(EXTRA_EQUALIZER_JSON).orEmpty()
+                if (json.isNotBlank() && beatProcessor?.setEqualizerJson(json) != false) {
+                    getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                        .edit().putString(PREFERENCE_EQUALIZER, json).apply()
+                }
+            }
             ACTION_SET_BEAT_HAPTICS ->
                 setBeatHapticsEnabled(intent.getBooleanExtra(EXTRA_ENABLED, false))
             ACTION_EXECUTE_AVA -> {
@@ -472,6 +482,9 @@ class NavaqPlaybackService : MediaSessionService() {
 
     companion object {
         /** Intent action for a settings UI to change the explicit haptics preference. */
+        const val ACTION_SET_EQUALIZER = "com.navaq.android.action.SET_EQUALIZER"
+        const val EXTRA_EQUALIZER_JSON = "com.navaq.android.extra.EQUALIZER_JSON"
+        private const val PREFERENCE_EQUALIZER = "equalizer_json"
         const val ACTION_SET_BEAT_HAPTICS =
             "com.navaq.android.action.SET_BEAT_HAPTICS"
         const val EXTRA_ENABLED = "com.navaq.android.extra.BEAT_HAPTICS_ENABLED"
