@@ -1077,6 +1077,12 @@ class NavaqHomeActivity : Activity() {
         val box = dlBox ?: return
         val jobs = LinkDownloader.list(applicationContext)
         box.removeAllViews()
+        val active = jobs.count { it.state == LinkDownloader.RUNNING || it.state == LinkDownloader.QUEUED }
+        val paused = jobs.count { it.state == LinkDownloader.PAUSED }
+        val failed = jobs.count { it.state == LinkDownloader.FAILED }
+        val completed = jobs.count { it.state == LinkDownloader.DONE }
+        box.addView(label(this, "کل: ${fa(jobs.size)}  •  فعال: ${fa(active)}  •  متوقف: ${fa(paused)}  •  ناموفق: ${fa(failed)}  •  کامل: ${fa(completed)}", 12f, false, T.fg2)
+            .apply { setPadding(0, T.dp(4), 0, T.dp(10)) })
         if (jobs.isEmpty()) {
             box.addView(label(this, "هنوز دانلودی ندارید.", 13f, false, T.fg2).apply { setPadding(0, T.dp(12), 0, T.dp(12)) })
         }
