@@ -81,8 +81,8 @@ class AvaActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(10, 15, 29)
-        window.navigationBarColor = Color.rgb(10, 15, 29)
+        window.statusBarColor = Color.rgb(7, 8, 18)
+        window.navigationBarColor = Color.rgb(7, 8, 18)
         window.decorView.systemUiVisibility = 0
 
         NavaqNotificationCenter.createChannels(this)
@@ -272,6 +272,12 @@ class AvaActivity : Activity() {
             ).apply { setPadding(0, dp(20), 0, 0) }
         )
 
+        root.alpha = 0f
+        root.translationY = dp(12).toFloat()
+        root.post {
+            root.animate().alpha(1f).translationY(0f).setDuration(260L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }
         return scroll
     }
 
@@ -446,11 +452,14 @@ class AvaActivity : Activity() {
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(18), dp(18), dp(18))
-        background = GradientDrawable().apply {
-            setColor(Color.rgb(20, 29, 48))
-            cornerRadius = dp(20).toFloat()
-            setStroke(dp(1), Color.rgb(39, 54, 80))
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.rgb(23, 34, 59), Color.rgb(12, 18, 34))
+        ).apply {
+            cornerRadius = dp(22).toFloat()
+            setStroke(dp(1), Color.argb(115, 98, 211, 255))
         }
+        elevation = dp(2).toFloat()
     }
 
     private fun text(value: String, size: Int, color: Int, bold: Boolean): TextView =
@@ -468,11 +477,29 @@ class AvaActivity : Activity() {
             isAllCaps = false
             textSize = 15f
             setTextColor(Color.WHITE)
-            background = GradientDrawable().apply {
-                setColor(color)
-                cornerRadius = dp(14).toFloat()
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(color, Color.rgb(78, 62, 145))
+            ).apply {
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.argb(95, 110, 222, 255))
             }
+            elevation = dp(2).toFloat()
             setPadding(dp(16), dp(10), dp(16), dp(10))
+            isFocusable = true
+            setOnTouchListener { view, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        view.animate().cancel()
+                        view.animate().scaleX(0.985f).scaleY(0.985f).alpha(0.88f).setDuration(85L).start()
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        view.animate().cancel()
+                        view.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(140L).start()
+                    }
+                }
+                false
+            }
             setOnClickListener { action() }
         }
 
