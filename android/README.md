@@ -100,3 +100,17 @@ AVA is an optional, isolated Android voice-assistant adapter that uses the exist
 - The offline Whisper recognizer remains loaded across successive foreground utterances, avoiding a full model reload for every command.
 - Optional wake-phrase gating accepts “هی آوا”, “Hey Ava”, “Okay Ava”, or “AVA” only while the user-started foreground session is active; it is not a system-wide or background hotword service.
 - Optional “هی آوا” / “Hey Ava” phrases are accepted as command prefixes only while the user-started foreground listening session is active. True always-on wake-word detection is not implemented; AVA stops listening when the user presses Stop or leaves the Activity. Android background microphone restrictions and battery policies make permanent listening a separate, explicit feature.
+
+## Android system integrations and smart notifications
+
+NAVAQ keeps Android system actions behind visible, user-initiated intents:
+
+- AVA can open the Android phone dialer, Android Settings, and NAVAQ's app-notification settings using Persian or English voice commands.
+- The dialer opens with no number selected. NAVAQ does not place calls, read contacts, access call history, or request `CALL_PHONE` / contacts permissions. The user reviews and starts any call in the system dialer.
+- Smart notifications are opt-in from the AVA screen. Android 13+ notification permission is requested only after the user enables them.
+- Notification channels are separated into AVA/activity, downloads, and playback errors. Users can manage each channel in Android settings and can disable NAVAQ smart notifications inside the app.
+- AVA results and playback errors can appear as notifications when enabled. Completed NAVAQ-owned downloads are verified against the app's private DownloadManager ID list before a notification is posted.
+- Download progress remains managed by Android DownloadManager. Media playback controls remain managed by Media3's MediaSession notification; NAVAQ does not create a duplicate playback notification.
+- Android OEM surfaces, notification presentation, lock-screen visibility, and notification permission remain under OS/device/user control.
+
+These integrations deliberately avoid hidden APIs, overlay permissions, automatic phone calls, contacts scraping, and background microphone access.
