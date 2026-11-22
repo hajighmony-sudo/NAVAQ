@@ -54,7 +54,8 @@ class AvaActivity : Activity() {
                 }
                 NavaqPlaybackService.ACTION_AVA_SYSTEM_ACTION -> {
                     handleAndroidSystemAction(
-                        intent.getStringExtra(NavaqPlaybackService.EXTRA_AVA_SYSTEM_ACTION).orEmpty()
+                        intent.getStringExtra(NavaqPlaybackService.EXTRA_AVA_SYSTEM_ACTION).orEmpty(),
+                        intent.getStringExtra(NavaqPlaybackService.EXTRA_AVA_PHONE_NUMBER).orEmpty()
                     )
                 }
                 NavaqPlaybackService.ACTION_AVA_CONFIRMATION_REQUIRED -> {
@@ -343,9 +344,13 @@ class AvaActivity : Activity() {
         statusText.text = "Smart notifications are enabled."
     }
 
-    private fun handleAndroidSystemAction(action: String) {
+    private fun handleAndroidSystemAction(action: String, phoneNumber: String = "") {
+        val safeNumber = phoneNumber.takeIf { it.matches(Regex("^\\+?[0-9]{5,18}$")) }.orEmpty()
         val target = when (action) {
-            "open_dialer" -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))
+            "open_dialer" -> Intent(
+                Intent.ACTION_DIAL,
+                Uri.parse(if (safeNumber.isBlank()) "tel:" else "tel:$safeNumber")
+            )
             "open_system_settings" -> Intent(Settings.ACTION_SETTINGS)
             "open_notification_settings" -> {
                 if (Build.VERSION.SDK_INT >= 26) {
