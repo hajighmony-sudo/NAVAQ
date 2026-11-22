@@ -285,7 +285,12 @@ object LinkDownloader {
         job.state = RUNNING
         save(ctx)
         try {
-            if (job.wifiOnly && metered(ctx)) throw IOException("اینترنت همراه فعال است؛ به وای‌فای وصل شوید")
+            if (job.wifiOnly && metered(ctx)) {
+                job.state = PAUSED
+                job.error = "فقط وای‌فای فعال است؛ به وای‌فای وصل شوید و ادامه را بزنید"
+                save(ctx)
+                return
+            }
             if (job.hls) hls(ctx, job) else direct(ctx, job)
             if (job.stop != null) {
                 if (job.stop == "cancel") { cleanFiles(job, true) } else job.state = PAUSED
