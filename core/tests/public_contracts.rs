@@ -1,6 +1,6 @@
 use navaq_core::{
-    AudioSource, AvaCore, AvaExecutionRoute, AvaIntent, AvaSettings, PlayerCommand, PlayerCore,
-    PlaybackStatus, Track, TrackId, UiSettings,
+    AudioSource, AvaCore, AvaExecutionRoute, AvaIntent, AvaSettings, PlaybackStatus, PlayerCommand,
+    PlayerCore, Track, TrackId, UiSettings,
 };
 
 fn track(id: &str) -> Track {
@@ -32,7 +32,10 @@ fn public_playback_contract_survives_snapshot_round_trip() {
     let (restored, output) = PlayerCore::restore(snapshot).expect("snapshot restores");
 
     assert_eq!(restored.state().status, PlaybackStatus::Paused);
-    assert_eq!(restored.current_track_id(), Some(&TrackId::from("contract-1")));
+    assert_eq!(
+        restored.current_track_id(),
+        Some(&TrackId::from("contract-1"))
+    );
     assert!(output.backend_actions.iter().any(|action| {
         matches!(action, navaq_core::BackendAction::Prepare(prepared)
             if prepared.id == TrackId::from("contract-1"))
