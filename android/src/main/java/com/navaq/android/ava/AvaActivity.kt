@@ -171,7 +171,7 @@ class AvaActivity : Activity() {
 
     private fun buildContent(): View {
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(10, 15, 29))
+            setBackgroundColor(Color.rgb(7, 8, 18))
             isFillViewport = true
         }
         val root = LinearLayout(this).apply {
