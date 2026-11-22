@@ -57,7 +57,9 @@ object Downloads {
     private fun fileName(url: String, wanted: String): String {
         val base = wanted.trim().ifBlank { Uri.parse(url).lastPathSegment.orEmpty() }
         val cleaned = base.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(90).trim('.').ifBlank { "navaq-audio" }
-        val named = if (cleaned.substringAfterLast('.', "").lowercase() in AUDIO) cleaned else "$cleaned.mp3"
+        val urlExtension = Uri.parse(url).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
+        val extension = cleaned.substringAfterLast('.', "").lowercase()
+        val named = if (extension in AUDIO) cleaned else "$cleaned.${urlExtension.takeIf { it in AUDIO } ?: "mp3"}"
         val dot = named.lastIndexOf('.')
         val stamp = "-" + System.currentTimeMillis() % 100000000
         return named.substring(0, dot) + stamp + named.substring(dot)
@@ -66,10 +68,13 @@ object Downloads {
     /** Blocking (DNS lookup): call off the main thread. Returns an error message, or null when queued. */
     fun enqueue(ctx: Context, rawUrl: String, wantedName: String, wifiOnly: Boolean): String? {
         val url = rawUrl.trim()
-        if (!url.startsWith("https://") && !url.startsWith("http://")) return "فقط لینک مستقیم http یا https پذیرفته می‌شود"
+        if (!url.startsWith("https://", ignoreCase = true)) return "فقط لینک HTTPS پذیرفته می‌شود"
         return try {
             if (!NavaqNativeBridge.nativeValidateDownloadUrl(url)) return "این لینک معتبر نیست یا به آدرس محلی اشاره می‌کند"
-            val host = Uri.parse(url).host ?: return "آدرس نامعتبر است"
+            val host = Uri.parse(url).host?.lowercase() ?: return "آدرس نامعتبر است"
+            if (host != "upload.wikimedia.org") return "فقط رسانه‌های عمومی Wikimedia Commons پشتیبانی می‌شوند"
+            val sourceExtension = Uri.parse(url).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
+            if (sourceExtension !in AUDIO) return "این لینک فایل صوتی یا تصویری پشتیبانی‌شده نیست"
             if (InetAddress.getAllByName(host).any(::isPrivate)) return "این میزبان به آدرس محلی اشاره می‌کند"
             val name = fileName(url, wantedName)
             val request = DownloadManager.Request(Uri.parse(url))
