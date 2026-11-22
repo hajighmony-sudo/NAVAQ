@@ -22,6 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AvaSpeechModelManager(context: Context) {
     private val appContext = context.applicationContext
     private val modelDirectory = File(appContext.noBackupFilesDir, "ava/models/whisper-tiny")
+    private val archiveFile = File(appContext.cacheDir, "ava-whisper-tiny.tar.bz2")
+    private val partialArchiveFile = File(appContext.cacheDir, "ava-whisper-tiny.tar.bz2.part")
+    private val archiveValidatorFile = File(appContext.cacheDir, "ava-whisper-tiny.tar.bz2.validator")
 
     fun isInstalled(): Boolean = REQUIRED_FILES.all { name ->
         File(modelDirectory, name).let { it.isFile && it.length() > MIN_FILE_BYTES[name]!! }
@@ -40,7 +43,18 @@ class AvaSpeechModelManager(context: Context) {
      */
     fun deleteModel(): Boolean {
         if (isInstalling.get()) return false
-        return modelDirectory.deleteRecursively()
+        // Remove both the installed model and any retained partial download so
+        // the user's cleanup action actually reclaims all AVA model storage.
+        val paths = listOf(
+            modelDirectory,
+            archiveFile,
+            partialArchiveFile,
+            archiveValidatorFile
+        )
+        paths.forEach { file ->
+            if (file.exists()) file.deleteRecursively()
+        }
+        return paths.none { it.exists() }
     }
 
     fun modelPath(name: String): String {
@@ -57,7 +71,7 @@ class AvaSpeechModelManager(context: Context) {
             return
         }
         Thread({
-            val archive = File(appContext.cacheDir, "ava-whisper-tiny.tar.bz2")
+            val archive = archiveFile
             val staging = File(modelDirectory.parentFile, "whisper-tiny.installing")
             try {
                 val availableBytes = StatFs(appContext.filesDir.absolutePath).availableBytes
