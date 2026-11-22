@@ -1891,7 +1891,15 @@ class NavaqHomeActivity : Activity() {
         layer.removeAllViews()
         val hue = hueOf(track.title)
         val top = if (T.dark) Color.HSVToColor(floatArrayOf(hue, 0.7f, 0.45f)) else Color.HSVToColor(floatArrayOf(hue, 0.35f, 0.96f))
-        layer.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, T.bg))
+        layer.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                (T.neonB and 0x00FFFFFF) or (0x2A shl 24),
+                top,
+                T.bg,
+                T.bg
+            )
+        )
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(T.dp(22), insetTop + T.dp(10), T.dp(22), insetBottom + T.dp(18))
@@ -1978,7 +1986,14 @@ class NavaqHomeActivity : Activity() {
         val repeat = btn(repeatIcon(), 48, 24, if (client.repeatMode != Player.REPEAT_MODE_OFF) T.accent else T.fg) { client.cycleRepeat() }
         pShuffle = iconOf(shuffle); pRepeat = iconOf(repeat)
         val play = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(T.accent) }
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(T.accent, T.neonB, T.neonA)
+            ).apply {
+                shape = GradientDrawable.OVAL
+                setStroke(T.dp(1), Color.argb(180, 255, 255, 255))
+            }
+            elevation = T.dp(9).toFloat()
             val ic = IconView(this@NavaqHomeActivity, if (client.isPlaying) Icon.PAUSE else Icon.PLAY, T.accentFg)
             pPlay = ic
             addView(ic, FrameLayout.LayoutParams(T.dp(32), T.dp(32), Gravity.CENTER))
@@ -2002,9 +2017,9 @@ class NavaqHomeActivity : Activity() {
             glass(0.8f)
             setPadding(T.dp(8), T.dp(4), T.dp(8), T.dp(4))
             addView(btn(Icon.SPEED, 52, 22) { speedSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
-            addView(btn(Icon.TIMER, 52, 22, if (sleepRunnable != null) T.accent else T.fg) { sleepSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
+            addView(btn(Icon.TIMER, 52, 22, if (sleepRunnable != null || sleepEndId != null) T.neonC else T.fg) { sleepSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.LIBRARY, 52, 22) { addToPlaylistSheet(track.id) }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
-            addView(btn(Icon.QUEUE, 52, 22, if (playerQueue) T.accent else T.fg) { playerQueue = !playerQueue; buildPlayer() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
+            addView(btn(Icon.QUEUE, 52, 22, if (playerQueue) T.neonA else T.fg) { playerQueue = !playerQueue; buildPlayer() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(6) })
     }
 
