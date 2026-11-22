@@ -425,6 +425,9 @@ class NavaqHomeActivity : Activity() {
         col.addView(header("موسیقی", null,
             btn(Icon.SEARCH, 44, 22) { screen = "search"; buildNav(); buildScreen() },
             btn(Icon.SLIDERS, 44, 22) { screen = "settings"; buildNav(); buildScreen() }))
+        col.addView(homeBento(), LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(T.dp(16), T.dp(4), T.dp(16), T.dp(4))
+        })
         val tabs = mutableListOf("tracks" to "آهنگ‌ها", "albums" to "آلبوم‌ها")
         if (s.showArtistsTab) tabs += "artists" to "هنرمندان"
         tabs += "fav" to "علاقه‌مندی‌ها"
@@ -485,6 +488,109 @@ class NavaqHomeActivity : Activity() {
         }
         col.addView(pane, LinearLayout.LayoutParams(-1, 0, 1f))
         return col
+    }
+
+    /**
+     * Compact Bento-style dashboard inspired by the visual language studied in ZX.
+     * It is deliberately presentation-only: every shortcut routes to an existing NAVAQ feature.
+     */
+    private fun homeBento(): View {
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(T.dp(16), T.dp(14), T.dp(16), T.dp(14))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    Color.argb(220, Color.red(T.accent), Color.green(T.accent), Color.blue(T.accent)),
+                    Color.argb(if (T.dark) 150 else 205, Color.red(T.glassBase), Color.green(T.glassBase), Color.blue(T.glassBase))
+                )
+            ).apply {
+                cornerRadius = T.radiusPx * 1.15f
+                setStroke(T.dp(1), Color.argb(75, 255, 255, 255))
+            }
+
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(label(this@NavaqHomeActivity, "NAVAQ  /  YOUR SOUND", 10.5f, true, T.accentFg).apply {
+                    letterSpacing = 0.12f
+                })
+                addView(label(this@NavaqHomeActivity, "موسیقی، به سبک خودت", 18f, true, T.fg).apply {
+                    setPadding(0, T.dp(5), 0, T.dp(4))
+                })
+                addView(label(
+                    this@NavaqHomeActivity,
+                    "${fa(allTracks.size)} آهنگ  •  ${fa(favs.all().size)} پسندیده  •  ${fa(playlists().size)} پلی‌لیست",
+                    11.5f, false, T.fg2, 1
+                ))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+
+            val badge = FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(55, 255, 255, 255))
+                    setStroke(T.dp(1), Color.argb(100, 255, 255, 255))
+                }
+                addView(IconView(this@NavaqHomeActivity, Icon.MUSIC, T.accentFg),
+                    FrameLayout.LayoutParams(T.dp(30), T.dp(30), Gravity.CENTER))
+            }
+            addView(badge, LinearLayout.LayoutParams(T.dp(54), T.dp(54)))
+        }
+        shell.addView(hero)
+
+        val actions = listOf(
+            Triple("AVA", Icon.MIC, { startActivity(Intent(this, AvaActivity::class.java)) }),
+            Triple("کشف", Icon.DISC, { startActivity(Intent(this, DiscoverActivity::class.java)) }),
+            Triple("دانلودها", Icon.DOWN, { openHomeSettings("downloads") }),
+            Triple("DNA", Icon.MUSIC, { openHomeSettings("dna") }),
+            Triple("اتاق مشترک", Icon.QUEUE, { openHomeSettings("room") }),
+            Triple("ساخت آهنگ", Icon.PLAY, { openHomeSettings("create") })
+        )
+        val shortcuts = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, T.dp(10), 0, T.dp(2))
+                actions.forEach { (title, icon, action) ->
+                    addView(LinearLayout(this@NavaqHomeActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        setPadding(T.dp(10), T.dp(9), T.dp(10), T.dp(9))
+                        glass(0.78f)
+                        addView(IconView(this@NavaqHomeActivity, icon, T.accent),
+                            LinearLayout.LayoutParams(T.dp(21), T.dp(21)))
+                        addView(label(this@NavaqHomeActivity, title, 10.5f, true, T.fg).apply {
+                            gravity = Gravity.CENTER
+                            setPadding(0, T.dp(6), 0, 0)
+                        })
+                        layoutParams = LinearLayout.LayoutParams(T.dp(88), T.dp(66)).apply {
+                            marginEnd = T.dp(8)
+                        }
+                        contentDescription = title
+                        pressable {
+                            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                            action()
+                        }
+                    })
+                }
+            })
+        }
+        shell.addView(shortcuts)
+        return shell
+    }
+
+    private fun openHomeSettings(page: String) {
+        screen = "settings"
+        detail = null
+        stack.clear()
+        stack.add(page)
+        buildNav()
+        buildScreen()
     }
 
     private fun permissionCard(): View = LinearLayout(this).apply {
