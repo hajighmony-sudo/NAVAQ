@@ -47,7 +47,7 @@ Discover is a native Android feature reachable from the AVA home screen. It is s
 
 - **Public audio search:** searches Wikimedia Commons for audio files, displays the title, MIME type and available file size, and supports loading subsequent result pages.
 - **In-app browser:** an Android WebView with DuckDuckGo as the default search engine, address/search input, back/forward/reload controls, and HTTP(S)-only top-level navigation.
-- **Direct audio/video downloads:** accepts direct HTTP(S) media-file URLs and downloadable resources explicitly exposed by a website's WebView download callback. Supported common formats include MP4, WebM, MKV, MOV, 3GP, AVI, MP3, M4A/AAC, FLAC, OGG, WAV and Opus.
+- **Public audio/video downloads:** searches Wikimedia Commons for public media and downloads supported direct HTTPS media files from its media host only. Supported common formats include MP4, WebM, MKV, MOV, 3GP, AVI, MP3, M4A/AAC, FLAC, OGG, WAV and Opus.
 - **Network controls:** choose Wi-Fi only or Wi-Fi plus mobile data for newly queued downloads; roaming is disabled.
 - **Download queue and offline list:** stores DownloadManager IDs in app preferences, shows task states and percentage progress, allows active tasks to be cancelled and finished entries to be removed, and opens completed audio/video files with an Android media app.
 - **Rust URL validation:** the Android bridge calls `nativeValidateDownloadUrl`, which delegates URL policy checks to `core/src/downloads.rs`. The Android host also checks the initial DNS result for local/private addresses before enqueueing.
@@ -64,8 +64,8 @@ gradle :android:assembleDebug
 ### Important boundaries
 
 - Structured audio search currently uses Wikimedia Commons; the Browser tab is general web browsing/search, not a universal multi-site audio index.
-- A page URL is not necessarily a media file URL. Video downloads require a direct media URL or a download resource explicitly exposed by the website; Discover does not scrape arbitrary pages or provide site-specific extractors.
-- Download only content you own, are authorized to save, or that the service explicitly offers for download. DRM, protected streams, authentication, paywalls, age gates and site restrictions are not bypassed.
+- Downloads are restricted to public Wikimedia Commons media files hosted on `upload.wikimedia.org`; media URLs from other hosts are rejected. The Browser tab remains for ordinary web browsing and does not extract media from arbitrary pages.
+- Check the license and attribution terms for each Commons file before reuse. DRM, protected streams, authentication, paywalls, age gates and site restrictions are not bypassed.
 - Android DownloadManager owns transfer execution, retry policy, and notifications. Discover reports its state and can cancel tasks; it does not yet provide a custom resumable/range-download engine or in-app pause/resume controls.
 - The initial hostname is checked before enqueueing, but DownloadManager follows redirects itself. This client-side check is not a complete server-side SSRF boundary.
 - Files are saved under app-specific external Music/NAVAQ storage. They are available offline while retained by Android, but may be removed when the app is uninstalled. Search and browsing require internet access.
