@@ -70,6 +70,40 @@ jobs:
           cp "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/build/outputs/aar/sherpa_onnx-release.aar" android/libs/sherpa-onnx-release.aar
       - name: Assemble installable universal APK
         run: gradle :android:assembleDebug --stacktrace
+      - name: Verify full APK payload for every supported ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/build/outputs/apk/debug -type f -name '*universal*.apk' -print -quit)"
+          test -n "$APK"
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          apk = sys.argv[1]
+          required = (
+              "libnavaq_core.so",
+              "libonnxruntime.so",
+              "libsherpa-onnx-c-api.so",
+              "libsherpa-onnx-cxx-api.so",
+              "libsherpa-onnx-jni.so",
+          )
+          abis = ("arm64-v8a", "x86_64")
+          with zipfile.ZipFile(apk) as z:
+              names = set(z.namelist())
+              missing = []
+              for abi in abis:
+                  for lib in required:
+                      path = f"lib/{abi}/{lib}"
+                      if path not in names:
+                          missing.append(path)
+              if "classes.dex" not in names:
+                  missing.append("classes.dex")
+              if "AndroidManifest.xml" not in names:
+                  missing.append("AndroidManifest.xml")
+              if missing:
+                  print("Universal APK is incomplete; missing:", *missing, sep="\\n")
+                  raise SystemExit(1)
+              print(f"Verified {apk}: app classes, manifest, Rust core and Sherpa runtime for {', '.join(abis)}")
+          PY
       - name: Verify optimized release build
         run: gradle :android:assembleRelease --stacktrace
       - name: Prepare the single full APK
