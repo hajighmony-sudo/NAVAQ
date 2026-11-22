@@ -44,13 +44,17 @@ object LinkDownloader {
         @Volatile var total = 0L
         @Volatile var error: String? = null
         @Volatile var stop: String? = null
+        @Volatile var speedBps: Long = 0L
+        @Volatile var etaSeconds: Long = -1L
+        @Volatile var workerActive: Boolean = false
         val percent: Int get() = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0
     }
 
     private val pool = Executors.newFixedThreadPool(3)
     private val jobs = ArrayList<Job>()
     private var loaded = false
-    private val MEDIA = setOf("mp3", "m4a", "mp4", "webm", "ogg", "oga", "flac", "wav", "opus", "aac", "ts", "mkv")
+    private val MEDIA = setOf("mp3", "m4a", "mp4", "m4v", "webm", "ogg", "oga", "flac", "wav", "opus", "aac", "ts", "mkv", "mov", "avi", "3gp")
+    private val ALLOWED_HOSTS = setOf("commons.wikimedia.org", "upload.wikimedia.org")
 
     // ---- persistence ----------------------------------------------------------------------
 
@@ -95,10 +99,20 @@ object LinkDownloader {
             a.hostAddress?.startsWith("fc", true) == true || a.hostAddress?.startsWith("fd", true) == true
 
     private fun checkUrl(url: String) {
-        if (!url.startsWith("https://") && !url.startsWith("http://")) throw IOException("فقط لینک http/https پذیرفته می‌شود")
-        if (!NavaqNativeBridge.nativeValidateDownloadUrl(url)) throw IOException("این لینک معتبر نیست یا به آدرس محلی اشاره می‌کند")
-        val host = URL(url).host
-        if (InetAddress.getAllByName(host).any(::isPrivate)) throw IOException("این میزبان به آدرس محلی اشاره می‌کند")
+        if (!url.startsWith("https://", ignoreCase = true)) {
+            throw IOException("برای دانلود امن فقط لینک HTTPS پذیرفته می‌شود")
+        }
+        if (!NavaqNativeBridge.nativeValidateDownloadUrl(url)) {
+            throw IOException("این لینک معتبر نیست یا به آدرس محلی اشاره می‌کند")
+        }
+        val parsed = URL(url)
+        val host = parsed.host.lowercase()
+        if (parsed.userInfo != null || host !in ALLOWED_HOSTS) {
+            throw IOException("دانلود در این نسخه فقط از رسانه‌های عمومی Wikimedia Commons پشتیبانی می‌شود")
+        }
+        if (InetAddress.getAllByName(host).any(::isPrivate)) {
+            throw IOException("این میزبان به آدرس محلی اشاره می‌کند")
+        }
     }
 
     private fun open(start: String, from: Long = 0L): HttpURLConnection {
@@ -192,7 +206,7 @@ object LinkDownloader {
         fun add(ref: String) {
             try {
                 val abs = URL(URL(base), ref.trim()).toString()
-                if (abs.startsWith("http")) found += abs
+                if (abs.startsWith("https://") && URL(abs).host.lowercase() == "upload.wikimedia.org") found += abs
             } catch (_: Exception) {
             }
         }
@@ -226,11 +240,22 @@ object LinkDownloader {
 
     fun start(ctx: Context, job: Job) {
         val app = ctx.applicationContext
-        job.stop = null
-        job.error = null
-        job.state = QUEUED
+        synchronized(job) {
+            if (job.workerActive || job.state == DONE) return
+            job.workerActive = true
+            job.stop = null
+            job.error = null
+            job.speedBps = 0L
+            job.etaSeconds = -1L
+            job.state = QUEUED
+        }
+        save(app)
         NavaqTransferService.ensure(app)
-        pool.execute { run(app, job) }
+        pool.execute {
+            try { run(app, job) } finally {
+                synchronized(job) { job.workerActive = false }
+            }
+        }
     }
 
     /** Ask a running job to stop after the current buffer; paused jobs keep their partial file. */
@@ -258,9 +283,10 @@ object LinkDownloader {
     private fun run(ctx: Context, job: Job) {
         if (job.stop != null) { job.state = PAUSED; save(ctx); return }
         job.state = RUNNING
+        save(ctx)
         try {
             if (job.wifiOnly && metered(ctx)) throw IOException("اینترنت همراه فعال است؛ به وای‌فای وصل شوید")
-            if (job.hls) hls(job) else direct(job)
+            if (job.hls) hls(ctx, job) else direct(ctx, job)
             if (job.stop != null) {
                 if (job.stop == "cancel") { cleanFiles(job, true) } else job.state = PAUSED
             } else {
@@ -286,25 +312,52 @@ object LinkDownloader {
         if (NavaqNotificationCenter.isEnabled(ctx)) NavaqNotificationCenter.downloadComplete(ctx, job.title, true)
     }
 
-    private fun direct(job: Job) {
+    private fun direct(ctx: Context, job: Job) {
         val part = File(job.path + ".part")
         var have = if (part.exists()) part.length() else 0L
         val c = open(job.url, have)
         try {
             var append = true
             if (have > 0 && c.responseCode != 206) { have = 0; append = false }
+            else if (have > 0) {
+                val rangeStart = Regex("bytes\\s+(\\d+)-", RegexOption.IGNORE_CASE)
+                    .find(c.getHeaderField("Content-Range").orEmpty())?.groupValues?.getOrNull(1)?.toLongOrNull()
+                if (rangeStart != have) throw IOException("سرور محدودهٔ ادامهٔ دانلود را تأیید نکرد")
+            }
             val len = c.contentLengthLong
             job.total = if (len > 0) len + have else 0L
             job.done = have
             c.inputStream.use { ins ->
                 FileOutputStream(part, append).use { out ->
                     val buf = ByteArray(64 * 1024)
+                    var sampleAt = System.currentTimeMillis()
+                    var sampleBytes = job.done
+                    var persistedAt = sampleAt
+                    var persistedBytes = job.done
                     while (true) {
                         if (job.stop != null) return
+                        if (job.wifiOnly && metered(ctx)) {
+                            job.stop = "pause"
+                            job.error = "فقط وای‌فای فعال است؛ دانلود تا اتصال وای‌فای متوقف شد"
+                            return
+                        }
                         val n = ins.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
                         job.done += n
+                        val now = System.currentTimeMillis()
+                        if (now - sampleAt >= 1000L) {
+                            val elapsed = (now - sampleAt).coerceAtLeast(1L)
+                            job.speedBps = ((job.done - sampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
+                            job.etaSeconds = if (job.speedBps > 0L && job.total > job.done) (job.total - job.done) / job.speedBps else -1L
+                            sampleAt = now
+                            sampleBytes = job.done
+                        }
+                        if (job.done - persistedBytes >= 1_048_576L || now - persistedAt >= 1500L) {
+                            save(ctx)
+                            persistedAt = now
+                            persistedBytes = job.done
+                        }
                     }
                 }
             }
@@ -321,7 +374,7 @@ object LinkDownloader {
         try { return readText(c, 2_000_000) } finally { c.disconnect() }
     }
 
-    private fun hls(job: Job) {
+    private fun hls(ctx: Context, job: Job) {
         var base = job.url
         var list = text(base)
         if (list.contains("#EXT-X-STREAM-INF")) {
@@ -355,10 +408,16 @@ object LinkDownloader {
         FileOutputStream(part, index > 0).use { out ->
             while (index < all.size) {
                 if (job.stop != null) return
+                if (job.wifiOnly && metered(ctx)) {
+                    job.stop = "pause"
+                    job.error = "فقط وای‌فای فعال است؛ دانلود تا اتصال وای‌فای متوقف شد"
+                    return
+                }
                 val c = open(all[index])
                 try { c.inputStream.use { it.copyTo(out) } } finally { c.disconnect() }
                 index++
                 job.done = index.toLong()
+                save(ctx)
             }
         }
         if (init != null && job.path.endsWith(".ts")) job.path = job.path.removeSuffix(".ts") + ".mp4"
