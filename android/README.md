@@ -105,7 +105,7 @@ AVA is an optional, isolated Android voice-assistant adapter that uses the exist
 
 NAVAQ keeps Android system actions behind visible, user-initiated intents:
 
-- AVA can open the Android phone dialer, Android Settings, and NAVAQ's app-notification settings using Persian or English voice commands.
+- AVA can open the Android phone dialer, general/Wi-Fi/Bluetooth/sound/battery settings, messaging app, camera, clock/alarms, and NAVAQ's app-notification settings using Persian or English voice commands.
 - AVA can prepare the Android dialer with a number spoken by the user (Persian and English digit forms are normalized). NAVAQ never places the call itself: the user reviews the number and taps Call in the system dialer. NAVAQ does not read contacts, access call history, or request `CALL_PHONE` / contacts permissions.
 - Smart notifications are opt-in from the AVA screen. Android 13+ notification permission is requested only after the user enables them.
 - Notification channels are separated into AVA/activity, downloads, and playback errors. Users can manage each channel in Android settings and can disable NAVAQ smart notifications inside the app.
