@@ -40,7 +40,14 @@ object SettingsKit {
     }
 
     fun iconChip(ctx: Context, icon: Icon): View = FrameLayout(ctx).apply {
-        background = GradientDrawable().apply { cornerRadius = T.dpf(10f); setColor(T.accent) }
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(T.accent, T.neonB)
+        ).apply {
+            cornerRadius = T.dpf(11f)
+            setStroke(T.dp(1), (T.neonA and 0x00FFFFFF) or (0x90 shl 24))
+        }
+        elevation = T.dpf(2f)
         addView(
             IconView(ctx, icon, T.accentFg),
             FrameLayout.LayoutParams(T.dp(20), T.dp(20), Gravity.CENTER)
@@ -66,6 +73,8 @@ object SettingsKit {
                 marginStart = T.dp(12); marginEnd = T.dp(8)
             })
             addView(IconView(ctx, Icon.FORWARD, T.fg2), LinearLayout.LayoutParams(T.dp(20), T.dp(20)))
+            isFocusable = true
+            contentDescription = title
             pressable(onClick)
         }
 
@@ -120,10 +129,14 @@ object SettingsKit {
     private fun chip(ctx: Context, text: String, on: Boolean, onClick: () -> Unit): TextView =
         label(ctx, text, 13f, on, if (on) T.accentFg else T.fg).apply {
             setPadding(T.dp(14), T.dp(8), T.dp(14), T.dp(8))
-            background = GradientDrawable().apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                if (on) intArrayOf(T.accent, T.neonB) else intArrayOf(gray(), Color.argb(38, 128, 134, 160))
+            ).apply {
                 cornerRadius = T.dpf(40f)
-                setColor(if (on) T.accent else gray())
+                if (on) setStroke(T.dp(1), (T.neonA and 0x00FFFFFF) or (0x88 shl 24))
             }
+            isFocusable = true
             pressable(onClick)
         }
 
