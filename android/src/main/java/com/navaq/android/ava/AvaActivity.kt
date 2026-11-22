@@ -10,6 +10,8 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.provider.AlarmClock
+import android.provider.MediaStore
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -352,6 +354,13 @@ class AvaActivity : Activity() {
                 Uri.parse(if (safeNumber.isBlank()) "tel:" else "tel:$safeNumber")
             )
             "open_system_settings" -> Intent(Settings.ACTION_SETTINGS)
+            "open_wifi_settings" -> Intent(Settings.ACTION_WIFI_SETTINGS)
+            "open_bluetooth_settings" -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+            "open_sound_settings" -> Intent(Settings.ACTION_SOUND_SETTINGS)
+            "open_battery_settings" -> Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
+            "open_messages" -> Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)
+            "open_camera" -> Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+            "open_clock" -> Intent(AlarmClock.ACTION_SHOW_ALARMS)
             "open_notification_settings" -> {
                 if (Build.VERSION.SDK_INT >= 26) {
                     Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
