@@ -40,6 +40,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.app.DownloadManager
 import com.navaq.android.net.Downloads
+import com.navaq.android.net.LinkDownloader
 import com.navaq.android.net.LanRoom
 import java.io.File
 import java.text.Collator
@@ -963,7 +964,7 @@ class NavaqHomeActivity : Activity() {
         return out
     }
 
-    // ------------------------------------------------------------------ downloads
+    // ------------------------------------------------------------------ downloads (NAVAQ Downloader)
 
     private var dlUrl = ""
     private var dlName = ""
@@ -973,7 +974,7 @@ class NavaqHomeActivity : Activity() {
         override fun run() {
             if (screen == "settings" && stack.lastOrNull() == "downloads") {
                 fillDownloads()
-                handler.postDelayed(this, 1500L)
+                handler.postDelayed(this, 1000L)
             }
         }
     }
@@ -981,14 +982,28 @@ class NavaqHomeActivity : Activity() {
     private fun dlAdd() {
         val url = dlUrl.trim()
         if (url.isEmpty()) { toast("لینک را وارد کنید"); return }
-        val wifi = runtimePrefs().getBoolean("dl_wifi_only", false)
-        val name = dlName
+        toast("در حال بررسی لینک…")
         executor.execute {
-            val err = Downloads.enqueue(applicationContext, url, name, wifi)
+            val probe = LinkDownloader.probe(url)
             runOnUiThread {
-                if (err != null) toast(err) else { toast("به صف دانلود اضافه شد"); dlUrl = ""; dlName = ""; buildScreen() }
+                when {
+                    probe.error != null -> toast(probe.error)
+                    probe.cands.size == 1 -> dlStart(probe.cands[0], probe.title)
+                    else -> showSheet("چند فایل پیدا شد؛ کدام را دانلود کنم؟", probe.cands.map { c -> c.label to { dlStart(c, probe.title) } })
+                }
             }
         }
+    }
+
+    private fun dlStart(cand: LinkDownloader.Cand, pageTitle: String?) {
+        val title = dlName.ifBlank { pageTitle ?: cand.label.substringAfter("— ").substringBeforeLast('.') }
+        LinkDownloader.add(
+            applicationContext, cand, title,
+            runtimePrefs().getBoolean("dl_audio_only", false), runtimePrefs().getBoolean("dl_wifi_only", false)
+        )
+        dlUrl = ""; dlName = ""
+        toast("به صف دانلود اضافه شد")
+        buildScreen()
     }
 
     private fun dlContainer(): View {
@@ -996,41 +1011,39 @@ class NavaqHomeActivity : Activity() {
         dlBox = box
         fillDownloads()
         handler.removeCallbacks(dlTicker)
-        handler.postDelayed(dlTicker, 1500L)
+        handler.postDelayed(dlTicker, 1000L)
         return box
     }
 
     private fun fillDownloads() {
-        executor.execute {
-            val jobs = try { Downloads.list(applicationContext) } catch (_: Exception) { emptyList() }
-            runOnUiThread {
-                val box = dlBox ?: return@runOnUiThread
-                box.removeAllViews()
-                if (jobs.isEmpty()) {
-                    box.addView(label(this, "هنوز دانلودی ندارید.", 13f, false, T.fg2).apply { setPadding(0, T.dp(12), 0, T.dp(12)) })
-                }
-                jobs.forEach { box.addView(dlRow(it)) }
-                val done = jobs.count { it.status == DownloadManager.STATUS_SUCCESSFUL }
-                if (dlDoneCount >= 0 && done > dlDoneCount) loadTracks()
-                dlDoneCount = done
-            }
+        val box = dlBox ?: return
+        val jobs = LinkDownloader.list(applicationContext)
+        box.removeAllViews()
+        if (jobs.isEmpty()) {
+            box.addView(label(this, "هنوز دانلودی ندارید.", 13f, false, T.fg2).apply { setPadding(0, T.dp(12), 0, T.dp(12)) })
         }
+        jobs.forEach { box.addView(dlRow(it)) }
+        val done = jobs.count { it.state == LinkDownloader.DONE }
+        if (dlDoneCount >= 0 && done > dlDoneCount) loadTracks()
+        dlDoneCount = done
     }
 
-    private fun dlStatus(j: Downloads.Job): String = when (j.status) {
-        DownloadManager.STATUS_SUCCESSFUL -> "آماده؛ آفلاین در کتابخانه"
-        DownloadManager.STATUS_FAILED -> "ناموفق (کد ${fa(j.reason)})"
-        DownloadManager.STATUS_PAUSED -> "متوقف توسط سیستم؛ منتظر اینترنت یا وای‌فای"
-        DownloadManager.STATUS_PENDING -> "در صف"
-        else -> if (j.total > 0) "${fa(j.percent)}٪ — ${fa(j.done / 1024 / 1024)} از ${fa(j.total / 1024 / 1024)} مگابایت" else "در حال دانلود…"
+    private fun dlStatus(j: LinkDownloader.Job): String = when (j.state) {
+        LinkDownloader.DONE -> "آماده؛ آفلاین در کتابخانه"
+        LinkDownloader.FAILED -> "ناموفق: ${j.error.orEmpty()}"
+        LinkDownloader.PAUSED -> "متوقف" + (j.error?.let { " — $it" } ?: "") + if (j.total > 0) " (${fa(j.percent)}٪)" else ""
+        LinkDownloader.QUEUED -> "در صف"
+        else -> if (j.hls) "دریافت بخش‌ها: ${fa(j.done)} از ${fa(j.total)}"
+        else if (j.total > 0) "${fa(j.percent)}٪ — ${fa(j.done / 1024 / 1024)} از ${fa(j.total / 1024 / 1024)} مگابایت"
+        else "در حال دانلود… ${fa(j.done / 1024 / 1024)} مگابایت"
     }
 
-    private fun dlRow(j: Downloads.Job): View = LinearLayout(this).apply {
+    private fun dlRow(j: LinkDownloader.Job): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(0, T.dp(10), 0, T.dp(10))
         addView(label(this@NavaqHomeActivity, j.title.ifBlank { "دانلود" }, 15f, true, T.fg, 1))
         addView(label(this@NavaqHomeActivity, dlStatus(j), 12f, false, T.fg2).apply { setPadding(0, T.dp(3), 0, T.dp(5)) })
-        if (j.running) {
+        if (j.state == LinkDownloader.RUNNING || j.state == LinkDownloader.PAUSED || j.state == LinkDownloader.QUEUED) {
             val p = j.percent.toFloat()
             addView(LinearLayout(this@NavaqHomeActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1044,31 +1057,28 @@ class NavaqHomeActivity : Activity() {
         pressable { dlActions(j) }
     }
 
-    private fun dlActions(j: Downloads.Job) {
+    private fun dlActions(j: LinkDownloader.Job) {
+        val ctx = applicationContext
         val opts = mutableListOf<Pair<String, () -> Unit>>()
-        when {
-            j.status == DownloadManager.STATUS_SUCCESSFUL -> {
+        when (j.state) {
+            LinkDownloader.DONE -> {
                 opts += "پخش" to {
-                    val name = j.localUri?.let { android.net.Uri.parse(it).lastPathSegment }.orEmpty()
+                    val name = File(j.path).name
                     executor.execute {
-                        val t = byId["dl:$name"] ?: Downloads.tracks(applicationContext).firstOrNull { it.id == "dl:$name" }
+                        val t = byId["dl:$name"] ?: Downloads.tracks(ctx).firstOrNull { it.id == "dl:$name" }
                         runOnUiThread { if (t != null) playFrom(listOf(t), 0) else toast("فایل پیدا نشد") }
                     }
                 }
-                opts += "حذف فایل" to { Downloads.remove(applicationContext, j.id); loadTracks(); fillDownloads() }
+                opts += "حذف فایل" to { LinkDownloader.remove(ctx, j); loadTracks(); fillDownloads() }
             }
-            j.status == DownloadManager.STATUS_FAILED -> {
-                opts += "تلاش دوباره" to {
-                    val wifi = runtimePrefs().getBoolean("dl_wifi_only", false)
-                    executor.execute {
-                        val err = Downloads.enqueue(applicationContext, j.url, j.title, wifi)
-                        if (err == null) Downloads.remove(applicationContext, j.id)
-                        runOnUiThread { if (err != null) toast(err); fillDownloads() }
-                    }
-                }
-                opts += "حذف از فهرست" to { Downloads.remove(applicationContext, j.id); fillDownloads() }
+            LinkDownloader.FAILED, LinkDownloader.PAUSED -> {
+                opts += (if (j.state == LinkDownloader.FAILED) "تلاش دوباره" else "ادامه") to { LinkDownloader.start(ctx, j); fillDownloads() }
+                opts += "حذف" to { LinkDownloader.remove(ctx, j); fillDownloads() }
             }
-            else -> opts += "لغو دانلود" to { Downloads.remove(applicationContext, j.id); fillDownloads() }
+            else -> {
+                opts += "مکث" to { LinkDownloader.pause(ctx, j); fillDownloads() }
+                opts += "لغو و حذف" to { LinkDownloader.remove(ctx, j); fillDownloads() }
+            }
         }
         showSheet(j.title.ifBlank { "دانلود" }, opts)
     }
@@ -1370,8 +1380,8 @@ class NavaqHomeActivity : Activity() {
     private fun pageItems(id: String): List<Item> = when (id) {
         "room" -> roomItems()
         "downloads" -> listOf(
-            Item.Sec("دانلود جدید"),
-            Item.Row("لینک", "url link") { fieldRow("لینک مستقیم فایل صوتی (mp3، m4a، flac …)", dlUrl, true) { dlUrl = it } },
+            Item.Sec("NAVAQ Downloader"),
+            Item.Row("لینک", "url link video") { fieldRow("لینک فایل، ویدیو، جریان m3u8 یا صفحه‌ای که ویدیو دارد", dlUrl, true) { dlUrl = it } },
             Item.Row("نام فایل", "name") { fieldRow("نام فایل (اختیاری)", dlName, false) { dlName = it } },
             Item.Row("چسباندن", "paste") {
                 SettingsKit.actionRow(this, Icon.QUEUE, "چسباندن لینک از کلیپ‌بورد", null) {
@@ -1380,8 +1390,10 @@ class NavaqHomeActivity : Activity() {
                     if (text.isEmpty()) toast("کلیپ‌بورد خالی است") else { dlUrl = text; buildScreen() }
                 }
             },
+            toggleRaw("فقط صدا", "از ویدیو آهنگ (m4a) جدا می‌کند؛ اگر کدک پشتیبانی نشود فایل کامل می‌ماند", "dl_audio_only"),
             toggleRaw("فقط با وای‌فای", "جلوگیری از مصرف اینترنت همراه", "dl_wifi_only"),
-            Item.Row("افزودن", "add") { SettingsKit.actionRow(this, Icon.DOWN, "افزودن به صف دانلود", "فایل در پوشه‌ی NAVAQ ذخیره و به کتابخانه افزوده می‌شود") { dlAdd() } },
+            Item.Row("دانلود", "add") { SettingsKit.actionRow(this, Icon.DOWN, "دانلود", "فایل در کتابخانه‌ی NAVAQ ذخیره می‌شود") { dlAdd() } },
+            Item.Row("توضیح", "") { SettingsKit.noteRow(this, "فقط محتوایی را دانلود کنید که حق آن را دارید. جریان‌های رمزگذاری‌شده، DRM و سایت‌هایی مثل یوتیوب که لینک مستقیم ندارند پشتیبانی نمی‌شوند. دانلودها تا زمانی که برنامه باز یا در پس‌زمینه زنده است ادامه دارند.") },
             Item.Sec("صف دانلود"),
             Item.Row("فهرست", "queue jobs") { dlContainer() }
         )

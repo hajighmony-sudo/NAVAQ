@@ -14,7 +14,7 @@ import java.net.InetAddress
 object Downloads {
     private const val PREFS = "navaq_discover"
     private const val KEY = "download_manager_ids"
-    private val AUDIO = setOf("mp3", "m4a", "mp4", "flac", "ogg", "oga", "wav", "opus", "aac")
+    private val AUDIO = setOf("mp3", "m4a", "mp4", "flac", "ogg", "oga", "wav", "opus", "aac", "ts", "webm", "mkv")
 
     class Job(
         val id: Long, val title: String, val url: String, val status: Int, val reason: Int,
