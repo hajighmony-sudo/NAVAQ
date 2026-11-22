@@ -433,6 +433,26 @@ class NavaqHomeActivity : Activity() {
             else -> libraryScreen()
         }
         content.addView(v, fill())
+        // Short, low-amplitude page transition: keeps the existing screen/state logic intact.
+        if (s.animations) {
+            v.alpha = 0f
+            v.translationY = T.dp(10).toFloat()
+            v.post {
+                if (v.parent === content) {
+                    v.animate().cancel()
+                    v.animate().alpha(1f).translationY(0f)
+                        .setDuration(220L)
+                        .setInterpolator(android.view.animation.DecelerateInterpolator())
+                        .start()
+                }
+            }
+        }
+        v.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        v.contentDescription = when (screen) {
+            "search" -> "صفحه جستجوی موسیقی"
+            "settings" -> "صفحه تنظیمات"
+            else -> "کتابخانه موسیقی"
+        }
     }
 
     /** Compact Bento overview: live library counts, with no changes to playback or storage logic. */
@@ -520,10 +540,21 @@ class NavaqHomeActivity : Activity() {
                     val on = tab == id
                     addView(label(this@NavaqHomeActivity, text, 14f, on, if (on) T.accentFg else T.fg).apply {
                         setPadding(T.dp(16), T.dp(8), T.dp(16), T.dp(8))
-                        background = GradientDrawable().apply {
+                        background = GradientDrawable(
+                            GradientDrawable.Orientation.TL_BR,
+                            if (on) intArrayOf(
+                                (T.accent and 0x00FFFFFF) or (0x48 shl 24),
+                                (T.neonB and 0x00FFFFFF) or (0x28 shl 24)
+                            ) else intArrayOf(
+                                Color.argb(if (T.dark) 34 else 90, 128, 134, 160),
+                                Color.argb(if (T.dark) 18 else 45, 128, 134, 160)
+                            )
+                        ).apply {
                             cornerRadius = T.dpf(40f)
-                            setColor(if (on) T.accent else Color.argb(if (T.dark) 40 else 130, 128, 134, 160))
+                            if (on) setStroke(T.dp(1), (T.accent and 0x00FFFFFF) or (0x90 shl 24))
                         }
+                        isFocusable = true
+                        contentDescription = if (on) "$text، انتخاب‌شده" else text
                         pressable { tab = id; buildScreen() }
                     }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = T.dp(8) })
                 }
