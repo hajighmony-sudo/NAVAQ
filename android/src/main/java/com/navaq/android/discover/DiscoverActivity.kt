@@ -53,6 +53,7 @@ class DiscoverActivity : Activity() {
     private lateinit var browser: WebView
     private lateinit var progress: ProgressBar
     private lateinit var downloadManager: DownloadManager
+    private lateinit var networkPolicyButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,7 +80,7 @@ class DiscoverActivity : Activity() {
         root.addView(label("Discover", 34, Color.WHITE, true).apply {
             setPadding(0, dp(4), 0, dp(4))
         })
-        root.addView(label("Find audio, browse the web and keep music offline.", 14, SUBTLE, false)
+        root.addView(label("Find audio and video, browse the web and keep media offline.", 14, SUBTLE, false)
             .apply { setPadding(0, 0, 0, dp(16)) })
 
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -249,9 +250,11 @@ class DiscoverActivity : Activity() {
             background = fieldBackground()
         }
         content.addView(downloadUrlInput, params(bottom = 8))
-        content.addView(actionButton("Download direct URL") {
-            enqueueDownload(downloadUrlInput.text.toString(), "web-audio")
+        content.addView(actionButton("Download direct media URL") {
+            enqueueDownload(downloadUrlInput.text.toString(), "web-media")
         }, params(bottom = 8))
+        networkPolicyButton = actionButton(networkPolicyLabel()) { toggleNetworkPolicy() }
+        content.addView(networkPolicyButton, params(bottom = 8))
         val navigation = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         navigation.addView(actionButton("Back") { if (::browser.isInitialized && browser.canGoBack()) browser.goBack() }, weightParams())
         navigation.addView(actionButton("Forward") { if (::browser.isInitialized && browser.canGoForward()) browser.goForward() }, weightParams())
@@ -319,6 +322,8 @@ class DiscoverActivity : Activity() {
     private fun showLibrary() {
         content.removeAllViews()
         content.addView(actionButton("Refresh offline library") { showLibrary() },
+            params(bottom = 8))
+        content.addView(actionButton(networkPolicyLabel()) { toggleNetworkPolicy() },
             params(bottom = 10))
         libraryContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(libraryContainer)
@@ -340,7 +345,7 @@ class DiscoverActivity : Activity() {
                 val statusCode = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
                 val card = card()
-                card.addView(label(title ?: "Audio download", 15, Color.WHITE, true))
+                card.addView(label(title ?: "Media download", 15, Color.WHITE, true))
                 val statusLabel = when (statusCode) {
                     DownloadManager.STATUS_SUCCESSFUL -> "Available offline"
                     DownloadManager.STATUS_FAILED -> "Failed (code $reason)"
@@ -361,16 +366,23 @@ class DiscoverActivity : Activity() {
                 card.addView(label(statusLabel + progressLabel, 12, MUTED, false).apply {
                     setPadding(0, dp(6), 0, dp(8))
                 })
+                if (total > 0L && statusCode == DownloadManager.STATUS_RUNNING) {
+                    card.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                        max = 100
+                        progress = (downloaded * 100L / total).toInt().coerceIn(0, 100)
+                    }, params(bottom = 8))
+                }
                 val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 if (statusCode == DownloadManager.STATUS_SUCCESSFUL) {
-                    actions.addView(actionButton("Open") {
+                    actions.addView(actionButton("Play / Open") {
                         val uri = downloadManager.getUriForDownloadedFile(id)
                         if (uri != null) {
                             try {
-                                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, itMime(title))
+                                val detectedMime = downloadManager.getMimeTypeForDownloadedFile(id) ?: itMime(title)
+                                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, detectedMime)
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             } catch (_: Exception) {
-                                toast("No compatible audio app was found.")
+                                toast("No compatible media app was found.")
                             }
                         }
                     }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) })
@@ -425,7 +437,7 @@ class DiscoverActivity : Activity() {
                     .setDescription("NAVAQ Discover")
                     .setMimeType(guessMime(url))
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                    .setAllowedOverMetered(true)
+                    .setAllowedOverMetered(allowMobileData())
                     .setAllowedOverRoaming(false)
                     .setDestinationInExternalFilesDir(
                         this,
@@ -442,6 +454,24 @@ class DiscoverActivity : Activity() {
                 runOnUiThread { toast("Download could not be queued: ${error.message ?: "error"}") }
             }
         }
+    }
+
+    private fun allowMobileData(): Boolean = getSharedPreferences(PREFS, MODE_PRIVATE)
+        .getBoolean(KEY_ALLOW_MOBILE_DATA, true)
+
+    private fun networkPolicyLabel(): String = if (allowMobileData()) {
+        "Network: Wi-Fi + mobile data"
+    } else {
+        "Network: Wi-Fi only"
+    }
+
+    private fun toggleNetworkPolicy() {
+        val next = !allowMobileData()
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_ALLOW_MOBILE_DATA, next)
+            .apply()
+        if (::networkPolicyButton.isInitialized) networkPolicyButton.text = networkPolicyLabel()
+        toast(if (next) "Mobile data is allowed for new downloads." else "New downloads will wait for unmetered Wi-Fi.")
     }
 
     private fun rememberDownload(id: Long) {
@@ -483,8 +513,14 @@ class DiscoverActivity : Activity() {
     private fun guessMime(url: String): String {
         val path = Uri.parse(url).path.orEmpty().lowercase()
         return when {
+            path.endsWith(".mp4") || path.endsWith(".m4v") -> "video/mp4"
+            path.endsWith(".webm") -> "video/webm"
+            path.endsWith(".mkv") -> "video/x-matroska"
+            path.endsWith(".mov") -> "video/quicktime"
+            path.endsWith(".3gp") -> "video/3gpp"
+            path.endsWith(".avi") -> "video/x-msvideo"
             path.endsWith(".mp3") -> "audio/mpeg"
-            path.endsWith(".m4a") || path.endsWith(".mp4") -> "audio/mp4"
+            path.endsWith(".m4a") || path.endsWith(".aac") -> "audio/mp4"
             path.endsWith(".flac") -> "audio/flac"
             path.endsWith(".ogg") || path.endsWith(".oga") -> "audio/ogg"
             path.endsWith(".wav") -> "audio/wav"
@@ -494,6 +530,12 @@ class DiscoverActivity : Activity() {
     }
 
     private fun extensionForMime(mime: String): String = when (mime) {
+        "video/mp4" -> "mp4"
+        "video/webm" -> "webm"
+        "video/x-matroska" -> "mkv"
+        "video/quicktime" -> "mov"
+        "video/3gpp" -> "3gp"
+        "video/x-msvideo" -> "avi"
         "audio/mpeg" -> "mp3"
         "audio/mp4" -> "m4a"
         "audio/flac" -> "flac"
@@ -504,12 +546,19 @@ class DiscoverActivity : Activity() {
     }
 
     private fun itMime(title: String): String = when {
+        title.endsWith(".mp4", true) || title.endsWith(".m4v", true) -> "video/mp4"
+        title.endsWith(".webm", true) -> "video/webm"
+        title.endsWith(".mkv", true) -> "video/x-matroska"
+        title.endsWith(".mov", true) -> "video/quicktime"
+        title.endsWith(".3gp", true) -> "video/3gpp"
+        title.endsWith(".avi", true) -> "video/x-msvideo"
         title.endsWith(".mp3", true) -> "audio/mpeg"
-        title.endsWith(".m4a", true) -> "audio/mp4"
+        title.endsWith(".m4a", true) || title.endsWith(".aac", true) -> "audio/mp4"
         title.endsWith(".flac", true) -> "audio/flac"
         title.endsWith(".ogg", true) || title.endsWith(".oga", true) -> "audio/ogg"
         title.endsWith(".wav", true) -> "audio/wav"
-        else -> "audio/*"
+        title.endsWith(".opus", true) -> "audio/opus"
+        else -> "*/*"
     }
 
     private fun formatSize(size: Long): String = if (size < 0) "Size unknown"
@@ -585,5 +634,6 @@ class DiscoverActivity : Activity() {
         private const val SUBTLE = 0xFFB9C7DF.toInt()
         private const val PREFS = "navaq_discover"
         private const val KEY_DOWNLOAD_IDS = "download_manager_ids"
+        private const val KEY_ALLOW_MOBILE_DATA = "allow_mobile_data"
     }
 }
