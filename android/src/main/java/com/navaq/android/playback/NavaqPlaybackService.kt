@@ -271,10 +271,15 @@ class NavaqPlaybackService : MediaSessionService() {
                 if (action !in setOf("open_dialer", "open_system_settings", "open_notification_settings")) {
                     "That Android action is not supported."
                 } else {
+                    val phoneNumber = intent.optString("phone_number")
+                    val safePhoneNumber = phoneNumber.takeIf {
+                        it.matches(Regex("^\\+?[0-9]{5,18}$"))
+                    }
                     sendBroadcast(
                         Intent(ACTION_AVA_SYSTEM_ACTION)
                             .setPackage(packageName)
                             .putExtra(EXTRA_AVA_SYSTEM_ACTION, action)
+                            .putExtra(EXTRA_AVA_PHONE_NUMBER, safePhoneNumber.orEmpty())
                     )
                     when (action) {
                         "open_dialer" -> "Opening the phone dialer. Review the number and tap Call yourself."
@@ -471,6 +476,7 @@ class NavaqPlaybackService : MediaSessionService() {
         const val EXTRA_AVA_CONFIRMATION_TEXT = "com.navaq.android.extra.AVA_CONFIRMATION_TEXT"
         const val ACTION_AVA_SYSTEM_ACTION = "com.navaq.android.action.AVA_SYSTEM_ACTION"
         const val EXTRA_AVA_SYSTEM_ACTION = "com.navaq.android.extra.AVA_SYSTEM_ACTION"
+        const val EXTRA_AVA_PHONE_NUMBER = "com.navaq.android.extra.AVA_PHONE_NUMBER"
         private const val MAX_AVA_SEARCH_RESULTS = 30
         private const val PREFERENCES_NAME = "navaq_playback_preferences"
         private const val PREFERENCE_BEAT_HAPTICS = "beat_haptics_enabled"
