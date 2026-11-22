@@ -80,6 +80,23 @@ class PlaybackClient(private val context: Context, private val onChange: () -> U
         c.play()
     }
 
+    /** Id of the item that plays after the current one (respects shuffle), or null. */
+    val nextId: String?
+        get() {
+            val c = controller ?: return null
+            val i = c.nextMediaItemIndex
+            return if (i == androidx.media3.common.C.INDEX_UNSET) null else c.getMediaItemAt(i).mediaId.takeIf { it.isNotBlank() }
+        }
+
+    fun addTrack(t: AvaCatalogTrack) {
+        val c = controller ?: return
+        c.addMediaItem(
+            MediaItem.Builder().setMediaId(t.id).setUri(t.sourceValue)
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setAlbumTitle(t.album).build())
+                .build()
+        )
+    }
+
     fun jumpTo(id: String): Boolean {
         val c = controller ?: return false
         val idx = queueIds.indexOf(id)

@@ -158,6 +158,7 @@ class NavaqHomeActivity : Activity() {
         LanRoom.commandListener = { cmd -> runOnUiThread { roomCommand(cmd) } }
         LanRoom.resolver = { id -> if (id.startsWith("room:")) null else byId[id]?.sourceValue?.let { android.net.Uri.parse(it) } }
         if (LanRoom.host != null) handler.post(roomTicker)
+        if (LanRoom.guest != null) handler.post(roomGuestTicker)
     }
 
     override fun onResume() {
@@ -803,6 +804,13 @@ class NavaqHomeActivity : Activity() {
             o.put("id", id).put("title", t.title).put("artist", t.artist ?: "")
                 .put("dur", client.durationMs).put("pos", client.positionMs)
                 .put("playing", client.isPlaying).put("path", "/a/" + android.net.Uri.encode(id))
+                .put("ts", android.os.SystemClock.elapsedRealtime())
+            val nid = client.nextId
+            val nt = nid?.let { byId[it] }
+            if (nid != null && nt != null && !nid.startsWith("room:")) {
+                o.put("next", JSONObject().put("id", nid).put("title", nt.title).put("artist", nt.artist ?: "")
+                    .put("dur", nt.durationMs ?: 0L).put("path", "/a/" + android.net.Uri.encode(nid)))
+            }
         }
         h.update(o)
     }
@@ -829,6 +837,7 @@ class NavaqHomeActivity : Activity() {
     }
 
     private fun roomStop() {
+        if (LanRoom.guest != null) client.setSpeed(1f)
         LanRoom.host?.stop(); LanRoom.host = null
         LanRoom.guest?.leave(); LanRoom.guest = null
         roomStatus = ""
@@ -845,6 +854,8 @@ class NavaqHomeActivity : Activity() {
         roomStatus = "در حال اتصال…"
         LanRoom.guest = LanRoom.Guest(host, port, roomCodeIn.trim()) { ev -> LanRoom.listener?.invoke(ev) }.also { it.start() }
         com.navaq.android.net.NavaqTransferService.ensure(applicationContext)
+        handler.removeCallbacks(roomGuestTicker)
+        handler.post(roomGuestTicker)
         buildScreen()
     }
 
@@ -863,32 +874,75 @@ class NavaqHomeActivity : Activity() {
         val st = LanRoom.guest?.lastState
         val title = st?.optString("title").orEmpty()
         return if (title.isEmpty()) "میزبان هنوز آهنگی پخش نکرده است" else "در حال پخش: $title" +
-            st?.optString("artist").orEmpty().let { if (it.isEmpty()) "" else " — $it" }
+            st?.optString("artist").orEmpty().let { if (it.isEmpty()) "" else " — $it" } +
+            "\nاختلاف با میزبان: ${fa(kotlin.math.abs(roomErrMs))} میلی‌ثانیه"
     }
 
+    private var roomSeekAt = 0L
+    private var roomErrMs = 0L
+    private val roomGuestTicker = object : Runnable {
+        override fun run() {
+            if (LanRoom.guest != null) {
+                roomSync()
+                handler.postDelayed(this, 500L)
+            }
+        }
+    }
+
+    private fun roomTrack(g: LanRoom.Guest, o: JSONObject): AvaCatalogTrack {
+        val t = AvaCatalogTrack(
+            id = "room:" + o.optString("id"), title = o.optString("title"), artist = o.optString("artist").ifBlank { null },
+            album = "اتاق مشترک", durationMs = o.optLong("dur"), sourceKind = "remote_url",
+            sourceValue = g.urlFor(o.optString("path"))
+        )
+        byId = byId + (t.id to t)
+        return t
+    }
+
+    /**
+     * Keeps this phone locked to the host: the host's position is projected to "now" using the
+     * ping-estimated clock offset; small errors are absorbed by nudging playback speed (+-6%),
+     * larger ones by a seek, so every phone plays the same moment of the same track.
+     */
     private fun roomSync() {
         val g = LanRoom.guest ?: return
         val st = g.lastState ?: return
         val id = st.optString("id")
         if (id.isEmpty() || !g.connected) return
         val playing = st.optBoolean("playing")
-        val elapsed = if (playing) android.os.SystemClock.elapsedRealtime() - g.lastAt else 0L
-        val target = st.optLong("pos") + elapsed
+        val clock = android.os.SystemClock.elapsedRealtime()
+        val hostNow = clock + g.offsetMs
+        val manual = runtimePrefs().getInt("room_delay_ms", 0)
+        val target = st.optLong("pos") + (if (playing) hostNow - st.optLong("ts") else 0L) + manual
         val rid = "room:$id"
+
         if (client.currentId != rid) {
-            val t = AvaCatalogTrack(
-                id = rid, title = st.optString("title"), artist = st.optString("artist").ifBlank { null },
-                album = "اتاق مشترک", durationMs = st.optLong("dur"), sourceKind = "remote_url",
-                sourceValue = g.urlFor(st.optString("path"))
-            )
-            byId = byId + (rid to t)
-            client.playQueue(listOf(t), 0)
-            client.seekTo(target)
+            if (client.shuffle) client.toggleShuffle()
+            if (rid in client.queueIds) client.jumpTo(rid) else client.playQueue(listOf(roomTrack(g, st)), 0)
+            client.setSpeed(1f)
+            client.seekTo(target + if (playing) 200L else 0L)
             if (!playing) client.pause()
+            roomSeekAt = clock
             return
         }
-        if (kotlin.math.abs(client.positionMs - target) > 1500L) client.seekTo(target)
+        st.optJSONObject("next")?.let { n ->
+            val nid = "room:" + n.optString("id")
+            if (n.optString("id").isNotEmpty() && nid !in client.queueIds) client.addTrack(roomTrack(g, n))
+        }
         if (playing != client.isPlaying) client.toggle()
+        if (!playing) {
+            if (kotlin.math.abs(client.positionMs - target) > 300L) client.seekTo(target)
+            return
+        }
+        if (clock - roomSeekAt < 1500L) return
+        val err = client.positionMs - target
+        roomErrMs = err
+        when {
+            kotlin.math.abs(err) > 400L -> { client.setSpeed(1f); client.seekTo(target + 200L); roomSeekAt = clock }
+            kotlin.math.abs(err) > 25L -> client.setSpeed((1f - err / 1500f).coerceIn(0.94f, 1.06f))
+            else -> if (client.speed != 1f) client.setSpeed(1f)
+        }
+        roomNow?.text = roomNowText()
     }
 
     private fun roomCommand(cmd: JSONObject) {
@@ -948,6 +1002,8 @@ class NavaqHomeActivity : Activity() {
                     addView(btn(Icon.NEXT, 52, 22) { g.send(JSONObject().put("k", "next")) }, LinearLayout.LayoutParams(T.dp(64), T.dp(52)))
                 }
             }
+            out += prefSlider("جبران تاخیر صدا", "room_delay_ms", -500, 500, 0, { fa(it) + " ms" })
+            out += Item.Row("راهنما", "") { SettingsKit.noteRow(this, "اگر با بلندگوی بلوتوثی گوش می‌دهید و صدا دیرتر از دیگران می‌رسد، این مقدار را کم یا زیاد کنید.") }
             out += Item.Row("خروج", "leave") { SettingsKit.actionRow(this, Icon.RESET, "خروج از اتاق", null) { roomStop() } }
         } else {
             if (roomFound.isEmpty()) {

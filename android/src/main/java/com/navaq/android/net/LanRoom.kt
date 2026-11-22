@@ -162,7 +162,13 @@ object LanRoom {
                 while (running) {
                     val line = readLine(input) ?: break
                     val cmd = try { JSONObject(line) } catch (_: JSONException) { continue }
-                    if (cmd.optString("t") == "cmd" && allowGuestControl) onCommand(cmd)
+                    when (cmd.optString("t")) {
+                        "ping" -> client.send(
+                            JSONObject().put("t", "pong").put("c", cmd.optLong("c"))
+                                .put("h", SystemClock.elapsedRealtime()).toString() + "\n"
+                        )
+                        "cmd" -> if (allowGuestControl) onCommand(cmd)
+                    }
                 }
             } finally {
                 clients.remove(client)
@@ -245,6 +251,11 @@ object LanRoom {
         @Volatile var lastState: JSONObject? = null
         @Volatile var lastAt = 0L
         @Volatile var connected = false
+
+        /** Estimated (host clock - guest clock) in ms, from the lowest-latency ping exchange. */
+        @Volatile var offsetMs = 0L
+        @Volatile var rttMs = 0L
+        private val samples = ArrayList<LongArray>()
         private var sock: Socket? = null
         @Volatile private var open = true
 
@@ -262,7 +273,18 @@ object LanRoom {
                         val line = readLine(input) ?: break
                         val o = try { JSONObject(line) } catch (_: JSONException) { continue }
                         when (o.optString("t")) {
-                            "hello" -> { token = o.optString("token"); connected = true; onEvent("connected") }
+                            "hello" -> { token = o.optString("token"); connected = true; startPinger(); onEvent("connected") }
+                            "pong" -> {
+                                val now = SystemClock.elapsedRealtime()
+                                val rtt = now - o.optLong("c")
+                                val off = o.optLong("h") + rtt / 2 - now
+                                synchronized(samples) {
+                                    samples += longArrayOf(rtt, off)
+                                    if (samples.size > 8) samples.removeAt(0)
+                                    val best = samples.minByOrNull { it[0] }!!
+                                    rttMs = best[0]; offsetMs = best[1]
+                                }
+                            }
                             "state" -> { lastState = o; lastAt = SystemClock.elapsedRealtime(); onEvent("state") }
                             "err" -> { onEvent("bad_code"); break }
                         }
@@ -272,6 +294,23 @@ object LanRoom {
                     val was = connected
                     connected = false
                     if (open) onEvent(if (was) "closed" else "failed")
+                }
+            }.start()
+        }
+
+        private fun startPinger() {
+            Thread {
+                var n = 0
+                while (open && connected) {
+                    val s = sock ?: break
+                    try {
+                        s.getOutputStream().write((JSONObject().put("t", "ping").put("c", SystemClock.elapsedRealtime()).toString() + "\n").toByteArray())
+                        s.getOutputStream().flush()
+                    } catch (_: IOException) {
+                        break
+                    }
+                    n++
+                    try { Thread.sleep(if (n < 6) 200L else 2000L) } catch (_: InterruptedException) { break }
                 }
             }.start()
         }
