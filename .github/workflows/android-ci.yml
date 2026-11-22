@@ -26,7 +26,7 @@ on:
 
 jobs:
   android:
-    name: Android debug build with Rust core
+    name: Android universal APK with Rust core
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,21 +68,26 @@ jobs:
           bash "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/gradlew" -p "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar" :sherpa_onnx:assembleRelease
           mkdir -p android/libs
           cp "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/build/outputs/aar/sherpa_onnx-release.aar" android/libs/sherpa-onnx-release.aar
-      - name: Assemble debug APK
+      - name: Assemble installable universal APK
         run: gradle :android:assembleDebug --stacktrace
-      - name: Assemble optimized release APKs
+      - name: Verify optimized release build
         run: gradle :android:assembleRelease --stacktrace
-      - name: Upload debug APK
+      - name: Prepare the single full APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t FULL_APKS < <(find android/build/outputs/apk/debug -type f -name '*universal*.apk' -print)
+          if [[ "${#FULL_APKS[@]}" -ne 1 ]]; then
+            echo "Expected exactly one universal debug APK, found ${#FULL_APKS[@]}"
+            find android/build/outputs/apk/debug -type f -name '*.apk' -print
+            exit 1
+          fi
+          cp "${FULL_APKS[0]}" "$RUNNER_TEMP/NAVAQ FULL.apk"
+          test -s "$RUNNER_TEMP/NAVAQ FULL.apk"
+      - name: Upload NAVAQ FULL.apk
         uses: actions/upload-artifact@v4
         with:
-          name: navaq-debug-apk
-          path: android/build/outputs/apk/debug/*.apk
+          name: NAVAQ FULL.apk
+          path: ${{ runner.temp }}/NAVAQ FULL.apk
           if-no-files-found: error
-          retention-days: 14
-      - name: Upload optimized release APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: navaq-release-apks
-          path: android/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
