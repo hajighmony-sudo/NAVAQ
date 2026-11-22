@@ -22,6 +22,7 @@ import com.navaq.android.ava.AvaMusicCatalog
 import com.navaq.android.ava.AvaResponseMode
 import com.navaq.android.ava.AvaSpeechOutput
 import com.navaq.android.haptics.NavaqBeatAudioProcessor
+import com.navaq.android.notifications.NavaqNotificationCenter
 import com.navaq.android.haptics.NavaqHaptics
 import org.json.JSONArray
 import org.json.JSONObject
@@ -90,6 +91,10 @@ class NavaqPlaybackService : MediaSessionService() {
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             val trackId = player?.currentMediaItem?.mediaId ?: return
+            NavaqNotificationCenter.playbackError(
+                this@NavaqPlaybackService,
+                error.message ?: "Media3 playback failed (${error.errorCodeName})"
+            )
             dispatchBackendEvent(
                 JSONObject().put(
                     "Failed",
@@ -261,6 +266,37 @@ class NavaqPlaybackService : MediaSessionService() {
                     playAvaTracks(tracks)
                 }
             }
+            "android_action" -> {
+                val action = intent.optString("action")
+                if (action !in setOf(
+                    "open_dialer", "open_notification_settings", "open_wifi_settings",
+                    "open_bluetooth_settings", "open_battery_settings", "open_messages",
+                    "open_camera", "open_clock"
+                )) {
+                    "That Android action is not supported."
+                } else {
+                    val phoneNumber = intent.optString("phone_number")
+                    val safePhoneNumber = phoneNumber.takeIf {
+                        it.matches(Regex("^\\+?[0-9]{5,18}$"))
+                    }
+                    sendBroadcast(
+                        Intent(ACTION_AVA_SYSTEM_ACTION)
+                            .setPackage(packageName)
+                            .putExtra(EXTRA_AVA_SYSTEM_ACTION, action)
+                            .putExtra(EXTRA_AVA_PHONE_NUMBER, safePhoneNumber.orEmpty())
+                    )
+                    when (action) {
+                        "open_dialer" -> "Opening the phone dialer. Review the number and tap Call yourself."
+                        "open_wifi_settings" -> "Opening Wi-Fi settings."
+                        "open_bluetooth_settings" -> "Opening Bluetooth settings."
+                        "open_battery_settings" -> "Opening battery settings."
+                        "open_messages" -> "Opening your messaging app."
+                        "open_camera" -> "Opening the camera."
+                        "open_clock" -> "Opening alarms and clock."
+                        else -> "Opening NAVAQ notification settings."
+                    }
+                }
+            }
             "unknown" -> {
                 when (decision.optString("route")) {
                     else -> "I couldn't recognize that command. AVA currently understands local music and playback commands."
@@ -312,12 +348,14 @@ class NavaqPlaybackService : MediaSessionService() {
         when (responseMode ?: settings.responseMode) {
             AvaResponseMode.SILENT -> Unit
             AvaResponseMode.VISUAL -> {
+                NavaqNotificationCenter.avaResult(this, message)
                 val result = Intent(ACTION_AVA_RESULT)
                     .setPackage(packageName)
                     .putExtra(EXTRA_AVA_RESULT, message)
                 sendBroadcast(result)
             }
             AvaResponseMode.VOICE -> {
+                NavaqNotificationCenter.avaResult(this, message)
                 val result = Intent(ACTION_AVA_RESULT)
                     .setPackage(packageName)
                     .putExtra(EXTRA_AVA_RESULT, message)
@@ -445,6 +483,9 @@ class NavaqPlaybackService : MediaSessionService() {
         const val EXTRA_AVA_ACCEPT = "com.navaq.android.extra.AVA_ACCEPT"
         const val ACTION_AVA_CONFIRMATION_REQUIRED = "com.navaq.android.action.AVA_CONFIRMATION_REQUIRED"
         const val EXTRA_AVA_CONFIRMATION_TEXT = "com.navaq.android.extra.AVA_CONFIRMATION_TEXT"
+        const val ACTION_AVA_SYSTEM_ACTION = "com.navaq.android.action.AVA_SYSTEM_ACTION"
+        const val EXTRA_AVA_SYSTEM_ACTION = "com.navaq.android.extra.AVA_SYSTEM_ACTION"
+        const val EXTRA_AVA_PHONE_NUMBER = "com.navaq.android.extra.AVA_PHONE_NUMBER"
         private const val MAX_AVA_SEARCH_RESULTS = 30
         private const val PREFERENCES_NAME = "navaq_playback_preferences"
         private const val PREFERENCE_BEAT_HAPTICS = "beat_haptics_enabled"

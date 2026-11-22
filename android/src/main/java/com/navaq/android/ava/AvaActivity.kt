@@ -7,6 +7,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.provider.AlarmClock
+import android.provider.MediaStore
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -22,6 +27,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.navaq.android.playback.NavaqPlaybackService
 import com.navaq.android.discover.DiscoverActivity
+import com.navaq.android.notifications.NavaqNotificationCenter
 
 /**
  * Small, native AVA host screen. It gives the Android application a real,
@@ -36,6 +42,7 @@ class AvaActivity : Activity() {
     private lateinit var installButton: Button
     private lateinit var listenButton: Button
     private lateinit var stopButton: Button
+    private lateinit var notificationButton: Button
     private lateinit var controller: AvaVoiceController
     private var receiverRegistered = false
     private var userStopRequested = false
@@ -46,6 +53,12 @@ class AvaActivity : Activity() {
                 NavaqPlaybackService.ACTION_AVA_RESULT -> {
                     val message = intent.getStringExtra(NavaqPlaybackService.EXTRA_AVA_RESULT)
                     if (!message.isNullOrBlank()) statusText.text = message
+                }
+                NavaqPlaybackService.ACTION_AVA_SYSTEM_ACTION -> {
+                    handleAndroidSystemAction(
+                        intent.getStringExtra(NavaqPlaybackService.EXTRA_AVA_SYSTEM_ACTION).orEmpty(),
+                        intent.getStringExtra(NavaqPlaybackService.EXTRA_AVA_PHONE_NUMBER).orEmpty()
+                    )
                 }
                 NavaqPlaybackService.ACTION_AVA_CONFIRMATION_REQUIRED -> {
                     val message = intent.getStringExtra(
@@ -72,6 +85,7 @@ class AvaActivity : Activity() {
         window.navigationBarColor = Color.rgb(10, 15, 29)
         window.decorView.systemUiVisibility = 0
 
+        NavaqNotificationCenter.createChannels(this)
         controller = AvaVoiceController(
             context = this,
             onListeningChanged = { listening ->
@@ -129,6 +143,7 @@ class AvaActivity : Activity() {
         val filter = IntentFilter().apply {
             addAction(NavaqPlaybackService.ACTION_AVA_RESULT)
             addAction(NavaqPlaybackService.ACTION_AVA_CONFIRMATION_REQUIRED)
+            addAction(NavaqPlaybackService.ACTION_AVA_SYSTEM_ACTION)
         }
         ContextCompat.registerReceiver(
             this,
@@ -229,7 +244,24 @@ class AvaActivity : Activity() {
         val settingsButton = button("AVA settings", 0xFF253047.toInt()) {
             startActivity(Intent(this, AvaSettingsActivity::class.java))
         }
-        root.addView(settingsButton)
+        root.addView(settingsButton, verticalParams(bottom = 18))
+
+        val notificationCard = card()
+        notificationCard.addView(text("SMART NOTIFICATIONS", 12, 0xFF8FA4C7.toInt(), true))
+        notificationCard.addView(
+            text(
+                "Optional alerts for AVA results, playback errors and completed downloads. Android media controls remain managed by the system media session.",
+                13,
+                0xFFB9C7DF.toInt(),
+                false
+            ).apply { setPadding(0, dp(8), 0, dp(12)) }
+        )
+        notificationButton = button(
+            if (NavaqNotificationCenter.isEnabled(this)) "Notifications enabled" else "Enable smart notifications",
+            0xFF253B60.toInt()
+        ) { enableSmartNotifications() }
+        notificationCard.addView(notificationButton)
+        root.addView(notificationCard, verticalParams(bottom = 12))
 
         root.addView(
             text(
@@ -292,6 +324,59 @@ class AvaActivity : Activity() {
         }
     }
 
+
+    private fun enableSmartNotifications() {
+        if (NavaqNotificationCenter.isEnabled(this)) {
+            NavaqNotificationCenter.setEnabled(this, false)
+            notificationButton.text = "Enable smart notifications"
+            statusText.text = "Smart notifications are disabled."
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_NOTIFICATION_PERMISSION
+            )
+            return
+        }
+        NavaqNotificationCenter.setEnabled(this, true)
+        notificationButton.text = "Notifications enabled"
+        statusText.text = "Smart notifications are enabled."
+    }
+
+    private fun handleAndroidSystemAction(action: String, phoneNumber: String = "") {
+        val safeNumber = phoneNumber.takeIf { it.matches(Regex("^\\+?[0-9]{5,18}$")) }.orEmpty()
+        val target = when (action) {
+            "open_dialer" -> Intent(
+                Intent.ACTION_DIAL,
+                Uri.parse(if (safeNumber.isBlank()) "tel:" else "tel:$safeNumber")
+            )
+            "open_wifi_settings" -> Intent(Settings.ACTION_WIFI_SETTINGS)
+            "open_bluetooth_settings" -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+            "open_battery_settings" -> Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
+            "open_messages" -> Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)
+            "open_camera" -> Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+            "open_clock" -> Intent(AlarmClock.ACTION_SHOW_ALARMS)
+            "open_notification_settings" -> {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                } else {
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(Uri.parse("package:$packageName"))
+                }
+            }
+            else -> null
+        } ?: return
+        try {
+            startActivity(target)
+        } catch (_: Exception) {
+            statusText.text = "This Android screen is not available on this device."
+        }
+    }
+
     private fun requestPermissionsAndListen() {
         val settings = AvaSettingsStore(this).load()
         val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
@@ -334,6 +419,19 @@ class AvaActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                NavaqNotificationCenter.setEnabled(this, true)
+                notificationButton.text = "Notifications enabled"
+                statusText.text = "Smart notifications are enabled."
+            } else {
+                notificationButton.text = "Enable smart notifications"
+                statusText.text = "Notifications were not enabled. You can change this in Android settings."
+            }
+            return
+        }
         if (requestCode == REQUEST_AVA_PERMISSIONS) {
             val microphoneGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
@@ -394,5 +492,6 @@ class AvaActivity : Activity() {
 
     companion object {
         private const val REQUEST_AVA_PERMISSIONS = 7104
+        private const val REQUEST_NOTIFICATION_PERMISSION = 7105
     }
 }

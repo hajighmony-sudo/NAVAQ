@@ -424,7 +424,7 @@ class DiscoverActivity : Activity() {
                     .setTitle(safeFileName(suggestedName))
                     .setDescription("NAVAQ Discover")
                     .setMimeType(guessMime(url))
-                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setAllowedOverMetered(true)
                     .setAllowedOverRoaming(false)
                     .setDestinationInExternalFilesDir(

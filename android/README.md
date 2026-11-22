@@ -101,3 +101,34 @@ AVA is an optional, isolated Android voice-assistant adapter that uses the exist
 - The offline Whisper recognizer remains loaded across successive foreground utterances, avoiding a full model reload for every command.
 - Optional wake-phrase gating accepts “هی آوا”, “Hey Ava”, “Okay Ava”, or “AVA” only while the user-started foreground session is active; it is not a system-wide or background hotword service.
 - Optional “هی آوا” / “Hey Ava” phrases are accepted as command prefixes only while the user-started foreground listening session is active. True always-on wake-word detection is not implemented; AVA stops listening when the user presses Stop or leaves the Activity. Android background microphone restrictions and battery policies make permanent listening a separate, explicit feature.
+
+### AVA Android voice commands in this build
+
+The Android action adapter is intentionally limited to the commands requested for this feature:
+
+| Persian voice command | Android behavior |
+|---|---|
+| «به شماره … زنگ بزن» | Opens the system dialer with the recognized number filled in; the user taps Call |
+| «وای‌فای را باز کن» | Opens Wi-Fi settings |
+| «بلوتوث را باز کن» | Opens Bluetooth settings |
+| «دوربین را باز کن» | Opens the camera app |
+| «پیام‌ها را باز کن» | Opens the default messaging app |
+| «آلارم را باز کن» | Opens the system alarms screen |
+| «تنظیمات باتری را باز کن» | Opens battery settings |
+| «تنظیمات اعلان‌ها را باز کن» | Opens NAVAQ's app notification settings |
+
+Persian digits (۰–۹), Arabic/Persian letter variants, and zero-width non-joiners are normalized before local command matching. Matching and dispatch are on-device; no online AI service is required. The app does not toggle radios silently, send messages, create alarms, or place calls. Android/OEM availability can vary, and the user remains in control of the opened system screen.
+
+## Android system integrations and smart notifications
+
+NAVAQ keeps Android system actions behind visible, user-initiated intents:
+
+- AVA can open the Android phone dialer, general/Wi-Fi/Bluetooth/sound/battery settings, messaging app, camera, clock/alarms, and NAVAQ's app-notification settings using Persian or English voice commands.
+- AVA can prepare the Android dialer with a number spoken by the user (Persian and English digit forms are normalized). NAVAQ never places the call itself: the user reviews the number and taps Call in the system dialer. NAVAQ does not read contacts, access call history, or request `CALL_PHONE` / contacts permissions.
+- Smart notifications are opt-in from the AVA screen. Android 13+ notification permission is requested only after the user enables them.
+- Notification channels are separated into AVA/activity, downloads, and playback errors. Users can manage each channel in Android settings and can disable NAVAQ smart notifications inside the app.
+- AVA results and playback errors can appear as notifications when enabled. Completed NAVAQ-owned downloads are verified against the app's private DownloadManager ID list before a notification is posted.
+- Download progress remains managed by Android DownloadManager. Media playback controls remain managed by Media3's MediaSession notification; NAVAQ does not create a duplicate playback notification.
+- Android OEM surfaces, notification presentation, lock-screen visibility, and notification permission remain under OS/device/user control.
+
+These integrations deliberately avoid hidden APIs, overlay permissions, automatic phone calls, contacts scraping, and background microphone access.
