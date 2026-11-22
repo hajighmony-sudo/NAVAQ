@@ -21,8 +21,12 @@ class AvaCommandInterpreter(context: Context) {
         }
 
         val command = transcript.trim().lowercase(Locale.ROOT)
-            .replace(Regex("[،,.!?؟]"), " ")
-            .replace(Regex("\s+"), " ")
+            .replace('ي', 'ی')
+            .replace('ك', 'ک')
+            .replace('‌', ' ')
+            .replace(Regex("[،,.!?؟؛:،]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
         val asciiDigits = command.map { char ->
             when (char) {
                 '۰' -> '0'; '۱' -> '1'; '۲' -> '2'; '۳' -> '3'; '۴' -> '4'
@@ -53,32 +57,30 @@ class AvaCommandInterpreter(context: Context) {
 
         val systemAction = when {
             command in setOf(
-                "شماره گیر را باز کن", "شماره گیر رو باز کن", "شماره گیر",
-                "برنامه تلفن را باز کن", "تلفن را باز کن", "باز کردن شماره گیر",
-                "open dialer", "open phone", "show dial pad"
-            ) -> "open_dialer"
-            command in setOf(
-                "تنظیمات اندروید را باز کن", "تنظیمات گوشی را باز کن",
-                "تنظیمات سیستم را باز کن", "open android settings", "open system settings"
-            ) -> "open_system_settings"
-            command in setOf(
-                "تنظیمات اعلان ها را باز کن", "تنظیمات نوتیفیکیشن را باز کن",
-                "open notification settings", "manage notifications"
+                "تنظیمات اعلان ها را باز کن", "تنظیمات اعلان را باز کن",
+                "تنظیمات نوتیفیکیشن را باز کن", "open notification settings"
             ) -> "open_notification_settings"
-            command in setOf("وای فای را باز کن", "تنظیمات وای فای", "open wifi settings", "open wi-fi settings") ->
-                "open_wifi_settings"
-            command in setOf("بلوتوث را باز کن", "تنظیمات بلوتوث", "open bluetooth settings") ->
-                "open_bluetooth_settings"
-            command in setOf("تنظیمات صدا را باز کن", "تنظیمات صوتی", "open sound settings") ->
-                "open_sound_settings"
-            command in setOf("تنظیمات باتری را باز کن", "حالت ذخیره باتری", "open battery settings") ->
-                "open_battery_settings"
-            command in setOf("پیام ها را باز کن", "پیامک ها را باز کن", "open messages", "open messaging") ->
-                "open_messages"
-            command in setOf("دوربین را باز کن", "دوربین رو باز کن", "open camera") ->
-                "open_camera"
-            command in setOf("ساعت را باز کن", "آلارم را باز کن", "open clock", "open alarms") ->
-                "open_clock"
+            command in setOf(
+                "وای فای را باز کن", "وایفای را باز کن", "تنظیمات وای فای",
+                "تنظیمات wifi", "open wifi settings", "open wi fi settings"
+            ) -> "open_wifi_settings"
+            command in setOf(
+                "بلوتوث را باز کن", "تنظیمات بلوتوث", "open bluetooth settings"
+            ) -> "open_bluetooth_settings"
+            command in setOf(
+                "تنظیمات باتری را باز کن", "تنظیمات باتری", "open battery settings"
+            ) -> "open_battery_settings"
+            command in setOf(
+                "پیام ها را باز کن", "پیامک ها را باز کن", "پیام رسان را باز کن",
+                "open messages", "open messaging"
+            ) -> "open_messages"
+            command in setOf(
+                "دوربین را باز کن", "دوربین رو باز کن", "open camera"
+            ) -> "open_camera"
+            command in setOf(
+                "آلارم را باز کن", "زنگ هشدار را باز کن", "ساعت و آلارم را باز کن",
+                "open alarms", "open clock"
+            ) -> "open_clock"
             else -> null
         }
         if (systemAction != null) {
