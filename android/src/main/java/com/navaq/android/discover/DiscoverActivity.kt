@@ -323,8 +323,8 @@ class DiscoverActivity : Activity() {
         content.removeAllViews()
         content.addView(actionButton("Refresh offline library") { showLibrary() },
             params(bottom = 8))
-        content.addView(actionButton(networkPolicyLabel()) { toggleNetworkPolicy() },
-            params(bottom = 10))
+        networkPolicyButton = actionButton(networkPolicyLabel()) { toggleNetworkPolicy() }
+        content.addView(networkPolicyButton, params(bottom = 10))
         libraryContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(libraryContainer)
         refreshLibrary()
