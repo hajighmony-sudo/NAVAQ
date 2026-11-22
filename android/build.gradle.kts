@@ -15,22 +15,22 @@ android {
         versionName = "0.1.0"
     }
 
-    // Produce one APK per CPU architecture instead of a universal APK.
-    // This prevents Android phones from downloading the emulator's x86_64
-    // native libraries alongside the arm64-v8a libraries.
+    // Keep ABI-specific outputs for local/testing workflows, and also build
+    // one universal APK containing every supported native ABI.
+    // The GitHub download workflow publishes only this universal APK.
     splits {
         abi {
             isEnable = true
             reset()
             include("arm64-v8a", "x86_64")
-            isUniversalApk = false
+            isUniversalApk = true
         }
     }
 
     buildTypes {
         getByName("release") {
             // Strip unused Java/Kotlin code and unused Android resources from
-            // production APKs. Debug builds remain unchanged for development.
+            // production builds. Debug builds remain installable for GitHub sideloading.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
