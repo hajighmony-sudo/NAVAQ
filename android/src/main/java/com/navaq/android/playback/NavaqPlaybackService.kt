@@ -124,6 +124,25 @@ class NavaqPlaybackService : MediaSessionService() {
             }
         }
         beatProcessor = onsetProcessor
+        onsetProcessor.onHapticEvent = { trigger, strength ->
+            val mapped = when (trigger) {
+                "bass_hit" -> NavaqHaptics.Trigger.BASS
+                "snare" -> NavaqHaptics.Trigger.SNARE
+                "hi_hat" -> NavaqHaptics.Trigger.HI_HAT
+                else -> NavaqHaptics.Trigger.BEAT
+            }
+            mainHandler.post { haptics.onAudioEvent(mapped, strength) }
+        }
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).let { prefs ->
+            onsetProcessor.advancedHaptics = prefs.getBoolean(PREFERENCE_ADVANCED_HAPTICS, false)
+            if (prefs.getFloat(PREFERENCE_ROOM_MIX, 0f) > 0f) {
+                onsetProcessor.setRoom(
+                    prefs.getInt(PREFERENCE_ROOM_DELAY, 0),
+                    prefs.getFloat(PREFERENCE_ROOM_FEEDBACK, 0f),
+                    prefs.getFloat(PREFERENCE_ROOM_MIX, 0f)
+                )
+            }
+        }
         getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
             .getString(PREFERENCE_EQUALIZER, null)
             ?.let { onsetProcessor.setEqualizerJson(it) }
@@ -175,6 +194,23 @@ class NavaqPlaybackService : MediaSessionService() {
                     getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
                         .edit().putString(PREFERENCE_EQUALIZER, json).apply()
                 }
+            }
+            ACTION_SET_ADVANCED_HAPTICS -> {
+                val on = intent.getBooleanExtra(EXTRA_ENABLED, false)
+                beatProcessor?.advancedHaptics = on
+                getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                    .edit().putBoolean(PREFERENCE_ADVANCED_HAPTICS, on).apply()
+            }
+            ACTION_SET_ROOM -> {
+                val delay = intent.getIntExtra(EXTRA_ROOM_DELAY_MS, 0)
+                val feedback = intent.getFloatExtra(EXTRA_ROOM_FEEDBACK, 0f)
+                val mix = intent.getFloatExtra(EXTRA_ROOM_MIX, 0f)
+                beatProcessor?.setRoom(delay, feedback, mix)
+                getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).edit()
+                    .putInt(PREFERENCE_ROOM_DELAY, delay)
+                    .putFloat(PREFERENCE_ROOM_FEEDBACK, feedback)
+                    .putFloat(PREFERENCE_ROOM_MIX, mix)
+                    .apply()
             }
             ACTION_SET_BEAT_HAPTICS ->
                 setBeatHapticsEnabled(intent.getBooleanExtra(EXTRA_ENABLED, false))
@@ -485,6 +521,15 @@ class NavaqPlaybackService : MediaSessionService() {
         const val ACTION_SET_EQUALIZER = "com.navaq.android.action.SET_EQUALIZER"
         const val EXTRA_EQUALIZER_JSON = "com.navaq.android.extra.EQUALIZER_JSON"
         private const val PREFERENCE_EQUALIZER = "equalizer_json"
+        const val ACTION_SET_ADVANCED_HAPTICS = "com.navaq.android.action.SET_ADVANCED_HAPTICS"
+        const val ACTION_SET_ROOM = "com.navaq.android.action.SET_ROOM"
+        const val EXTRA_ROOM_DELAY_MS = "com.navaq.android.extra.ROOM_DELAY_MS"
+        const val EXTRA_ROOM_FEEDBACK = "com.navaq.android.extra.ROOM_FEEDBACK"
+        const val EXTRA_ROOM_MIX = "com.navaq.android.extra.ROOM_MIX"
+        private const val PREFERENCE_ADVANCED_HAPTICS = "advanced_haptics"
+        private const val PREFERENCE_ROOM_DELAY = "room_delay_ms"
+        private const val PREFERENCE_ROOM_FEEDBACK = "room_feedback"
+        private const val PREFERENCE_ROOM_MIX = "room_mix"
         const val ACTION_SET_BEAT_HAPTICS =
             "com.navaq.android.action.SET_BEAT_HAPTICS"
         const val EXTRA_ENABLED = "com.navaq.android.extra.BEAT_HAPTICS_ENABLED"

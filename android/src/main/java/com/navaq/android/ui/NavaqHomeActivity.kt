@@ -35,6 +35,10 @@ import com.navaq.android.ava.AvaPermissions
 import com.navaq.android.ava.AvaSettings
 import com.navaq.android.ava.AvaSettingsActivity
 import com.navaq.android.discover.DiscoverActivity
+import com.navaq.android.core.NavaqNativeBridge
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.text.Collator
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -206,8 +210,8 @@ class NavaqHomeActivity : Activity() {
     private fun loadTracks() {
         if (!AvaPermissions.hasAudioLibraryAccess(this)) {
             permissionNeeded = true
-            allTracks = emptyList()
-            byId = emptyMap()
+            allTracks = createdTracks()
+            byId = allTracks.associateBy { it.id }
             return
         }
         permissionNeeded = false
@@ -218,8 +222,8 @@ class NavaqHomeActivity : Activity() {
                 emptyList()
             }
             runOnUiThread {
-                allTracks = list
-                byId = list.associateBy { it.id }
+                allTracks = list + createdTracks()
+                byId = allTracks.associateBy { it.id }
                 buildScreen()
                 updateMini(force = true)
             }
@@ -633,6 +637,7 @@ class NavaqHomeActivity : Activity() {
         "layout" -> "چیدمان و رابط"
         "playback" -> "پخش"
         "sound" -> "صدا و اکولایزر"
+        "create" -> "ساخت آهنگ"
         "library" -> "کتابخانه"
         "backup" -> "پشتیبان و بازنشانی"
         "about" -> "درباره"
@@ -693,7 +698,195 @@ class NavaqHomeActivity : Activity() {
         client.setEqualizerJson(org.json.JSONObject().put("enabled", enabled).put("bands", bands).toString())
     }
 
+    // ------------------------------------------------------------------ created songs
+
+    private fun createdPrefs() = getSharedPreferences("navaq_created", MODE_PRIVATE)
+
+    private fun createdTracks(): List<AvaCatalogTrack> {
+        val raw = createdPrefs().getString("songs", null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.getJSONObject(it) }.filter { File(it.getString("path")).exists() }.map {
+                AvaCatalogTrack(
+                    id = it.getString("id"), title = it.getString("title"), artist = "NAVAQ Composer",
+                    album = "ساخته‌شده", durationMs = it.optLong("dur"), sourceKind = "local_file",
+                    sourceValue = "file://" + it.getString("path")
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun rememberCreated(id: String, title: String, path: String, durMs: Long) {
+        val arr = try { JSONArray(createdPrefs().getString("songs", "[]")) } catch (_: Exception) { JSONArray() }
+        arr.put(JSONObject().put("id", id).put("title", title).put("path", path).put("dur", durMs))
+        createdPrefs().edit().putString("songs", arr.toString()).apply()
+    }
+
+    private var createLyrics = ""
+
+    private fun rpStr(key: String, def: String) = runtimePrefs().getString(key, def) ?: def
+    private fun rpInt(key: String, def: Int) = runtimePrefs().getInt(key, def)
+
+    private fun generateSong() {
+        val p = runtimePrefs()
+        val instrumental = p.getBoolean("cr_instr", false)
+        val lyrics = if (instrumental) (1..rpInt("cr_lines", 6)).joinToString("\n") { "la la la la" } else createLyrics.trim()
+        if (lyrics.isBlank()) { toast("متن آهنگ را بنویسید"); return }
+        val request = JSONObject()
+            .put("lyrics", lyrics)
+            .put("style", rpStr("cr_style", "pop"))
+            .put("tempo_bpm", rpInt("cr_tempo", 100))
+            .put("key", rpStr("cr_key", "C major"))
+            .put("duration_secs", JSONObject.NULL)
+            .put("also_instrumental", false)
+        val stamp = System.currentTimeMillis()
+        val dir = File(filesDir, "created").apply { mkdirs() }
+        val base = File(dir, "song_$stamp").path
+        toast("در حال ساخت آهنگ…")
+        executor.execute {
+            val out = try { NavaqNativeBridge.nativeGenerateSong(request.toString(), base) } catch (e: Throwable) { null }
+            runOnUiThread {
+                val json = try { JSONObject(out ?: "{}") } catch (_: Exception) { JSONObject() }
+                if (!json.optBoolean("ok")) {
+                    toast("ساخت آهنگ ناموفق بود: " + json.optString("error", "هسته در دسترس نیست"))
+                    return@runOnUiThread
+                }
+                val title = (if (instrumental) "آهنگ بی‌کلام" else lyrics.lineSequence().first().take(28)) + " · " + fa(stamp % 1000)
+                val id = "created:$stamp"
+                rememberCreated(id, title, json.getString("wav"), json.optLong("duration_ms"))
+                allTracks = allTracks.filter { !it.id.startsWith("created:") } + createdTracks()
+                byId = allTracks.associateBy { it.id }
+                val made = byId[id]
+                if (made != null) playFrom(listOf(made), 0)
+                toast("آهنگ ساخته شد؛ فایل MIDI هم کنار آن ذخیره شد")
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ spatial audio
+
+    private fun furnitureJson(level: String): JSONArray {
+        fun item(kind: String, n: Int) = JSONObject().put("kind", JSONObject().put("kind", kind)).put("count", n)
+        val arr = JSONArray()
+        when (level) {
+            "few" -> arr.put(item("sofa", 1))
+            "mid" -> { arr.put(item("sofa", 1)); arr.put(item("carpet", 1)); arr.put(item("curtains", 2)); arr.put(item("bookshelf", 1)) }
+            "many" -> { arr.put(item("sofa", 2)); arr.put(item("armchair", 2)); arr.put(item("carpet", 1)); arr.put(item("curtains", 4)); arr.put(item("bed", 1)) }
+        }
+        return arr
+    }
+
+    private fun spatialApply() {
+        val p = runtimePrefs()
+        if (!p.getBoolean("sp_on", false)) {
+            client.setRoom(0, 0f, 0f)
+            p.edit().putString("sp_summary", "").apply()
+            return
+        }
+        val w = rpInt("sp_w", 45) / 10.0
+        val d = rpInt("sp_d", 50) / 10.0
+        val h = rpInt("sp_h", 26) / 10.0
+        val mix = rpInt("sp_mix", 25) / 100.0
+        fun pos(x: Double, y: Double, z: Double) = JSONObject().put("x", x).put("y", y).put("z", z)
+        val settings = JSONObject()
+            .put("enabled", true)
+            .put("room", JSONObject().put("width", w).put("depth", d).put("height", h))
+            .put("absorption", JSONObject().put("walls", 0.3).put("floor", 0.4).put("ceiling", 0.25))
+            .put("layout", JSONObject().put("kind", "stereo")
+                .put("left", pos(-w * 0.3, 0.0, d * 0.3)).put("right", pos(w * 0.3, 0.0, d * 0.3)))
+            .put("listener", pos(0.0, 1.2.coerceAtMost(h - 0.1), 0.0))
+            .put("hrtf_profile", JSONObject.NULL)
+            .put("reverb_mix", mix)
+            .put("furniture", furnitureJson(rpStr("sp_furn", "mid")))
+        executor.execute {
+            val out = try { NavaqNativeBridge.nativeRenderSpatial(settings.toString()) } catch (e: Throwable) { null }
+            runOnUiThread {
+                val json = try { JSONObject(out ?: "{}") } catch (_: Exception) { JSONObject() }
+                if (json.has("error") || !json.has("rt60_s")) {
+                    toast("تنظیمات اتاق معتبر نیست")
+                    return@runOnUiThread
+                }
+                val rt60 = json.getDouble("rt60_s")
+                val refl = json.optJSONArray("reflections")
+                var sum = 0.0
+                val n = minOf(refl?.length() ?: 0, 6)
+                for (i in 0 until n) sum += refl!!.getJSONObject(i).getDouble("delay_ms")
+                val delay = if (n > 0) (sum / n).toInt().coerceIn(5, 120) else 20
+                val feedback = (rt60 * 0.4).coerceIn(0.05, 0.55).toFloat()
+                client.setRoom(delay, feedback, (mix * 0.5).toFloat())
+                p.edit().putString("sp_summary",
+                    "زمان پژواک ≈ ${fa("%.2f".format(Locale.US, rt60))} ثانیه · فاصله بحرانی ≈ ${fa("%.1f".format(Locale.US, json.optDouble("critical_distance_m")))} متر").apply()
+                if (screen == "settings" && stack.lastOrNull() == "sound") buildScreen()
+            }
+        }
+    }
+
+    private fun toggleRawThen(title: String, desc: String?, key: String, then: () -> Unit): Item.Row =
+        Item.Row(title, desc.orEmpty()) {
+            SettingsKit.toggleRow(this, title, desc, runtimePrefs().getBoolean(key, false)) { v ->
+                runtimePrefs().edit().putBoolean(key, v).apply(); then(); buildScreen()
+            }
+        }
+
+    private fun toggleRaw(title: String, desc: String?, key: String): Item.Row =
+        Item.Row(title, desc.orEmpty()) {
+            SettingsKit.toggleRow(this, title, desc, runtimePrefs().getBoolean(key, false)) { v ->
+                runtimePrefs().edit().putBoolean(key, v).apply(); buildScreen()
+            }
+        }
+
+    private fun prefSlider(title: String, key: String, min: Int, max: Int, def: Int, format: (Int) -> String, onCommit: () -> Unit = {}): Item.Row =
+        Item.Row(title, title) {
+            SettingsKit.sliderRow(this, title, min, max, rpInt(key, def), format, { }, { v ->
+                runtimePrefs().edit().putInt(key, v).apply(); onCommit()
+            })
+        }
+
+    private fun prefChoice(title: String, key: String, def: String, options: List<Pair<String, String>>, onCommit: () -> Unit = {}): Item.Row =
+        Item.Row(title, options.joinToString(" ") { it.second }) {
+            SettingsKit.choiceRow(this, title, options, rpStr(key, def)) { k ->
+                runtimePrefs().edit().putString(key, k).apply(); onCommit(); buildScreen()
+            }
+        }
+
+    private fun lyricsBox(): View = LinearLayout(this).apply {
+        setPadding(0, T.dp(12), 0, T.dp(12))
+        addView(android.widget.EditText(this@NavaqHomeActivity).apply {
+            setText(createLyrics)
+            hint = "هر خط یک بند از آهنگ است؛ مثلاً: شب از پنجره آرام می‌آید"
+            setHintTextColor(T.fg2)
+            setTextColor(T.fg)
+            textSize = 15f * T.fontScale
+            minLines = 4
+            gravity = Gravity.TOP or Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            background = GradientDrawable().apply { cornerRadius = T.dpf(14f); setColor(Color.argb(60, 128, 134, 160)) }
+            setPadding(T.dp(12), T.dp(10), T.dp(12), T.dp(10))
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(e: android.text.Editable?) { createLyrics = e?.toString().orEmpty() }
+            })
+        }, LinearLayout.LayoutParams(-1, -2))
+    }
+
     private fun pageItems(id: String): List<Item> = when (id) {
+        "create" -> listOf(
+            Item.Sec("متن آهنگ"),
+            Item.Row("متن", "lyrics text") { lyricsBox() },
+            toggleRaw("آهنگ بی‌کلام", "فقط ملودی و هارمونی؛ بدون نیاز به متن", "cr_instr"),
+            prefSlider("طول آهنگ بی‌کلام", "cr_lines", 2, 16, 6, { fa(it) + " بند" }),
+            Item.Sec("سبک"),
+            prefChoice("سبک موسیقی", "cr_style", "pop", listOf("pop" to "پاپ", "sad" to "غمگین", "rock" to "راک", "lofi" to "لوفای", "jazz" to "جاز", "persian" to "ایرانی", "cinematic" to "سینمایی")),
+            prefChoice("گام", "cr_key", "C major", listOf("C major" to "دو ماژور", "G major" to "سل ماژور", "F major" to "فا ماژور", "A minor" to "لا مینور", "D minor" to "ر مینور", "E minor" to "می مینور")),
+            prefSlider("سرعت", "cr_tempo", 60, 160, 100, { fa(it) + " BPM" }),
+            Item.Sec("ساخت"),
+            Item.Row("ساخت و پخش", "generate") {
+                SettingsKit.actionRow(this, Icon.MUSIC, "ساخت و پخش", "ملودی و هارمونی را با هسته می‌سازد؛ WAV و MIDI ذخیره می‌شود") { generateSong() }
+            }
+        )
         "sound" -> {
             val gains = eqGains()
             val on = runtimePrefs().getBoolean("eq_on", false)
@@ -716,6 +909,16 @@ class NavaqHomeActivity : Activity() {
                         gains[i] = v.toFloat(); saveEq(gains, true)
                     })
                 }
+            }
+            rows += Item.Sec("صدای فضایی شخصی")
+            rows += toggleRawThen("صدای فضایی اتاق", "طنین اتاق شما با مدل هسته روی صدا اعمال می‌شود", "sp_on") { spatialApply() }
+            rows += prefSlider("عرض اتاق", "sp_w", 30, 120, 45, { fa(it / 10.0) + " متر" }) { spatialApply() }
+            rows += prefSlider("طول اتاق", "sp_d", 30, 120, 50, { fa(it / 10.0) + " متر" }) { spatialApply() }
+            rows += prefSlider("ارتفاع سقف", "sp_h", 20, 50, 26, { fa(it / 10.0) + " متر" }) { spatialApply() }
+            rows += prefSlider("شدت طنین", "sp_mix", 0, 100, 25, { fa(it) + "٪" }) { spatialApply() }
+            rows += prefChoice("مبلمان و پرده", "sp_furn", "mid", listOf("none" to "خالی", "few" to "کم", "mid" to "متوسط", "many" to "پر")) { spatialApply() }
+            rows += Item.Row("نتیجه اتاق", "rt60") {
+                SettingsKit.noteRow(this, rpStr("sp_summary", "").ifBlank { "با روشن کردن صدای فضایی، ویژگی‌های اتاق محاسبه می‌شود." })
             }
             rows
         }
@@ -772,6 +975,7 @@ class NavaqHomeActivity : Activity() {
                     client.setBeatHaptics(v)
                 }
             },
+            toggleRawThen("تحلیل پیشرفته ضرب", "تشخیص جداگانه‌ی طبل، باس و های‌هت با هسته", "haptics_adv") { client.setAdvancedHaptics(runtimePrefs().getBoolean("haptics_adv", false)) },
             Item.Sec("دستیار و کشف"),
             Item.Row("دستیار صوتی AVA", "ava voice assistant") {
                 SettingsKit.navRow(this, Icon.MIC, "دستیار صوتی AVA", "فرمان صوتی آفلاین فارسی و انگلیسی") { startActivity(Intent(this, AvaActivity::class.java)) }
@@ -806,6 +1010,7 @@ class NavaqHomeActivity : Activity() {
             Item.Row("تم و رنگ", "theme color wallpaper") { SettingsKit.navRow(this, Icon.PALETTE, "تم و رنگ", "حالت روشن و تاریک، رنگ، تصویر زمینه، قالب‌ها") { open("look") } },
             Item.Row("شیشه و جلوه‌ها", "glass blur") { SettingsKit.navRow(this, Icon.GLASS, "شیشه و جلوه‌ها", "محو‌شدگی، شفافیت، گوشه‌ها، انیمیشن") { open("glass") } },
             Item.Row("چیدمان و رابط", "layout font density") { SettingsKit.navRow(this, Icon.LAYOUT, "چیدمان و رابط", "اندازه متن، تراکم، کاور، ناوبری") { open("layout") } },
+            Item.Row("ساخت آهنگ", "create song lyric melody") { SettingsKit.navRow(this, Icon.MUSIC, "ساخت آهنگ", "تبدیل متن به ملودی، آهنگ بی‌کلام") { open("create") } },
             Item.Row("صدا و اکولایزر", "sound equalizer eq") { SettingsKit.navRow(this, Icon.SLIDERS, "صدا و اکولایزر", "اکولایزر ۱۰ باندی و قالب‌های آماده") { open("sound") } },
             Item.Row("پخش", "playback haptic ava") { SettingsKit.navRow(this, Icon.PLAY, "پخش", "لرزش، دستیار AVA، کشف موسیقی") { open("playback") } },
             Item.Row("کتابخانه", "library sort") { SettingsKit.navRow(this, Icon.LIBRARY, "کتابخانه", "مرتب‌سازی و حداقل طول") { open("library") } },
@@ -847,7 +1052,7 @@ class NavaqHomeActivity : Activity() {
             scroll.removeAllViews()
             val q = settingsQuery.trim()
             if (id == "root" && q.isNotEmpty()) {
-                val hits = listOf("look", "glass", "layout", "sound", "playback", "library", "backup")
+                val hits = listOf("look", "glass", "layout", "sound", "create", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
                     .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))

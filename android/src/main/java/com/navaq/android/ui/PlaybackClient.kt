@@ -122,4 +122,23 @@ class PlaybackClient(private val context: Context, private val onChange: () -> U
             .putExtra(NavaqPlaybackService.EXTRA_EQUALIZER_JSON, json)
         context.startService(intent)
     }
+
+    fun setAdvancedHaptics(enabled: Boolean) {
+        context.startService(
+            Intent(context, NavaqPlaybackService::class.java)
+                .setAction(NavaqPlaybackService.ACTION_SET_ADVANCED_HAPTICS)
+                .putExtra(NavaqPlaybackService.EXTRA_ENABLED, enabled)
+        )
+    }
+
+    /** Applies the simplified room reverb; pass mix 0 to turn it off. */
+    fun setRoom(delayMs: Int, feedback: Float, mix: Float) {
+        context.startService(
+            Intent(context, NavaqPlaybackService::class.java)
+                .setAction(NavaqPlaybackService.ACTION_SET_ROOM)
+                .putExtra(NavaqPlaybackService.EXTRA_ROOM_DELAY_MS, delayMs)
+                .putExtra(NavaqPlaybackService.EXTRA_ROOM_FEEDBACK, feedback)
+                .putExtra(NavaqPlaybackService.EXTRA_ROOM_MIX, mix)
+        )
+    }
 }

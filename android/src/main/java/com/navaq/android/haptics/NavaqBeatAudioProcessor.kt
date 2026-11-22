@@ -26,6 +26,16 @@ class NavaqBeatAudioProcessor(
     private var lastBeatAtMs = Long.MIN_VALUE
     private var dspHandle = 0L
     private var equalizerJson: String? = null
+    private var hapticHandle = 0L
+    private var roomDelayMs = 0
+    private var roomFeedback = 0f
+    private var roomMix = 0f
+
+    /** Called with `bass_hit`, `snare` or `hi_hat` and a 0..1 intensity (Rust analyzer). */
+    @Volatile var onHapticEvent: ((String, Float) -> Unit)? = null
+
+    /** When true the Rust band analyzer replaces the generic energy-onset beat detector. */
+    @Volatile var advancedHaptics = false
 
     @Synchronized
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -42,6 +52,10 @@ class NavaqBeatAudioProcessor(
         dspHandle = NavaqNativeBridge.nativeCreateDsp(sampleRate, channels)
         // A new Rust pipeline starts flat; restore the user's last equalizer.
         equalizerJson?.let { if (dspHandle != 0L) NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, it) }
+        if (dspHandle != 0L && roomMix > 0f) {
+            NavaqNativeBridge.nativeSetDspRoom(dspHandle, roomDelayMs, roomFeedback, roomMix)
+        }
+        hapticHandle = NavaqNativeBridge.nativeCreateHaptic(sampleRate, channels)
         resetAnalysis()
         return inputAudioFormat
     }
@@ -69,7 +83,11 @@ class NavaqBeatAudioProcessor(
         if (dspHandle != 0L) {
             NavaqNativeBridge.nativeProcessDsp(dspHandle, samples)
         }
-        samples.forEach { acceptSample(it.toDouble()) }
+        if (advancedHaptics && hapticHandle != 0L) {
+            dispatchHaptics(samples)
+        } else {
+            samples.forEach { acceptSample(it.toDouble()) }
+        }
 
         val output = replaceOutputBuffer(count * bytesPerSample).order(ByteOrder.LITTLE_ENDIAN)
         when (encoding) {
@@ -87,6 +105,32 @@ class NavaqBeatAudioProcessor(
     fun setEqualizerJson(equalizerJson: String): Boolean {
         this.equalizerJson = equalizerJson
         return dspHandle != 0L && NavaqNativeBridge.nativeSetDspEqualizer(dspHandle, equalizerJson)
+    }
+
+    /** Simplified room reverb derived from the core spatial renderer; mix <= 0 turns it off. */
+    @Synchronized
+    fun setRoom(delayMs: Int, feedback: Float, mix: Float) {
+        roomDelayMs = delayMs
+        roomFeedback = feedback
+        roomMix = mix
+        if (dspHandle != 0L) NavaqNativeBridge.nativeSetDspRoom(dspHandle, delayMs, feedback, mix)
+    }
+
+    private fun dispatchHaptics(samples: FloatArray) {
+        val json = NavaqNativeBridge.nativeProcessHaptic(hapticHandle, samples) ?: return
+        if (json.length <= 2) return
+        try {
+            val events = org.json.JSONArray(json)
+            for (i in 0 until events.length()) {
+                val event = events.getJSONObject(i)
+                onHapticEvent?.invoke(
+                    event.optString("trigger"),
+                    event.optDouble("intensity", 0.5).toFloat().coerceIn(0f, 1f)
+                )
+            }
+        } catch (_: org.json.JSONException) {
+            // Malformed analyzer output must never interrupt playback.
+        }
     }
 
     private fun acceptSample(sample: Double) {
@@ -131,6 +175,10 @@ class NavaqBeatAudioProcessor(
 
     @Synchronized
     private fun releaseDsp() {
+        if (hapticHandle != 0L) {
+            NavaqNativeBridge.nativeDestroyHaptic(hapticHandle)
+            hapticHandle = 0L
+        }
         if (dspHandle != 0L) {
             NavaqNativeBridge.nativeDestroyDsp(dspHandle)
             dspHandle = 0L

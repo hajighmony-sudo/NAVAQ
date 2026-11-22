@@ -132,3 +132,12 @@ NAVAQ keeps Android system actions behind visible, user-initiated intents:
 - Android OEM surfaces, notification presentation, lock-screen visibility, and notification permission remain under OS/device/user control.
 
 These integrations deliberately avoid hidden APIs, overlay permissions, automatic phone calls, contacts scraping, and background microphone access.
+
+## Native UI features (`ui` package)
+
+- Glass library/player/settings UI with live theme customisation (`UiSettings` mirrors the Rust `ui_settings` module).
+- 10-band equalizer (Settings > Sound) applied by the Rust DSP; preserved across audio reconfiguration.
+- Personal spatial audio: room size, furniture and reverb are rendered by `nativeRenderSpatial`; the result drives a simplified room reverb tap in the Rust PCM pipeline (`nativeSetDspRoom`). It is not a binaural/HRTF renderer.
+- Advanced haptics: the Rust `HapticAnalyzer` (`nativeCreateHaptic`/`nativeProcessHaptic`) replaces the generic onset detector and maps bass hits, snares and hi-hats to `NavaqHaptics` triggers.
+- Song creation: lyrics (or wordless mode) to melody and harmony through `nativeGenerateSong`, saved as WAV + MIDI and added to the library.
+- Not wired yet: shared listening rooms and Music DNA matching need a network transport/backend; the Rust cores (`room_control`, `matching`) are ready for one.
