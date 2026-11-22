@@ -17,6 +17,7 @@ and Rust `PlayerCore`; it does not create a second player.
 - Explicit microphone and audio-library permission helpers.
 - Sherpa-ONNX offline multilingual Whisper tiny INT8 speech recognition for Persian and English, with automatic language detection restricted to Persian/English.
 - One-time, in-app speech-model installation with progress, free-space validation, archive-size validation, and app-private model storage.
+- Interrupted model downloads retain a partial archive and resume on retry when the server provides an HTTP validator and supports byte-range requests; a changed or non-resumable response safely restarts the transfer.
 - Continuous foreground voice sessions: after one explicit Start action, AVA keeps one microphone/Whisper recognizer session alive, detects successive utterances locally, and reuses the loaded model until Stop is pressed or the Activity leaves the foreground.
 - Optional local wake-phrase gating for “هی آوا”, “Hey Ava”, “Okay Ava”, or “AVA” within the user-started foreground listening session; commands without the wake phrase are not executed in this mode.
 - Optional Persian/English wake-phrase prefixes such as “هی آوا” and “Hey Ava” within an already-started listening session.
@@ -129,7 +130,7 @@ Persian (`fa-IR`) is the default language for new installations and for accounts
 without a saved language preference. Existing explicit language choices are preserved.
 The currently used Whisper model is multilingual, so the same optional model download
 provides both Persian and English; there is no separate Persian model package.
-The speech model remains an optional download and is not preloaded into the APK.
+The speech model remains an optional download and is not preloaded into the APK. If a transfer is interrupted, AVA keeps the partial archive in app cache and resumes it on the next retry when the server's ETag/Last-Modified validator and HTTP Range response allow a safe continuation; otherwise it starts a clean transfer. The completed archive is only extracted after its expected total size is verified.
 The Sherpa-ONNX native runtime is still packaged with the Android app at this stage,
 so the optional model download reduces initial model storage but does not yet remove
 the runtime libraries from the APK.
