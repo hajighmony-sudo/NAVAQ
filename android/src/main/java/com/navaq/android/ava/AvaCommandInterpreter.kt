@@ -22,7 +22,7 @@ class AvaCommandInterpreter(context: Context) {
 
         val command = transcript.trim().lowercase(Locale.ROOT)
             .replace(Regex("[،,.!?؟]"), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\s+"), " ")
         val asciiDigits = command.map { char ->
             when (char) {
                 '۰' -> '0'; '۱' -> '1'; '۲' -> '2'; '۳' -> '3'; '۴' -> '4'
@@ -31,9 +31,9 @@ class AvaCommandInterpreter(context: Context) {
             }
         }.joinToString("")
         val dialMatch = listOf(
-            Regex("""^(?:call|dial)\\s+([+0-9][0-9+ ()-]{4,22})$""", RegexOption.IGNORE_CASE),
-            Regex("""^(?:به شماره\\s*)?([+0-9][0-9+ ()-]{4,22})\\s*(?:زنگ بزن|تماس بگیر|شماره گیری کن)$"""),
-            Regex("""^(?:زنگ بزن به|تماس بگیر با)\\s*([+0-9][0-9+ ()-]{4,22})$""")
+            Regex("""^(?:call|dial)\s+([+0-9][0-9+ ()-]{4,22})$""", RegexOption.IGNORE_CASE),
+            Regex("""^(?:به شماره\s*)?([+0-9][0-9+ ()-]{4,22})\s*(?:زنگ بزن|تماس بگیر|شماره گیری کن)$"""),
+            Regex("""^(?:زنگ بزن به|تماس بگیر با)\s*([+0-9][0-9+ ()-]{4,22})$""")
         ).firstNotNullOfOrNull { it.find(asciiDigits) }
         val dialNumber = dialMatch?.groupValues?.getOrNull(1)
             ?.replace(Regex("[^0-9+]"), "")
