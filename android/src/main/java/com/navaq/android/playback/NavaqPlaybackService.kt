@@ -268,7 +268,11 @@ class NavaqPlaybackService : MediaSessionService() {
             }
             "android_action" -> {
                 val action = intent.optString("action")
-                if (action !in setOf("open_dialer", "open_system_settings", "open_notification_settings")) {
+                if (action !in setOf(
+                    "open_dialer", "open_system_settings", "open_notification_settings",
+                    "open_wifi_settings", "open_bluetooth_settings", "open_sound_settings",
+                    "open_battery_settings", "open_messages", "open_camera", "open_clock"
+                )) {
                     "That Android action is not supported."
                 } else {
                     val phoneNumber = intent.optString("phone_number")
@@ -284,6 +288,13 @@ class NavaqPlaybackService : MediaSessionService() {
                     when (action) {
                         "open_dialer" -> "Opening the phone dialer. Review the number and tap Call yourself."
                         "open_system_settings" -> "Opening Android system settings."
+                        "open_wifi_settings" -> "Opening Wi-Fi settings."
+                        "open_bluetooth_settings" -> "Opening Bluetooth settings."
+                        "open_sound_settings" -> "Opening sound settings."
+                        "open_battery_settings" -> "Opening battery settings."
+                        "open_messages" -> "Opening your messaging app."
+                        "open_camera" -> "Opening the camera."
+                        "open_clock" -> "Opening alarms and clock."
                         else -> "Opening NAVAQ notification settings."
                     }
                 }
