@@ -23,6 +23,34 @@ class AvaCommandInterpreter(context: Context) {
         val command = transcript.trim().lowercase(Locale.ROOT)
             .replace(Regex("[،,.!?؟]"), " ")
             .replace(Regex("\\s+"), " ")
+        val asciiDigits = command.map { char ->
+            when (char) {
+                '۰' -> '0'; '۱' -> '1'; '۲' -> '2'; '۳' -> '3'; '۴' -> '4'
+                '۵' -> '5'; '۶' -> '6'; '۷' -> '7'; '۸' -> '8'; '۹' -> '9'
+                else -> char
+            }
+        }.joinToString("")
+        val dialMatch = listOf(
+            Regex("""^(?:call|dial)\\s+([+0-9][0-9+ ()-]{4,22})$""", RegexOption.IGNORE_CASE),
+            Regex("""^(?:به شماره\\s*)?([+0-9][0-9+ ()-]{4,22})\\s*(?:زنگ بزن|تماس بگیر|شماره گیری کن)$"""),
+            Regex("""^(?:زنگ بزن به|تماس بگیر با)\\s*([+0-9][0-9+ ()-]{4,22})$""")
+        ).firstNotNullOfOrNull { it.find(asciiDigits) }
+        val dialNumber = dialMatch?.groupValues?.getOrNull(1)
+            ?.replace(Regex("[^0-9+]"), "")
+            ?.takeIf { number ->
+                number.length in 5..18 &&
+                    number.count { it == '+' } <= 1 &&
+                    (!number.contains('+') || number.startsWith('+'))
+            }
+        if (dialNumber != null) {
+            return JSONObject()
+                .put("route", "local")
+                .put("intent", JSONObject()
+                    .put("type", "android_action")
+                    .put("action", "open_dialer")
+                    .put("phone_number", dialNumber))
+        }
+
         val systemAction = when {
             command in setOf(
                 "شماره گیر را باز کن", "شماره گیر رو باز کن", "شماره گیر",
