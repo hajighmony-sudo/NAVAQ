@@ -529,7 +529,7 @@ class NavaqHomeActivity : Activity() {
                 ))
             }, LinearLayout.LayoutParams(0, -2, 1f))
 
-            val badge = FrameLayout(this).apply {
+            val badge = FrameLayout(this@NavaqHomeActivity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(Color.argb(55, 255, 255, 255))
