@@ -171,7 +171,8 @@ class AvaActivity : Activity() {
 
     private fun buildContent(): View {
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(10, 15, 29))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(24, 42, 66), Color.rgb(10, 15, 29), Color.rgb(10, 15, 29)))
             isFillViewport = true
         }
         val root = LinearLayout(this).apply {
@@ -446,11 +447,12 @@ class AvaActivity : Activity() {
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(18), dp(18), dp(18))
-        background = GradientDrawable().apply {
-            setColor(Color.rgb(20, 29, 48))
-            cornerRadius = dp(20).toFloat()
-            setStroke(dp(1), Color.rgb(39, 54, 80))
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.rgb(30, 48, 73), Color.rgb(17, 27, 45))).apply {
+            cornerRadius = dp(22).toFloat()
+            setStroke(dp(1), Color.rgb(57, 79, 110))
         }
+        elevation = dp(3).toFloat()
     }
 
     private fun text(value: String, size: Int, color: Int, bold: Boolean): TextView =
