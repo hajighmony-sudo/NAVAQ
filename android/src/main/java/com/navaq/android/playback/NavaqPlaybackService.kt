@@ -167,6 +167,7 @@ class NavaqPlaybackService : MediaSessionService() {
                 // Media3 requests/releases Android audio focus and handles ducking.
                 setAudioAttributes(AudioAttributes.DEFAULT, true)
                 addListener(playerListener)
+                skipSilenceEnabled = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).getBoolean("skip_silence", false)
             }
 
         player = audioPlayer
@@ -194,6 +195,11 @@ class NavaqPlaybackService : MediaSessionService() {
                     getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
                         .edit().putString(PREFERENCE_EQUALIZER, json).apply()
                 }
+            }
+            ACTION_SET_SKIP_SILENCE -> {
+                val on = intent.getBooleanExtra(EXTRA_ENABLED, false)
+                player?.skipSilenceEnabled = on
+                getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).edit().putBoolean("skip_silence", on).apply()
             }
             ACTION_SET_ADVANCED_HAPTICS -> {
                 val on = intent.getBooleanExtra(EXTRA_ENABLED, false)
@@ -522,6 +528,7 @@ class NavaqPlaybackService : MediaSessionService() {
         const val EXTRA_EQUALIZER_JSON = "com.navaq.android.extra.EQUALIZER_JSON"
         private const val PREFERENCE_EQUALIZER = "equalizer_json"
         const val ACTION_SET_ADVANCED_HAPTICS = "com.navaq.android.action.SET_ADVANCED_HAPTICS"
+        const val ACTION_SET_SKIP_SILENCE = "com.navaq.android.action.SET_SKIP_SILENCE"
         const val ACTION_SET_ROOM = "com.navaq.android.action.SET_ROOM"
         const val EXTRA_ROOM_DELAY_MS = "com.navaq.android.extra.ROOM_DELAY_MS"
         const val EXTRA_ROOM_FEEDBACK = "com.navaq.android.extra.ROOM_FEEDBACK"

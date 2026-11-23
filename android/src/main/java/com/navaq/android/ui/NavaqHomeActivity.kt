@@ -55,6 +55,19 @@ import java.util.concurrent.Executors
 class NavaqHomeActivity : Activity() {
     private lateinit var store: UiSettingsStore
     private lateinit var favs: FavoriteStore
+    private lateinit var stats: PlayStats
+    private val REQ_BACKUP_EXPORT = 7101
+    private val REQ_BACKUP_IMPORT = 7102
+    private lateinit var hidden: HiddenStore
+    private lateinit var lastSession: LastSession
+    private var tickCount = 0
+    private var skipStatsFlush = false
+    private var fadeStart: Float? = null
+    private var playerLyrics = false
+    private var lyricsLines: List<Lyrics.Line> = emptyList()
+    private var lyricsViews: List<TextView> = emptyList()
+    private var lyricsScroll: ScrollView? = null
+    private var lyricsIdx = -1
     private lateinit var s: UiSettings
     private lateinit var root: FrameLayout
     private lateinit var wall: WallpaperView
@@ -101,6 +114,8 @@ class NavaqHomeActivity : Activity() {
     private val tick = object : Runnable {
         override fun run() {
             updateProgress()
+            stats.tick(client.currentId, client.isPlaying, 500L)
+            if (++tickCount % 10 == 0) saveSession()
             handler.postDelayed(this, 500L)
         }
     }
@@ -109,6 +124,9 @@ class NavaqHomeActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = UiSettingsStore(this)
         favs = FavoriteStore(this)
+        stats = PlayStats(this)
+        hidden = HiddenStore(this)
+        lastSession = LastSession(this)
         s = store.load()
         GlassUi.update(this, s)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -168,6 +186,9 @@ class NavaqHomeActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (!skipStatsFlush) stats.flush()
+        saveSession()
+        fadeStart?.let { client.volume = it }
         LanRoom.listener = null
         LanRoom.commandListener = null
         LanRoom.resolver = null
@@ -257,7 +278,8 @@ class NavaqHomeActivity : Activity() {
     private fun visibleTracks(): List<AvaCatalogTrack> {
         val min = s.minTrackSeconds * 1000L
         val collator = Collator.getInstance(Locale("fa"))
-        val list = allTracks.filter { (it.durationMs ?: Long.MAX_VALUE) >= min }
+        val hid = hidden.all()
+        val list = allTracks.filter { (it.durationMs ?: Long.MAX_VALUE) >= min && it.id !in hid }
         return when (s.sort) {
             SortOrder.TITLE -> list.sortedWith { a, b -> collator.compare(a.title, b.title) }
             SortOrder.ARTIST -> list.sortedWith { a, b -> collator.compare(a.artist.orEmpty(), b.artist.orEmpty()) }
@@ -429,6 +451,8 @@ class NavaqHomeActivity : Activity() {
         if (s.showArtistsTab) tabs += "artists" to "هنرمندان"
         tabs += "fav" to "علاقه‌مندی‌ها"
         tabs += "playlists" to "پلی‌لیست‌ها"
+        tabs += "recent" to "اخیراً"
+        tabs += "top" to "پرشنوی‌ها"
         if (tabs.none { it.first == tab }) tab = "tracks"
         col.addView(HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -480,6 +504,8 @@ class NavaqHomeActivity : Activity() {
                 }
                 listPane(cells, grid = false)
             }
+            tab == "recent" -> trackPane(statTracks(stats.recent(60)))
+            tab == "top" -> trackPane(statTracks(stats.top(60)))
             tab == "fav" -> trackPane(visibleTracks().filter { favs.isFavorite(it.id) })
             else -> trackPane(visibleTracks())
         }
@@ -507,7 +533,7 @@ class NavaqHomeActivity : Activity() {
     }
 
     private fun trackPane(list: List<AvaCatalogTrack>): View {
-        if (list.isEmpty()) return emptyState(if (tab == "fav") "هنوز آهنگی را نپسندیده‌اید" else "آهنگی پیدا نشد")
+        if (list.isEmpty()) return emptyState(when (tab) { "fav" -> "هنوز آهنگی را نپسندیده‌اید"; "recent", "top" -> "هنوز آماری ثبت نشده؛ بعد از چند آهنگ اینجا پر می‌شود"; else -> "آهنگی پیدا نشد" })
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -526,6 +552,7 @@ class NavaqHomeActivity : Activity() {
             }
             action("پخش همه", Icon.PLAY, true) { playFrom(list, 0) }
             action("درهم", Icon.SHUFFLE, false) { playFrom(list.shuffled(), 0) }
+            if (tab == "tracks" && client.currentId == null) resumeInfo()?.let { (q, i, pos) -> action("ادامه", Icon.PLAY, false) { resumeSession(q, i, pos) } }
         })
         val cells = list.mapIndexed { i, t ->
             Cell(t.id, t.title, listOfNotNull(t.artist, if (s.showDuration) t.durationMs?.let { fmtTime(it) } else null).joinToString(" · "), t.sourceValue, t.title, t) {
@@ -646,6 +673,10 @@ class NavaqHomeActivity : Activity() {
             selector = ColorDrawable(Color.TRANSPARENT)
             isVerticalScrollBarEnabled = false
             setOnItemClickListener { _, _, position, _ -> cells[position].onClick() }
+            setOnItemLongClickListener { _, _, position, _ ->
+                val t = cells[position].track
+                if (t != null && !t.id.startsWith("room:")) { trackSheet(t); true } else false
+            }
         }
         return list
     }
@@ -697,6 +728,7 @@ class NavaqHomeActivity : Activity() {
         "create" -> "ساخت آهنگ"
         "dna" -> "Music DNA"
         "room" -> "گوش دادن مشترک"
+        "stats" -> "آمار گوش‌دادن"
         "downloads" -> "دانلودها"
         "library" -> "کتابخانه"
         "backup" -> "پشتیبان و بازنشانی"
@@ -1158,6 +1190,216 @@ class NavaqHomeActivity : Activity() {
         showSheet(j.title.ifBlank { "دانلود" }, opts)
     }
 
+    // ------------------------------------------------------------------ extras: stats, track menu, lyrics, backup
+
+    private fun statTracks(ids: List<String>): List<AvaCatalogTrack> {
+        val hid = hidden.all()
+        return ids.filter { it !in hid }.mapNotNull { byId[it] }
+    }
+
+    private fun saveSession() {
+        val id = client.currentId ?: return
+        if (id.startsWith("room:")) return
+        val q = client.queueIds.filter { !it.startsWith("room:") }
+        if (id in q) lastSession.save(q, id, client.positionMs)
+    }
+
+    private fun resumeInfo(): Triple<List<AvaCatalogTrack>, Int, Long>? {
+        val id = lastSession.id() ?: return null
+        val tracks = lastSession.queue().mapNotNull { byId[it] }
+        val index = tracks.indexOfFirst { it.id == id }
+        return if (index < 0) null else Triple(tracks, index, lastSession.position())
+    }
+
+    private fun resumeSession(queue: List<AvaCatalogTrack>, index: Int, pos: Long) {
+        playFrom(queue, index)
+        handler.postDelayed({ client.seekTo(pos) }, 400L)
+    }
+
+    private fun fadeOutAndPause() {
+        val start = client.volume
+        fadeStart = start
+        var step = 0
+        val r = object : Runnable {
+            override fun run() {
+                step++
+                client.volume = start * (1f - step / 10f)
+                if (step < 10) handler.postDelayed(this, 600L) else { client.pause(); client.volume = start; fadeStart = null }
+            }
+        }
+        handler.post(r)
+    }
+
+    private fun hiddenSheet() {
+        val items = hidden.all().mapNotNull { byId[it] }
+        if (items.isEmpty()) { toast("آهنگ پنهانی ندارید"); return }
+        showSheet("نمایش دوباره", items.take(40).map { t -> t.title to { hidden.show(t.id); buildScreen() } })
+    }
+
+    private fun trackSheet(t: AvaCatalogTrack) {
+        val fav = favs.isFavorite(t.id)
+        val opts = mutableListOf<Pair<String, () -> Unit>>()
+        opts += "پخش بعدی" to { client.playNext(t); toast("بعد از آهنگ فعلی پخش می‌شود") }
+        opts += "افزودن به صف" to { client.enqueue(t); toast("به صف افزوده شد") }
+        opts += "افزودن به پلی‌لیست" to { handler.post { addToPlaylistSheet(t.id) } }
+        opts += (if (fav) "حذف از علاقه‌مندی" else "علاقه‌مندی") to { favs.toggle(t.id); currentAdapter?.notifyDataSetChanged() }
+        opts += "اشتراک‌گذاری" to { shareTrack(t) }
+        opts += "اطلاعات آهنگ" to { handler.post { infoSheet(t) } }
+        opts += "پنهان کردن" to { hidden.hide(t.id); toast("پنهان شد؛ از تنظیمات › کتابخانه برمی‌گردد"); buildScreen() }
+        showSheet(t.title, opts)
+    }
+
+    private fun shareTrack(t: AvaCatalogTrack) {
+        val uri = android.net.Uri.parse(t.sourceValue)
+        val intent = if (uri.scheme == "content") {
+            Intent(Intent.ACTION_SEND).setType("audio/*").putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } else {
+            Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, listOfNotNull(t.title, t.artist).joinToString(" — "))
+        }
+        try { startActivity(Intent.createChooser(intent, "اشتراک‌گذاری")) } catch (_: Exception) { toast("اشتراک‌گذاری ممکن نشد") }
+    }
+
+    private fun infoSheet(t: AvaCatalogTrack) {
+        val lines = mutableListOf<String>()
+        lines += "عنوان: ${t.title}"
+        t.artist?.let { lines += "هنرمند: $it" }
+        t.album?.let { lines += "آلبوم: $it" }
+        t.durationMs?.let { lines += "مدت: ${fmtTime(it)}" }
+        lines += "تعداد پخش: ${fa(stats.plays(t.id))}"
+        try {
+            val uri = android.net.Uri.parse(t.sourceValue)
+            val r = android.media.MediaMetadataRetriever()
+            if (uri.scheme == "file") r.setDataSource(uri.path) else r.setDataSource(this, uri)
+            r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE)?.let { lines += "قالب: $it" }
+            r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLongOrNull()?.let { lines += "نرخ بیت: ${fa(it / 1000)} kbps" }
+            r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_YEAR)?.let { lines += "سال: $it" }
+            r.release()
+        } catch (_: Exception) {
+        }
+        showSheet("اطلاعات آهنگ", lines.map { it to {} })
+    }
+
+    private fun lyricsStage(track: AvaCatalogTrack): View {
+        val lines = Lyrics.load(this, track)
+        lyricsLines = lines
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(T.dp(8), T.dp(20), T.dp(8), T.dp(40))
+        }
+        if (lines.isEmpty()) {
+            box.addView(label(this, "متنی برای این آهنگ پیدا نشد. فایل .lrc هم‌نام آهنگ کنار آن بگذارید، یا متن (ترجیحاً LRC همگام) را کپی کنید و اینجا بچسبانید.", 14f, false, T.fg2).apply { gravity = Gravity.CENTER })
+            box.addView(label(this, "چسباندن متن از کلیپ‌بورد", 15f, true, T.accent).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, T.dp(18), 0, T.dp(18))
+                pressable {
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString().orEmpty()
+                    if (text.isBlank()) toast("کلیپ‌بورد خالی است") else { Lyrics.save(this@NavaqHomeActivity, track.id, text); buildPlayer() }
+                }
+            })
+        } else {
+            val views = lines.map { l ->
+                label(this, l.text.ifBlank { "♪" }, 20f, true, T.fg2).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, T.dp(9), 0, T.dp(9))
+                    if (l.ms >= 0) pressable { client.seekTo(l.ms) }
+                }.also { box.addView(it, LinearLayout.LayoutParams(-1, -2)) }
+            }
+            lyricsViews = views
+            if (lines.all { it.ms < 0 }) views.forEach { it.setTextColor(T.fg) }
+            box.addView(label(this, "حذف این متن", 12f, false, T.fg2).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, T.dp(24), 0, T.dp(8))
+                pressable { Lyrics.remove(this@NavaqHomeActivity, track.id); buildPlayer() }
+            })
+        }
+        return ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(box)
+            lyricsScroll = this
+        }
+    }
+
+    private fun highlightLyrics(posMs: Long) {
+        val sv = lyricsScroll ?: return
+        if (lyricsLines.isEmpty() || lyricsLines.all { it.ms < 0 }) return
+        var idx = -1
+        for (i in lyricsLines.indices) if (lyricsLines[i].ms <= posMs) idx = i else break
+        if (idx == lyricsIdx) return
+        lyricsIdx = idx
+        lyricsViews.forEachIndexed { i, v -> v.setTextColor(if (i == idx) T.accent else T.fg2); v.textSize = (if (i == idx) 23f else 20f) * T.fontScale }
+        lyricsViews.getOrNull(idx)?.let { v -> sv.post { sv.smoothScrollTo(0, (v.top - sv.height / 2 + v.height / 2).coerceAtLeast(0)) } }
+    }
+
+    private fun statsItems(): List<Item> {
+        val out = mutableListOf<Item>()
+        val hours = stats.totalMs() / 3_600_000.0
+        out += Item.Sec("خلاصه")
+        out += Item.Row("خلاصه", "summary total time") {
+            SettingsKit.noteRow(this, "زمان گوش‌دادن: ${fa(String.format(Locale.US, "%.1f", hours))} ساعت\nتعداد پخش‌ها: ${fa(stats.totalPlays())}\nآهنگ‌های متفاوت: ${fa(stats.distinct())}")
+        }
+        val top = statTracks(stats.top(8))
+        out += Item.Sec("پرشنوی‌ترین آهنگ‌ها")
+        if (top.isEmpty()) out += Item.Row("خالی", "") { SettingsKit.noteRow(this, "هنوز آماری ثبت نشده است. هر آهنگ بعد از ۳۰ ثانیه گوش‌دادن یک پخش حساب می‌شود.") }
+        top.forEachIndexed { i, t ->
+            out += Item.Row(t.title, "top track") {
+                SettingsKit.actionRow(this, Icon.MUSIC, t.title, "${fa(stats.plays(t.id))} بار" + (t.artist?.let { " · $it" } ?: "")) { playFrom(top, i) }
+            }
+        }
+        val artists = HashMap<String, Long>()
+        allTracks.forEach { t -> val a = t.artist; if (!a.isNullOrBlank()) artists[a] = (artists[a] ?: 0L) + stats.plays(t.id) }
+        val topArtists = artists.entries.filter { it.value > 0 }.sortedByDescending { it.value }.take(5)
+        if (topArtists.isNotEmpty()) {
+            out += Item.Sec("هنرمندان برتر")
+            topArtists.forEach { (name, n) -> out += Item.Row(name, "top artist") { SettingsKit.noteRow(this, "$name — ${fa(n)} پخش") } }
+        }
+        out += Item.Sec("مدیریت")
+        out += Item.Row("پاک کردن", "clear") { SettingsKit.actionRow(this, Icon.RESET, "پاک‌کردن آمار", "تب‌های «اخیراً» و «پرشنوی‌ها» خالی می‌شوند") { stats.clear(); buildScreen() } }
+        return out
+    }
+
+    private fun backupExport() {
+        val name = "navaq-backup-" + java.text.SimpleDateFormat("yyyyMMdd", Locale.US).format(java.util.Date()) + ".json"
+        startActivityForResult(
+            Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, name),
+            REQ_BACKUP_EXPORT
+        )
+    }
+
+    private fun backupImport() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),
+            REQ_BACKUP_IMPORT
+        )
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) return
+        when (requestCode) {
+            REQ_BACKUP_EXPORT -> executor.execute {
+                val ok = try {
+                    stats.flush()
+                    contentResolver.openOutputStream(uri, "wt")?.use { it.write(BackupKit.export(applicationContext).toByteArray(Charsets.UTF_8)) } != null
+                } catch (_: Exception) { false }
+                runOnUiThread { toast(if (ok) "پشتیبان ذخیره شد" else "ذخیره‌ی پشتیبان ناموفق بود") }
+            }
+            REQ_BACKUP_IMPORT -> executor.execute {
+                val text = try {
+                    contentResolver.openInputStream(uri)?.use { it.readBytes().take(8_000_000).toByteArray().toString(Charsets.UTF_8) }
+                } catch (_: Exception) { null }
+                val ok = text != null && BackupKit.import(applicationContext, text)
+                runOnUiThread {
+                    if (ok) { skipStatsFlush = true; toast("بازیابی شد؛ برنامه دوباره بارگذاری می‌شود"); recreate() } else toast("این فایل پشتیبان NAVAQ نیست")
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ playlists
 
     private fun plPrefs() = getSharedPreferences("navaq_playlists", MODE_PRIVATE)
@@ -1454,6 +1696,7 @@ class NavaqHomeActivity : Activity() {
 
     private fun pageItems(id: String): List<Item> = when (id) {
         "room" -> roomItems()
+        "stats" -> statsItems()
         "downloads" -> listOf(
             Item.Sec("NAVAQ Downloader"),
             Item.Row("لینک", "url link video") { fieldRow("لینک مستقیم رسانهٔ عمومی Wikimedia Commons یا صفحهٔ فایل آن", dlUrl, true) { dlUrl = it } },
@@ -1610,6 +1853,7 @@ class NavaqHomeActivity : Activity() {
                 }
             },
             toggleRawThen("تحلیل پیشرفته ضرب", "تشخیص جداگانه‌ی طبل، باس و های‌هت با هسته", "haptics_adv") { client.setAdvancedHaptics(runtimePrefs().getBoolean("haptics_adv", false)) },
+            toggleRawThen("رد کردن سکوت", "بخش‌های ساکت ابتدا و انتهای آهنگ و پادکست را رد می‌کند", "skip_silence") { client.setSkipSilence(runtimePrefs().getBoolean("skip_silence", false)) },
             Item.Sec("دستیار و کشف"),
             Item.Row("دستیار صوتی AVA", "ava voice assistant") {
                 SettingsKit.navRow(this, Icon.MIC, "دستیار صوتی AVA", "فرمان صوتی آفلاین فارسی و انگلیسی") { startActivity(Intent(this, AvaActivity::class.java)) }
@@ -1628,9 +1872,20 @@ class NavaqHomeActivity : Activity() {
             slider("حداقل طول آهنگ", 0, 120, s.minTrackSeconds, " ثانیه", false) { u, v -> u.copy(minTrackSeconds = v) },
             Item.Row("اسکن دوباره", "rescan") {
                 SettingsKit.actionRow(this, Icon.RESET, "اسکن دوباره کتابخانه", "خواندن دوباره موسیقی‌های گوشی") { loadTracks(); toast("در حال بروزرسانی کتابخانه") }
+            },
+            Item.Row("آهنگ‌های پنهان", "hidden") {
+                SettingsKit.actionRow(this, Icon.LIBRARY, "آهنگ‌های پنهان (${fa(hidden.all().size)})", "برای نمایش دوباره، آهنگ را انتخاب کنید") { hiddenSheet() }
             }
         )
         "backup" -> listOf(
+            Item.Sec("پشتیبان کامل"),
+            Item.Row("ذخیره پشتیبان", "backup export") {
+                SettingsKit.actionRow(this, Icon.DOWN, "ذخیره‌ی پشتیبان", "تم، علاقه‌مندی‌ها، پلی‌لیست‌ها، آمار، متن آهنگ‌ها و تنظیمات در یک فایل") { backupExport() }
+            },
+            Item.Row("بازیابی پشتیبان", "backup restore import") {
+                SettingsKit.actionRow(this, Icon.CHECK, "بازیابی از پشتیبان", "جایگزین داده‌های فعلی می‌شود") { backupImport() }
+            },
+            Item.Sec("بازنشانی"),
             Item.Row("بازنشانی", "reset default") {
                 SettingsKit.actionRow(this, Icon.RESET, "بازگشت به پیش‌فرض", "تنظیمات ظاهری به حالت اولیه برمی‌گردد") { mutate { UiSettings() } }
             }
@@ -1645,6 +1900,7 @@ class NavaqHomeActivity : Activity() {
             Item.Row("شیشه و جلوه‌ها", "glass blur") { SettingsKit.navRow(this, Icon.GLASS, "شیشه و جلوه‌ها", "محو‌شدگی، شفافیت، گوشه‌ها، انیمیشن") { open("glass") } },
             Item.Row("چیدمان و رابط", "layout font density") { SettingsKit.navRow(this, Icon.LAYOUT, "چیدمان و رابط", "اندازه متن، تراکم، کاور، ناوبری") { open("layout") } },
             Item.Row("گوش دادن مشترک", "room share together cast") { SettingsKit.navRow(this, Icon.MUSIC, "گوش دادن مشترک", "پخش هم‌زمان با دوستان روی همین وای‌فای، با کد اتصال") { open("room") } },
+            Item.Row("آمار گوش‌دادن", "stats history top") { SettingsKit.navRow(this, Icon.DISC, "آمار گوش‌دادن", "زمان گوش‌دادن، پرشنوی‌ها، هنرمندان برتر") { open("stats") } },
             Item.Row("دانلودها", "downloads") { SettingsKit.navRow(this, Icon.DOWN, "دانلودها", "صف دانلود، پیشرفت، لغو و پخش آفلاین") { open("downloads") } },
             Item.Row("Music DNA", "dna taste friend") { SettingsKit.navRow(this, Icon.DISC, "Music DNA", "مقایسه سلیقه با دوستان و پلی‌لیست مشترک، بدون سرور") { open("dna") } },
             Item.Row("ساخت آهنگ", "create song lyric melody") { SettingsKit.navRow(this, Icon.MUSIC, "ساخت آهنگ", "تبدیل متن به ملودی، آهنگ بی‌کلام") { open("create") } },
@@ -1689,7 +1945,7 @@ class NavaqHomeActivity : Activity() {
             scroll.removeAllViews()
             val q = settingsQuery.trim()
             if (id == "root" && q.isNotEmpty()) {
-                val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "room", "downloads", "playback", "library", "backup")
+                val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "room", "downloads", "stats", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
                     .filter { (it.title + " " + it.keywords).contains(q, ignoreCase = true) }
                 scroll.addView(if (hits.isEmpty()) emptyState("تنظیماتی با این نام پیدا نشد") else renderItems(hits))
@@ -1758,7 +2014,10 @@ class NavaqHomeActivity : Activity() {
 
         val stage = FrameLayout(this)
         col.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
-        if (playerQueue) {
+        lyricsLines = emptyList(); lyricsViews = emptyList(); lyricsScroll = null; lyricsIdx = -1
+        if (playerLyrics && !playerQueue) {
+            stage.addView(lyricsStage(track), fill())
+        } else if (playerQueue) {
             val ids = client.queueIds
             val cells = ids.mapNotNull { byId[it] }.map { t ->
                 Cell(t.id, t.title, t.artist ?: "", t.sourceValue, t.title, t) { client.jumpTo(t.id) }
@@ -1854,6 +2113,10 @@ class NavaqHomeActivity : Activity() {
             addView(btn(Icon.SPEED, 52, 22) { speedSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.TIMER, 52, 22, if (sleepRunnable != null) T.accent else T.fg) { sleepSheet() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.LIBRARY, 52, 22) { addToPlaylistSheet(track.id) }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
+            addView(label(this@NavaqHomeActivity, "متن", 14f, true, if (playerLyrics) T.accent else T.fg).apply {
+                gravity = Gravity.CENTER
+                pressable { playerLyrics = !playerLyrics; playerQueue = false; buildPlayer() }
+            }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
             addView(btn(Icon.QUEUE, 52, 22, if (playerQueue) T.accent else T.fg) { playerQueue = !playerQueue; buildPlayer() }, LinearLayout.LayoutParams(0, T.dp(52), 1f))
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = T.dp(6) })
     }
@@ -1913,6 +2176,7 @@ class NavaqHomeActivity : Activity() {
                 it.progress = (client.positionMs / 1000L).toInt()
             }
             pCur?.text = fmtTime(client.positionMs)
+            highlightLyrics(client.positionMs)
             pDur?.text = fmtTime(dur)
         }
     }
@@ -1973,7 +2237,7 @@ class NavaqHomeActivity : Activity() {
         val id = client.currentId
         if (id == null) { toast("آهنگی در حال پخش نیست"); return }
         sleepEndId = id
-        val r = Runnable { sleepEndId = null; sleepRunnable = null; client.pause(); toast("تایمر خواب: پایان آهنگ") }
+        val r = Runnable { sleepEndId = null; sleepRunnable = null; fadeOutAndPause(); toast("تایمر خواب: پایان آهنگ") }
         if (client.durationMs > 0L) {
             sleepRunnable = r
             handler.postDelayed(r, (client.durationMs - client.positionMs - 300L).coerceAtLeast(0L))
@@ -1987,7 +2251,7 @@ class NavaqHomeActivity : Activity() {
         sleepRunnable = null
         sleepEndId = null
         if (minutes > 0) {
-            val r = Runnable { client.pause(); sleepRunnable = null; toast("تایمر خواب: پخش متوقف شد") }
+            val r = Runnable { sleepRunnable = null; fadeOutAndPause(); toast("تایمر خواب: پخش متوقف شد") }
             sleepRunnable = r
             handler.postDelayed(r, minutes * 60_000L)
             toast("تایمر خواب: ${fa(minutes)} دقیقه")

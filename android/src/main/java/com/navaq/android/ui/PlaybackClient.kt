@@ -97,6 +97,34 @@ class PlaybackClient(private val context: Context, private val onChange: () -> U
         )
     }
 
+    /** Inserts right after the current item (or starts playing when nothing is queued). */
+    fun playNext(t: AvaCatalogTrack) {
+        val c = controller ?: return
+        if (c.mediaItemCount == 0) { playQueue(listOf(t), 0); return }
+        c.addMediaItem(
+            c.currentMediaItemIndex + 1,
+            MediaItem.Builder().setMediaId(t.id).setUri(t.sourceValue)
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setAlbumTitle(t.album).build())
+                .build()
+        )
+    }
+
+    fun enqueue(t: AvaCatalogTrack) {
+        if (controller?.mediaItemCount == 0) playQueue(listOf(t), 0) else addTrack(t)
+    }
+
+    var volume: Float
+        get() = controller?.volume ?: 1f
+        set(v) { controller?.volume = v.coerceIn(0f, 1f) }
+
+    fun setSkipSilence(enabled: Boolean) {
+        context.startService(
+            Intent(context, NavaqPlaybackService::class.java)
+                .setAction(NavaqPlaybackService.ACTION_SET_SKIP_SILENCE)
+                .putExtra(NavaqPlaybackService.EXTRA_ENABLED, enabled)
+        )
+    }
+
     fun jumpTo(id: String): Boolean {
         val c = controller ?: return false
         val idx = queueIds.indexOf(id)
