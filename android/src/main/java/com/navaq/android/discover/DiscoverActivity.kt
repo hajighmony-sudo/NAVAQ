@@ -88,7 +88,8 @@ class DiscoverActivity : Activity() {
     private fun buildScreen(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF17243A.toInt(), BG, BG))
             setPadding(dp(18), dp(22), dp(18), dp(18))
         }
         root.addView(label("NAVAQ  /  DISCOVER", 12, MUTED, true))
@@ -96,7 +97,20 @@ class DiscoverActivity : Activity() {
             setPadding(0, dp(4), 0, dp(4))
         })
         root.addView(label("Find audio and video, browse the web and keep media offline.", 14, SUBTLE, false)
-            .apply { setPadding(0, 0, 0, dp(16)) })
+            .apply { setPadding(0, 0, 0, dp(12)) })
+        val hero = card().apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF1D4260.toInt(), CARD)).apply {
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), STROKE)
+            }
+            addView(label("EXPLORE  /  SAVE  /  LISTEN", 10, 0xFF7FE1D1.toInt(), true))
+            addView(label("Your media space", 20, Color.WHITE, true).apply {
+                setPadding(0, dp(6), 0, dp(4))
+            })
+            addView(label("Search reusable public media, manage offline files and keep track of your downloads.", 12, SUBTLE, false))
+        }
+        root.addView(hero, params(bottom = 14))
 
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         tabs.addView(tabButton("Search") { showSearch() }, weightParams())
@@ -718,7 +732,14 @@ class DiscoverActivity : Activity() {
     private fun tabButton(title: String, action: () -> Unit) = Button(this).apply {
         text = title
         isAllCaps = false
+        textSize = 12f
         setTextColor(Color.WHITE)
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF263B55.toInt(), CARD)).apply {
+            cornerRadius = dp(14).toFloat()
+            setStroke(dp(1), STROKE)
+        }
+        setPadding(dp(4), dp(7), dp(4), dp(7))
         setOnClickListener { action() }
     }
 

@@ -447,6 +447,9 @@ class NavaqHomeActivity : Activity() {
         col.addView(header("موسیقی", null,
             btn(Icon.SEARCH, 44, 22) { screen = "search"; buildNav(); buildScreen() },
             btn(Icon.SLIDERS, 44, 22) { screen = "settings"; buildNav(); buildScreen() }))
+        col.addView(homeBento(), LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(T.dp(16), T.dp(4), T.dp(16), T.dp(4))
+        })
         val tabs = mutableListOf("tracks" to "آهنگ‌ها", "albums" to "آلبوم‌ها")
         if (s.showArtistsTab) tabs += "artists" to "هنرمندان"
         tabs += "fav" to "علاقه‌مندی‌ها"
@@ -511,6 +514,109 @@ class NavaqHomeActivity : Activity() {
         }
         col.addView(pane, LinearLayout.LayoutParams(-1, 0, 1f))
         return col
+    }
+
+    /**
+     * Compact Bento-style dashboard inspired by the visual language studied in ZX.
+     * It is deliberately presentation-only: every shortcut routes to an existing NAVAQ feature.
+     */
+    private fun homeBento(): View {
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(T.dp(16), T.dp(14), T.dp(16), T.dp(14))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    Color.argb(220, Color.red(T.accent), Color.green(T.accent), Color.blue(T.accent)),
+                    Color.argb(if (T.dark) 150 else 205, Color.red(T.glassBase), Color.green(T.glassBase), Color.blue(T.glassBase))
+                )
+            ).apply {
+                cornerRadius = T.radiusPx * 1.15f
+                setStroke(T.dp(1), Color.argb(75, 255, 255, 255))
+            }
+
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(label(this@NavaqHomeActivity, "NAVAQ  /  YOUR SOUND", 10.5f, true, T.accentFg).apply {
+                    letterSpacing = 0.12f
+                })
+                addView(label(this@NavaqHomeActivity, "موسیقی، به سبک خودت", 18f, true, T.fg).apply {
+                    setPadding(0, T.dp(5), 0, T.dp(4))
+                })
+                addView(label(
+                    this@NavaqHomeActivity,
+                    "${fa(allTracks.size)} آهنگ  •  ${fa(favs.all().size)} پسندیده  •  ${fa(playlists().size)} پلی‌لیست",
+                    11.5f, false, T.fg2, 1
+                ))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+
+            val badge = FrameLayout(this@NavaqHomeActivity).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(55, 255, 255, 255))
+                    setStroke(T.dp(1), Color.argb(100, 255, 255, 255))
+                }
+                addView(IconView(this@NavaqHomeActivity, Icon.MUSIC, T.accentFg),
+                    FrameLayout.LayoutParams(T.dp(30), T.dp(30), Gravity.CENTER))
+            }
+            addView(badge, LinearLayout.LayoutParams(T.dp(54), T.dp(54)))
+        }
+        shell.addView(hero)
+
+        val actions = listOf(
+            Triple("AVA", Icon.MIC, { startActivity(Intent(this, AvaActivity::class.java)) }),
+            Triple("کشف", Icon.DISC, { startActivity(Intent(this, DiscoverActivity::class.java)) }),
+            Triple("دانلودها", Icon.DOWN, { openHomeSettings("downloads") }),
+            Triple("DNA", Icon.MUSIC, { openHomeSettings("dna") }),
+            Triple("اتاق مشترک", Icon.QUEUE, { openHomeSettings("room") }),
+            Triple("ساخت آهنگ", Icon.PLAY, { openHomeSettings("create") })
+        )
+        val shortcuts = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, T.dp(10), 0, T.dp(2))
+                actions.forEach { (title, icon, action) ->
+                    addView(LinearLayout(this@NavaqHomeActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        setPadding(T.dp(10), T.dp(9), T.dp(10), T.dp(9))
+                        glass(0.78f)
+                        addView(IconView(this@NavaqHomeActivity, icon, T.accent),
+                            LinearLayout.LayoutParams(T.dp(21), T.dp(21)))
+                        addView(label(this@NavaqHomeActivity, title, 10.5f, true, T.fg).apply {
+                            gravity = Gravity.CENTER
+                            setPadding(0, T.dp(6), 0, 0)
+                        })
+                        layoutParams = LinearLayout.LayoutParams(T.dp(88), T.dp(66)).apply {
+                            marginEnd = T.dp(8)
+                        }
+                        contentDescription = title
+                        pressable {
+                            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                            action()
+                        }
+                    })
+                }
+            })
+        }
+        shell.addView(shortcuts)
+        return shell
+    }
+
+    private fun openHomeSettings(page: String) {
+        screen = "settings"
+        detail = null
+        stack.clear()
+        stack.add(page)
+        buildNav()
+        buildScreen()
     }
 
     private fun permissionCard(): View = LinearLayout(this).apply {
@@ -1931,6 +2037,55 @@ class NavaqHomeActivity : Activity() {
         return out
     }
 
+    /**
+     * Shared editorial header for every settings destination.
+     * Visual-only: it does not mutate preferences or feature state.
+     */
+    private fun sectionHero(id: String): View {
+        val meta = when (id) {
+            "root" -> Triple(Icon.LAYOUT, "NAVAQ CONTROL CENTER", "ظاهر، صدا، کتابخانه و تجربهٔ شنیدن را یک‌جا مدیریت کن.")
+            "look" -> Triple(Icon.PALETTE, "YOUR VISUAL IDENTITY", "رنگ‌ها و حال‌وهوای محیط موسیقی را مطابق سلیقه‌ات تنظیم کن.")
+            "glass" -> Triple(Icon.GLASS, "GLASS STUDIO", "شفافیت، عمق، درخشش و حرکت رابط را کنترل کن.")
+            "layout" -> Triple(Icon.LAYOUT, "PERSONAL LAYOUT", "تراکم، اندازهٔ نوشته‌ها، کاورها و ناوبری را تنظیم کن.")
+            "playback" -> Triple(Icon.PLAY, "PLAYBACK EXPERIENCE", "رفتار پخش، کنترل‌های شنیدن و دستیار موسیقی.")
+            "sound" -> Triple(Icon.SLIDERS, "SOUND LAB", "اکولایزر و پردازش‌های صوتی موجود در NAVAQ.")
+            "create" -> Triple(Icon.MUSIC, "NAVAQ COMPOSER", "ایده‌ها و تنظیمات ساخت موسیقی را مدیریت کن.")
+            "dna" -> Triple(Icon.DISC, "MUSIC DNA", "نمایهٔ سلیقه و مقایسهٔ محلی با دوستان.")
+            "room" -> Triple(Icon.QUEUE, "LISTEN TOGETHER", "اتاق شنیدن محلی و همگام‌سازی پخش.")
+            "downloads" -> Triple(Icon.DOWN, "DOWNLOAD MANAGER", "صف، وضعیت و فایل‌های دریافت‌شده.")
+            "library" -> Triple(Icon.LIBRARY, "YOUR LIBRARY", "مرتب‌سازی و شیوهٔ نمایش مجموعهٔ موسیقی.")
+            "backup" -> Triple(Icon.RESET, "APP CONTROL", "بازنشانی تنظیمات ظاهری و کنترل‌های برنامه.")
+            else -> Triple(Icon.INFO, "NAVAQ", "تنظیمات و اطلاعات برنامه.")
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(T.dp(16), T.dp(15), T.dp(16), T.dp(15))
+            glass(1.05f)
+            val mark = FrameLayout(this@NavaqHomeActivity).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(T.accent, Color.argb(130, Color.red(T.accent), Color.green(T.accent), Color.blue(T.accent)))).apply {
+                    cornerRadius = T.radiusPx * 0.72f
+                }
+                addView(IconView(this@NavaqHomeActivity, meta.first, T.accentFg),
+                    FrameLayout.LayoutParams(T.dp(28), T.dp(28), Gravity.CENTER))
+            }
+            addView(mark, LinearLayout.LayoutParams(T.dp(52), T.dp(52)).apply { marginEnd = T.dp(13) })
+            addView(LinearLayout(this@NavaqHomeActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(label(this@NavaqHomeActivity, meta.second, 9.5f, true, T.accent).apply { letterSpacing = 0.12f })
+                addView(label(this@NavaqHomeActivity, pageTitle(id), 17f, true, T.fg).apply {
+                    setPadding(0, T.dp(4), 0, T.dp(4))
+                })
+                addView(label(this@NavaqHomeActivity, meta.third, 11.5f, false, T.fg2, 2))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(T.dp(16), T.dp(8), T.dp(16), T.dp(12))
+            }
+        }
+    }
+
     private fun settingsScreen(): View {
         val id = stack.lastOrNull() ?: "root"
         val col = column()
@@ -1944,6 +2099,7 @@ class NavaqHomeActivity : Activity() {
         fun fillBody() {
             scroll.removeAllViews()
             val q = settingsQuery.trim()
+            if (id != "root" || q.isEmpty()) scroll.addView(sectionHero(id))
             if (id == "root" && q.isNotEmpty()) {
                 val hits = listOf("look", "glass", "layout", "sound", "create", "dna", "room", "downloads", "stats", "playback", "library", "backup")
                     .flatMap { pageItems(it) }.filterIsInstance<Item.Row>()
@@ -2039,10 +2195,13 @@ class NavaqHomeActivity : Activity() {
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            glass(0.95f)
+            setPadding(T.dp(14), T.dp(12), T.dp(8), T.dp(12))
             addView(LinearLayout(this@NavaqHomeActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(label(this@NavaqHomeActivity, track.title, 22f, true, T.fg, 1))
-                addView(label(this@NavaqHomeActivity, listOfNotNull(track.artist, track.album).joinToString(" · "), 14f, false, T.fg2, 1).apply { setPadding(0, T.dp(4), 0, 0) })
+                addView(label(this@NavaqHomeActivity, "NOW PLAYING  /  NAVAQ", 9.5f, true, T.accent).apply { letterSpacing = 0.12f })
+                addView(label(this@NavaqHomeActivity, track.title, 21f, true, T.fg, 1).apply { setPadding(0, T.dp(5), 0, 0) })
+                addView(label(this@NavaqHomeActivity, listOfNotNull(track.artist, track.album).joinToString(" · ").ifBlank { "کتابخانهٔ موسیقی" }, 13f, false, T.fg2, 1).apply { setPadding(0, T.dp(4), 0, 0) })
             }, LinearLayout.LayoutParams(0, -2, 1f))
             val fav = favs.isFavorite(track.id)
             val heart = btn(if (fav) Icon.HEART_FILL else Icon.HEART, 48, 26, if (fav) T.accent else T.fg) {
