@@ -1,0 +1,127 @@
+name: NAVAQ Android CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "core/**"
+      - "Cargo.toml"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-ci.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "core/**"
+      - "Cargo.toml"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-ci.yml"
+
+jobs:
+  android:
+    name: Android universal APK with Rust core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager "platforms;android-36" "platforms;android-34" "build-tools;36.0.0" "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Build Rust JNI libraries
+        run: |
+          cargo ndk -t arm64-v8a -t x86_64 -o android/src/main/jniLibs build --release -p navaq-core
+      - name: Build Sherpa-ONNX Android runtime
+        run: |
+          set -euo pipefail
+          SHERPA_VERSION="v2.0.2"
+          mkdir -p "$RUNNER_TEMP/sherpa-native" "$RUNNER_TEMP/sherpa-src"
+          curl -fL "https://github.com/k2-fsa/sherpa-onnx/releases/download/${SHERPA_VERSION}/sherpa-onnx-${SHERPA_VERSION}-android.tar.bz2" -o "$RUNNER_TEMP/sherpa-android.tar.bz2"
+          echo "08d22f7eb5c49bd161d248633eeb66e84735725706e21202b684800e5081a029  $RUNNER_TEMP/sherpa-android.tar.bz2" | sha256sum -c -
+          tar -xjf "$RUNNER_TEMP/sherpa-android.tar.bz2" -C "$RUNNER_TEMP/sherpa-native"
+          git clone --depth 1 --branch "${SHERPA_VERSION}" https://github.com/k2-fsa/sherpa-onnx.git "$RUNNER_TEMP/sherpa-src"
+          JNI_DIR="$(find "$RUNNER_TEMP/sherpa-native" -type d -name jniLibs -print -quit)"
+          test -n "$JNI_DIR"
+          mkdir -p "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/src/main/jniLibs"
+          cp -R "$JNI_DIR/." "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/src/main/jniLibs/"
+          bash "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/gradlew" -p "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar" :sherpa_onnx:assembleRelease
+          mkdir -p android/libs
+          cp "$RUNNER_TEMP/sherpa-src/android/SherpaOnnxAar/sherpa_onnx/build/outputs/aar/sherpa_onnx-release.aar" android/libs/sherpa-onnx-release.aar
+      - name: Assemble installable universal APK
+        run: gradle :android:assembleDebug --stacktrace
+      - name: Verify full APK payload for every supported ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/build/outputs/apk/debug -type f -name '*universal*.apk' -print -quit)"
+          test -n "$APK"
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          apk = sys.argv[1]
+          required = (
+              "libnavaq_core.so",
+              "libonnxruntime.so",
+              "libsherpa-onnx-c-api.so",
+              "libsherpa-onnx-cxx-api.so",
+              "libsherpa-onnx-jni.so",
+          )
+          abis = ("arm64-v8a", "x86_64")
+          with zipfile.ZipFile(apk) as z:
+              names = set(z.namelist())
+              missing = []
+              for abi in abis:
+                  for lib in required:
+                      path = f"lib/{abi}/{lib}"
+                      if path not in names:
+                          missing.append(path)
+              if "classes.dex" not in names:
+                  missing.append("classes.dex")
+              if "AndroidManifest.xml" not in names:
+                  missing.append("AndroidManifest.xml")
+              if missing:
+                  print("Universal APK is incomplete; missing:", *missing, sep="\\n")
+                  raise SystemExit(1)
+              print(f"Verified {apk}: app classes, manifest, Rust core and Sherpa runtime for {', '.join(abis)}")
+          PY
+      - name: Verify optimized release build
+        run: gradle :android:assembleRelease --stacktrace
+      - name: Prepare the single full APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t FULL_APKS < <(find android/build/outputs/apk/debug -type f -name '*universal*.apk' -print)
+          if [[ "${#FULL_APKS[@]}" -ne 1 ]]; then
+            echo "Expected exactly one universal debug APK, found ${#FULL_APKS[@]}"
+            find android/build/outputs/apk/debug -type f -name '*.apk' -print
+            exit 1
+          fi
+          cp "${FULL_APKS[0]}" "$RUNNER_TEMP/NAVAQ FULL.apk"
+          test -s "$RUNNER_TEMP/NAVAQ FULL.apk"
+      - name: Upload NAVAQ FULL.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAVAQ FULL.apk
+          path: ${{ runner.temp }}/NAVAQ FULL.apk
+          if-no-files-found: error
+          retention-days: 30
